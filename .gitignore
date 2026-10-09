@@ -1,0 +1,35 @@
+# Android / Gradle
+.gradle/
+.kotlin/
+**/build/
+local.properties
+*.apk
+*.aab
+*.jks
+*.keystore
+key.properties
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Herramientas de documentación
+node_modules/
+
+# Datos privados y configuración local
+.env
+.env.*
+!.env.example
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.log
+telemetry-exports/
+private-captures/
+
+# Sistema
+.DS_Store
+Thumbs.db

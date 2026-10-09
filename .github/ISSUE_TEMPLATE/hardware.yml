@@ -1,0 +1,70 @@
+{
+  "name": "Prueba de compatibilidad",
+  "description": "Registrar evidencia del coche o adaptador",
+  "title": "[Hardware] ",
+  "labels": [
+    "type:research",
+    "area:obd",
+    "needs:hardware",
+    "status:triage"
+  ],
+  "body": [
+    {
+      "type": "textarea",
+      "id": "environment",
+      "attributes": {
+        "label": "Vehículo y equipo",
+        "description": "Año/versión/mercado, Android, móvil, adaptador y app. Sin VIN ni MAC completos."
+      },
+      "validations": {
+        "required": true
+      }
+    },
+    {
+      "type": "textarea",
+      "id": "procedure",
+      "attributes": {
+        "label": "Procedimiento",
+        "description": "Condiciones, pasos, protocolo y consultas."
+      },
+      "validations": {
+        "required": true
+      }
+    },
+    {
+      "type": "textarea",
+      "id": "results",
+      "attributes": {
+        "label": "Resultados",
+        "description": "PIDs, valores/unidades, latencia, errores y reconexión."
+      },
+      "validations": {
+        "required": true
+      }
+    },
+    {
+      "type": "textarea",
+      "id": "acceptance",
+      "attributes": {
+        "label": "Conclusión y siguiente paso",
+        "description": "Qué queda probado, qué falla y qué requiere más evidencia."
+      },
+      "validations": {
+        "required": true
+      }
+    },
+    {
+      "type": "checkboxes",
+      "id": "privacy",
+      "attributes": {
+        "label": "Revisión de datos",
+        "options": [
+          {
+            "label": "He eliminado VIN, MAC, credenciales y datos personales de lo adjunto.",
+            "required": true
+          }
+        ]
+      }
+    }
+  ]
+}

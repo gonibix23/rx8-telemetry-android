@@ -1,0 +1,68 @@
+{
+  "name": "Error",
+  "description": "Comunicar un fallo reproducible",
+  "title": "[Bug] ",
+  "labels": [
+    "type:bug",
+    "status:triage"
+  ],
+  "body": [
+    {
+      "type": "textarea",
+      "id": "problem",
+      "attributes": {
+        "label": "Qué ocurre y qué esperabas",
+        "description": "Incluye el resultado observado y el esperado."
+      },
+      "validations": {
+        "required": true
+      }
+    },
+    {
+      "type": "textarea",
+      "id": "steps",
+      "attributes": {
+        "label": "Pasos para reproducir",
+        "description": "Pasos concretos, frecuencia y momento del fallo."
+      },
+      "validations": {
+        "required": true
+      }
+    },
+    {
+      "type": "textarea",
+      "id": "environment",
+      "attributes": {
+        "label": "Entorno",
+        "description": "Versión app/Android, móvil, coche, adaptador, protocolo y modo real o simulador."
+      },
+      "validations": {
+        "required": true
+      }
+    },
+    {
+      "type": "textarea",
+      "id": "evidence",
+      "attributes": {
+        "label": "Evidencia",
+        "description": "Registros anonimizados o capturas."
+      },
+      "validations": {
+        "required": false
+      }
+    },
+    {
+      "type": "checkboxes",
+      "id": "privacy",
+      "attributes": {
+        "label": "Revisión de datos",
+        "options": [
+          {
+            "label": "He eliminado VIN, MAC, credenciales y datos personales de lo adjunto.",
+            "required": true
+          }
+        ]
+      }
+    }
+  ]
+}

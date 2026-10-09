@@ -1,0 +1,66 @@
+{
+  "name": "Tarea",
+  "description": "Preparar una tarea de implementación o documentación",
+  "title": "[Task] ",
+  "labels": [
+    "type:task",
+    "status:triage"
+  ],
+  "body": [
+    {
+      "type": "textarea",
+      "id": "goal",
+      "attributes": {
+        "label": "Objetivo",
+        "description": "Un resultado concreto."
+      },
+      "validations": {
+        "required": true
+      }
+    },
+    {
+      "type": "textarea",
+      "id": "scope",
+      "attributes": {
+        "label": "Alcance",
+        "description": "Archivos/capas afectadas y límites."
+      },
+      "validations": {
+        "required": true
+      }
+    },
+    {
+      "type": "textarea",
+      "id": "acceptance",
+      "attributes": {
+        "label": "Criterios de aceptación",
+        "description": "Lista de comprobaciones."
+      },
+      "validations": {
+        "required": true
+      }
+    },
+    {
+      "type": "textarea",
+      "id": "dependencies",
+      "attributes": {
+        "label": "Dependencias",
+        "description": "Enlaces a las issues que deben completarse; indica ninguna cuando corresponda."
+      },
+      "validations": {
+        "required": true
+      }
+    },
+    {
+      "type": "textarea",
+      "id": "validation",
+      "attributes": {
+        "label": "Validación prevista",
+        "description": "Qué se probará y si requiere coche real."
+      },
+      "validations": {
+        "required": true
+      }
+    }
+  ]
+}
