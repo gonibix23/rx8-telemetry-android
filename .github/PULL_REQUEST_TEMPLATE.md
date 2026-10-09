@@ -1,34 +1,34 @@
 # Pull request
 
-## Problema y resultado
+## Problem and outcome
 
-<!-- Explica el problema y el comportamiento final para alguien sin contexto del chat. -->
+<!-- Explain the problem and the resulting behavior for someone without the chat context. -->
 
-## Issue relacionada
+## Related issue
 
-<!-- Closes #N si la resuelve; Refs #N si el avance es parcial. -->
+<!-- Use Closes #N when fully resolved; Refs #N for partial progress. -->
 
-## Cambios
+## Changes
 
-<!-- Resume los cambios relevantes y las decisiones necesarias. -->
+<!-- Summarize relevant changes and decisions. -->
 
-## Validación
+## Validation
 
-<!-- Comandos ejecutados y resultado. Distingue simulador de coche real. -->
-<!-- Para hardware: móvil/Android, adaptador, protocolo y sensores probados, sin VIN/MAC reales. -->
+<!-- Commands run and results. Distinguish simulated tests from vehicle tests. -->
+<!-- For hardware: phone/Android, adapter, protocol, and sensors tested. Do not include real VINs or MAC addresses. -->
 
-## Limitaciones y riesgos
+## Limitations and risks
 
-<!-- Pruebas pendientes, cambios de datos/contrato y forma de revertir cuando corresponda. -->
+<!-- Pending checks, data/contract changes, and rollback approach when relevant. -->
 
-## Capturas
+## Screenshots
 
-<!-- Solo si cambia la interfaz. Oculta datos personales. -->
+<!-- Only when the UI changes. Redact personal data. -->
 
-## Revisión
+## Review checklist
 
-- [ ] Se cumplen los criterios de la issue o se indica qué queda pendiente.
-- [ ] Se ha revisado el diff y la documentación afectada.
-- [ ] Se han ejecutado las comprobaciones pertinentes.
-- [ ] No se incluyen secretos, VIN reales ni registros privados.
-- [ ] Se distingue la evidencia de simulación de la validación física.
+- [ ] The issue's acceptance criteria are met, or remaining work is stated.
+- [ ] The diff and affected documentation have been reviewed.
+- [ ] Relevant checks have been run.
+- [ ] No secrets, real VINs, or private logs are included.
+- [ ] Simulator evidence is clearly distinguished from hardware validation.

@@ -14,10 +14,10 @@ key.properties
 *.iml
 .vscode/
 
-# Herramientas de documentación
+# Documentation tools
 node_modules/
 
-# Datos privados y configuración local
+# Private data and local configuration
 .env
 .env.*
 !.env.example
@@ -30,6 +30,6 @@ node_modules/
 telemetry-exports/
 private-captures/
 
-# Sistema
+# Operating system
 .DS_Store
 Thumbs.db

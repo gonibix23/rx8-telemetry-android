@@ -1,31 +1,35 @@
-# Pautas de trabajo para agentes
+# Agent guidelines
 
-## Contexto y alcance
+## Context and scope
 
-Lee README.md, docs/product.md, docs/architecture.md y la issue antes de modificar código.
-Proyecto inicial: Mazda RX-8 2004 europeo, 231 CV; Samsung A53; iLC B0BDRHRR22.
-Prioridad: datos en directo y registro local de recorridos. API preparada, sin backend desplegado.
-El repositorio empieza como documentación y seguimiento; no inventes instrucciones de compilación ni pruebas ejecutadas.
+Read README.md, docs/product.md, docs/architecture.md, and the issue before changing code.
+Initial project: European 2004 Mazda RX-8, 231 metric horsepower (CV); Samsung A53; iLC B0BDRHRR22.
+Priority: live data and local trip recording. Prepare for an API without deploying a backend.
+The repository starts with documentation and tracking; do not invent build instructions or claim tests were run.
 
-## Implementación
+## Language
 
-- Mantén las capas de transporte Bluetooth, protocolo OBD, persistencia, presentación y sincronización separadas.
-- Usa una cola de comandos OBD con cancelación, timeout y reintentos limitados.
-- Descubre capacidades y conserva origen, unidad, tiempo y calidad de las muestras.
-- Una lectura ausente o errónea no es cero. Señala las lecturas caducadas.
-- No hardcodees un protocolo, PID propietario o frecuencia como compatible sin evidencia.
-- UUID permanente por vehículo; VIN opcional. No identifiques el coche por el adaptador.
-- Guarda localmente antes de intentar sincronizar. Solo confirma envío tras ACK.
-- Los datos de simulador deben estar identificados y separados de los reales.
-- No añadas control de actuadores, borrado de averías ni reprogramación al alcance actual.
-- No subas VIN reales, tokens, claves de firma, bases de datos ni capturas sin anonimizar.
+Use English for documentation, source comments, UI text, issues, pull requests, and commit messages unless the user explicitly changes this requirement.
 
-## Flujo y validación
+## Implementation
 
-- Implementa una issue por rama y mantén las PRs enfocadas.
-- Actualiza documentación si cambia el alcance o el contrato.
-- Ejecuta las comprobaciones pertinentes. Actualmente: npm ci y npm run lint:docs.
-- Al introducir Android incorpora build, lint y pruebas significativas; no afirmes validación física con un simulador.
-- Mantén claras las pruebas realizadas, las pendientes y las limitaciones.
-- No marques una issue como completada hasta cumplir sus criterios.
-- Conserva cambios ajenos y no hagas force-push, borrados o cambios de visibilidad por iniciativa propia.
+- Keep Bluetooth transport, OBD protocol, persistence, presentation, and synchronization separate.
+- Use an OBD command queue with cancellation, timeouts, and bounded retries.
+- Discover capabilities and preserve each sample's source, unit, timestamp, and quality.
+- A missing or invalid reading is not zero. Indicate stale readings.
+- Do not hardcode a protocol, proprietary PID, or sampling rate as supported without evidence.
+- Use a permanent UUID for each vehicle; VIN is optional. Do not identify the vehicle by its adapter.
+- Save locally before attempting synchronization. Confirm delivery only after an ACK.
+- Identify simulator data clearly and keep it separate from real data.
+- Do not add actuator control, clearing fault codes, or ECU reprogramming to the current scope.
+- Do not commit real VINs, tokens, signing keys, databases, or captures that have not been anonymized.
+
+## Workflow and validation
+
+- Implement one issue per branch and keep PRs focused.
+- Update documentation when the scope or contract changes.
+- Run relevant checks. Currently: npm ci and npm run lint:docs.
+- When introducing Android, add builds, lint, and meaningful tests; do not claim physical validation based on a simulator.
+- Clearly state completed tests, pending tests, and limitations.
+- Do not mark an issue complete until its criteria are met.
+- Preserve other contributors' changes and do not force-push, delete resources, or change visibility on your own initiative.

@@ -1,123 +1,123 @@
-# Arquitectura
+# Architecture
 
-## Estado
+## Status
 
-Diseño inicial; la app y el servidor no están implementados.
-Objetivo: RX-8 europeo 2004 de 231 CV, Samsung A53 y adaptador iLC B0BDRHRR22.
-La compatibilidad exacta se confirma en RX8-001.
+Initial design; neither the app nor the server has been implemented.
+Target: European-market 2004 RX-8 with 231 PS, Samsung A53, and iLC B0BDRHRR22 adapter.
+Exact compatibility will be confirmed in RX8-001.
 
-## Componentes
+## Components
 
 ```mermaid
 flowchart LR
-  Car[RX-8] <--> Adapter[Adaptador OBD]
-  Adapter <--> Bluetooth[Transporte Bluetooth]
-  Bluetooth <--> Obd[Motor OBD]
-  Obd --> Live[Estado en directo]
-  Live --> UI[Interfaz Compose]
-  Obd --> Recorder[Registro de recorrido]
+  Car[RX-8] <--> Adapter[OBD adapter]
+  Adapter <--> Bluetooth[Bluetooth transport]
+  Bluetooth <--> Obd[OBD engine]
+  Obd --> Live[Live state]
+  Live --> UI[Compose interface]
+  Obd --> Recorder[Trip recording]
   Recorder --> DB[(Room)]
   DB --> UI
-  DB --> Export[Exportacion]
-  DB --> Outbox[Cola persistente]
-  Outbox -. Futura integracion .-> API[API]
+  DB --> Export[Export]
+  DB --> Outbox[Persistent queue]
+  Outbox -. Future integration .-> API[API]
 ```
 
-Kotlin y Jetpack Compose para la interfaz, ViewModel/StateFlow para su estado y coroutines para trabajo asíncrono.
-Room guarda datos estructurados; DataStore conserva ajustes.
-Los componentes pueden empezar como paquetes; no es necesario crear un módulo Gradle por cada componente desde el primer día.
+Use Kotlin and Jetpack Compose for the interface, ViewModel/StateFlow for its state, and coroutines for asynchronous work.
+Room stores structured data; DataStore stores settings.
+Components can start as packages; there is no need to create a Gradle module for each component from day one.
 
-## Transporte y motor OBD
+## Transport and OBD engine
 
-Bluetooth clásico RFCOMM/SPP es la hipótesis de partida para este adaptador; se validará antes de fijarlo.
-BLE requiere otra implementación. La interfaz de transporte expone conexión, bytes y cancelación, sin interpretar sensores.
+Bluetooth Classic RFCOMM/SPP is the initial assumption for this adapter; validate it before committing to that transport.
+BLE requires a different implementation. The transport interface exposes connections, bytes, and cancellation without interpreting sensor data.
 
-El motor OBD:
+The OBD engine:
 
-- Inicializa el adaptador y detecta protocolo y capacidades.
-- Serializa las peticiones mediante una cola con tiempos de espera y reintentos limitados.
-- Reconstruye fragmentos y conserva el origen ECU cuando responden varios módulos.
-- Diferencia errores del adaptador, falta de respuesta y parámetros no compatibles.
-- Prioriza sensores visibles/seleccionados y ajusta cadencia según latencia.
-- Evita consultas repetidas a parámetros declarados no compatibles.
+- Initializes the adapter and discovers the protocol and capabilities.
+- Serializes requests through a queue with timeouts and bounded retries.
+- Reassembles fragments and preserves the source ECU when multiple modules respond.
+- Distinguishes adapter errors, missing responses, and unsupported parameters.
+- Prioritizes visible/selected sensors and adjusts polling intervals to latency.
+- Avoids repeatedly querying parameters reported as unsupported.
 
-No se fija una frecuencia por sensor hasta medirla. Las lecturas sucesivas no son simultáneas: cada una tiene su instante.
-La identificación textual del adaptador no acredita por sí sola la autenticidad ni todas sus capacidades.
+Do not commit to a per-sensor sampling rate before measuring it. Sequential readings are not simultaneous: each has its own timestamp.
+The adapter's identification string alone does not prove its authenticity or all of its capabilities.
 
-## Modelo local
+## Local model
 
-| Entidad | Contenido |
+| Entity | Contents |
 | --- | --- |
-| Vehicle | UUID estable, VIN opcional, procedencia y alias |
-| Adapter | Datos de conexión y capacidades observadas |
-| Capability | Parámetros por vehículo, ECU y perfil |
-| Session | Inicio, cierre, duración, estado y origen real/simulado |
-| TelemetrySample | UUID, secuencia, tiempos, métrica, valor, unidad, origen y estado |
-| OutboxEntry | Trabajo pendiente, intentos, próxima ejecución y confirmaciones |
+| Vehicle | Stable UUID, optional VIN, provenance, and alias |
+| Adapter | Connection information and observed capabilities |
+| Capability | Parameters by vehicle, ECU, and profile |
+| Session | Start, end, duration, status, and real/simulated origin |
+| TelemetrySample | UUID, sequence, timestamps, metric, value, unit, source, and status |
+| OutboxEntry | Pending work, attempts, next execution, and acknowledgments |
 
-Las muestras son inmutables. La sesión conserva estados recording, completed o interrupted.
-Cada lectura lleva fecha UTC y tiempo monotónico desde el inicio; se ordena por secuencia.
-Los valores se normalizan a unidades canónicas y se convierten solo para presentación.
+Samples are immutable. Sessions use the recording, completed, or interrupted states.
+Each reading carries a UTC timestamp and monotonic elapsed time since the start; sequence determines ordering.
+Values are normalized to canonical units and converted only for display.
 
-Una lectura errónea tiene valor nulo. La interfaz puede mostrar el último dato válido como antiguo, sin guardarlo otra vez como nueva medición.
-La distancia integrada desde velocidad se identifica como estimación y deja constancia de los intervalos sin datos.
+A failed reading has a null value. The interface may show the last valid reading as stale without storing it again as a new measurement.
+Distance integrated from speed is identified as an estimate and records intervals with missing data.
 
-## Identidad
+## Identity
 
-Crear siempre un vehicleId UUID al dar de alta el coche.
-El VIN es opcional, obtenido mediante modo 09 PID 02 o introducido manualmente, con validación y procedencia.
+Always create a vehicleId UUID when registering a car.
+The VIN is optional, retrieved through mode 09 PID 02 or entered manually, with validation and provenance.
 
-Añadir el VIN no cambia la identidad ni divide el historial.
-Un VIN diferente no se asigna silenciosamente al perfil activo: requiere seleccionar o crear el vehículo correspondiente.
-La MAC del adaptador no identifica al coche. Sin VIN, el usuario selecciona el perfil cuando sea necesario.
+Adding a VIN does not change the identity or split the history.
+A different VIN must not be silently assigned to the active profile: the user must select or create the corresponding vehicle.
+The adapter's MAC address does not identify the car. Without a VIN, the user selects the profile when necessary.
 
-Tras borrar datos o reinstalar, recuperar los mismos UUID requiere restauración de una copia/exportación compatible.
-La importación/restauración no está implementada ni se garantiza en el MVP; se conserva la información necesaria en JSON.
+After clearing app data or reinstalling, recovering the same UUIDs requires restoring a compatible backup/export.
+Import/restore has not been implemented and is not guaranteed in the MVP; JSON retains the necessary information.
 
-## Sesiones y permisos
+## Sessions and permissions
 
-Una grabación iniciada por el usuario utiliza un servicio en primer plano de tipo connectedDevice con notificación y acción de detener.
-Se solicita BLUETOOTH_CONNECT en Android 12+ y BLUETOOTH_SCAN cuando haya descubrimiento.
-El servicio declara los permisos y tipo exigidos por la versión/target de Android.
-Se tratan por separado los requisitos de versiones antiguas.
+A recording started by the user uses a connectedDevice foreground service with a notification and a stop action.
+Request BLUETOOTH_CONNECT on Android 12+ and BLUETOOTH_SCAN when discovery is needed.
+The service declares the permissions and type required by the Android version/target.
+Handle requirements for older versions separately.
 
-No hay GPS en el MVP. WorkManager se reserva para futura sincronización, no para muestrear el coche.
+The MVP does not include GPS. WorkManager is reserved for future synchronization, not vehicle polling.
 
-Se probará la continuidad con pantalla bloqueada en el A53. No se promete supervivencia ilimitada a terminación del proceso.
-Ante pérdida de Bluetooth se registra el hueco; al reiniciar se recuperan datos persistidos y se marca la sesión inconclusa como interrumpida.
+Recording with the screen locked will be tested on the A53. Indefinite survival after process termination is not promised.
+Record a gap when Bluetooth is lost; after restarting, recover persisted data and mark the unfinished session as interrupted.
 
-## Sincronización futura
+## Future synchronization
 
-Define una interfaz remota, modelos versionados y una implementación falsa solo para pruebas aisladas.
-La aplicación de uso real mantiene los envíos desactivados hasta disponer de API y autenticación.
+Define a remote interface, versioned models, and a fake implementation solely for isolated tests.
+The app used with real data keeps uploads disabled until an API and authentication are available.
 
-La escritura local y la creación del trabajo pendiente son atómicas.
-La cola referencia muestras persistidas, sin duplicar todo el historial.
-Un futuro worker envía lotes, respeta conectividad y confirma únicamente registros con ACK.
-Un simulador de servidor nunca marca enviados los datos reales del usuario.
-Detalles en [el contrato](api-contract.md).
+Local writes and pending-work creation are atomic.
+The queue references persisted samples without duplicating the entire history.
+A future worker sends batches, observes connectivity requirements, and confirms only records that receive an acknowledgment (ACK).
+A server simulator must never mark the user's real data as uploaded.
+See [the contract](api-contract.md) for details.
 
-## Retención y exportación
+## Retention and export
 
-Conservar recorridos hasta su eliminación explícita, mostrar espacio usado y avisar antes de agotarlo.
-Si no se puede guardar, detener la grabación de forma controlada y mostrar el error.
-Al eliminar registros pendientes de envío, indicar qué datos se pierden y retirar sus trabajos de cola.
+Keep trips until explicitly deleted, show storage usage, and warn before storage runs out.
+If data cannot be saved, stop recording in a controlled way and display the error.
+When deleting records pending upload, explain which data will be lost and remove their queued work.
 
-Exportar JSON versionado con IDs, unidades y estados; CSV para análisis.
-No versionar bases de datos reales ni exportaciones privadas.
-Definir exclusiones/cifrado de las copias de seguridad Android antes de distribución.
+Export versioned JSON with IDs, units, and statuses; use CSV for analysis.
+Do not commit real databases or private exports.
+Define exclusions/encryption for Android backups before distribution.
 
-## Validación
+## Validation
 
-Pruebas del parser con respuestas completas, fragmentadas, múltiples ECU y malformadas.
-Pruebas de persistencia, migraciones, identidad, cierres inesperados, cola y reintentos.
-Pruebas de interfaz con simulador claramente identificado.
-Validación con coche real para compatibilidad, cadencia, reconexión y pantalla bloqueada.
+Parser tests with complete, fragmented, multi-ECU, and malformed responses.
+Tests for persistence, migrations, identity, unexpected termination, the queue, and retries.
+Interface tests with a clearly identified simulator.
+Real-vehicle validation for compatibility, sampling rate, reconnection, and recording with the screen locked.
 
-## Referencias
+## References
 
-- [Arquitectura Android](https://developer.android.com/topic/architecture/recommendations).
-- [Bluetooth clásico](https://developer.android.com/develop/connectivity/bluetooth/connect-bluetooth-devices).
-- [Permisos Bluetooth](https://developer.android.com/develop/connectivity/bluetooth/bt-permissions).
-- [Servicios en primer plano](https://developer.android.com/develop/background-work/services/fgs/service-types#connected-device).
-- [Funcionamiento sin conexión](https://developer.android.com/topic/architecture/data-layer/offline-first).
+- [Android architecture](https://developer.android.com/topic/architecture/recommendations).
+- [Bluetooth Classic](https://developer.android.com/develop/connectivity/bluetooth/connect-bluetooth-devices).
+- [Bluetooth permissions](https://developer.android.com/develop/connectivity/bluetooth/bt-permissions).
+- [Foreground services](https://developer.android.com/develop/background-work/services/fgs/service-types#connected-device).
+- [Offline-first operation](https://developer.android.com/topic/architecture/data-layer/offline-first).

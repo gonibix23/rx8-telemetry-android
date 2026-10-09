@@ -1,43 +1,43 @@
-# Plan de desarrollo
+# Development roadmap
 
-Estado inicial: planificación. Ninguna capacidad del adaptador se considera validada físicamente todavía.
+Initial status: planning. No adapter capability has been physically validated yet.
 
-## Hitos e issues
+## Milestones and issues
 
-| Código | Trabajo | Hito | Dependencias |
+| Code | Work | Milestone | Dependencies |
 | --- | --- | --- | --- |
-| RX8-001 | Comprobar compatibilidad con coche y A53 | M0 - Compatibilidad real | Ninguna |
-| RX8-002 | Base Android y simulador | M1 - Conexion y adquisicion | Ninguna |
-| RX8-003 | Transporte Bluetooth y permisos | M1 - Conexion y adquisicion | RX8-001, RX8-002 |
-| RX8-004 | Lectura OBD y descubrimiento de capacidades | M1 - Conexion y adquisicion | RX8-003 |
-| RX8-005 | Identidad permanente del vehículo | M2 - Datos y recorridos | RX8-004 |
-| RX8-006 | Panel de datos en directo | M2 - Datos y recorridos | RX8-004, RX8-005 |
-| RX8-007 | Grabación e historial local de recorridos | M2 - Datos y recorridos | RX8-005, RX8-006 |
-| RX8-008 | Contrato y preparación de sincronización | M3 - Preparacion de API | RX8-007 |
-| RX8-009 | Investigar sensores Mazda | Posterior - Extension Mazda | RX8-001, RX8-004 |
+| [RX8-001](https://github.com/gonibix23/rx8-telemetry-android/issues/1) | Validate compatibility with the vehicle and A53 | M0 - Hardware compatibility | None |
+| [RX8-002](https://github.com/gonibix23/rx8-telemetry-android/issues/2) | Android foundation and simulator | M1 - Connection and acquisition | None |
+| [RX8-003](https://github.com/gonibix23/rx8-telemetry-android/issues/3) | Bluetooth transport and permissions | M1 - Connection and acquisition | RX8-001, RX8-002 |
+| [RX8-004](https://github.com/gonibix23/rx8-telemetry-android/issues/4) | OBD reading and capability discovery | M1 - Connection and acquisition | RX8-003 |
+| [RX8-005](https://github.com/gonibix23/rx8-telemetry-android/issues/5) | Permanent vehicle identity | M2 - Live data and trips | RX8-004 |
+| [RX8-006](https://github.com/gonibix23/rx8-telemetry-android/issues/6) | Live data dashboard | M2 - Live data and trips | RX8-004, RX8-005 |
+| [RX8-007](https://github.com/gonibix23/rx8-telemetry-android/issues/7) | Local trip recording and history | M2 - Live data and trips | RX8-005, RX8-006 |
+| [RX8-008](https://github.com/gonibix23/rx8-telemetry-android/issues/8) | Contract and synchronization preparation | M3 - API preparation | RX8-007 |
+| [RX8-009](https://github.com/gonibix23/rx8-telemetry-android/issues/9) | Investigate Mazda sensors | Later - Mazda extensions | RX8-001, RX8-004 |
 
-[Issues del proyecto](https://github.com/gonibix23/rx8-telemetry-android/issues) y [hitos](https://github.com/gonibix23/rx8-telemetry-android/milestones) son el seguimiento operativo.
-Los códigos RX8-xxx permanecen estables aunque cambie el número de una issue.
-RX8-001 y RX8-002 pueden avanzar en paralelo. Los fallos de conexión reales condicionan RX8-003 y RX8-004.
+[Project issues](https://github.com/gonibix23/rx8-telemetry-android/issues) and [milestones](https://github.com/gonibix23/rx8-telemetry-android/milestones) are the operational tracker.
+RX8-xxx codes remain stable even if an issue number changes.
+RX8-001 and RX8-002 can progress in parallel. Actual connection failures constrain RX8-003 and RX8-004.
 
-## Estado del repositorio
+## Repository status
 
-- Documentación inicial, formularios de issues y plantilla de PR.
-- Comprobación automática de Markdown; aún no hay compilación Android.
-- Integración prevista por squash y eliminación de ramas integradas.
-- Protección de main: pendiente de verificar en GitHub al finalizar la configuración.
-- No hay APK, backend, despliegue, release ni proyecto de GitHub Projects creado.
+- Initial documentation, issue forms, and PR template.
+- Automated Markdown checks; no Android build yet.
+- Squash merging and automatic deletion of merged branches are enabled.
+- Main branch protection is enabled: pull requests, passing Documentation checks on an up-to-date branch, and resolved review conversations are required, including for administrators. Force-push and branch deletion are disabled. No additional reviewer approval is required for solo maintenance.
+- No APK, backend, deployment, release, or GitHub Projects board has been created.
 
-## Decisiones pendientes
+## Pending decisions
 
-- Versión Android del A53 y mínimo soportado.
-- Transporte y protocolo realmente detectados.
-- PIDs y cadencia sostenida con el adaptador concreto.
-- Política y límite de retención local medidos con datos reales.
-- Autenticación, alojamiento y motor de base de datos del servidor futuro.
-- Licencia de distribución.
+- Android version on the A53 and minimum supported version.
+- Actual transport and protocol detected.
+- Supported PIDs and sustained sampling rate with this adapter.
+- Local retention policy and limits measured with real data.
+- Authentication, hosting, and database engine for the future server.
+- Distribution license.
 
-## Próximo resultado verificable
+## Next verifiable outcome
 
-Una prueba corta documentada identifica Android, confirma comunicación con la ECU, registra capacidades y obtiene lecturas fiables.
-No hace falta un backend para esa prueba.
+A short documented test identifies the Android version, confirms ECU communication, records capabilities, and obtains reliable readings.
+This test does not require a backend.

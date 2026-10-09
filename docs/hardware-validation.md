@@ -1,45 +1,45 @@
-# Validación con el RX-8
+# RX-8 hardware validation
 
-## Objetivo
+## Goal
 
-Confirmar la comunicación y disponibilidad real antes de prometer sensores o frecuencia.
-Vehículo: RX-8 2004, 231 CV, Europa. Móvil: Galaxy A53. Adaptador: iLC B0BDRHRR22.
+Confirm actual communication and data availability before promising sensors or sampling rates.
+Vehicle: 2004 RX-8, 231 metric horsepower (CV), Europe. Phone: Galaxy A53. Adapter: iLC B0BDRHRR22.
 
-## Registro de prueba
+## Test record
 
-- Fecha, versión de app/herramienta y versión Android.
-- Identificador de sesión de prueba sin VIN completo.
-- Modelo/revisión visible del adaptador y respuesta de identificación, sin asumir autenticidad por su texto.
-- Tipo de Bluetooth y protocolo OBD detectado.
-- Condiciones de encendido/motor y duración.
-- PIDs soportados por la ECU, consultas efectuadas y latencia.
-- Resultado del VIN: válido, ausente, error o no soportado; nunca adjuntar el VIN completo.
-- Cortes, timeouts y comportamiento al reconectar.
+- Date, app/tool version, and Android version.
+- Test session identifier without the full VIN.
+- Visible adapter model/revision and identification response, without treating the reported text as proof of authenticity.
+- Bluetooth type and detected OBD protocol.
+- Ignition/engine conditions and test duration.
+- ECU-supported PIDs, queries made, and latency.
+- VIN result: valid, absent, error, or unsupported; never attach the full VIN.
+- Disconnections, timeouts, and reconnection behavior.
 
-## Secuencia de comprobación
+## Validation sequence
 
-1. Con el vehículo parado, comprobar emparejamiento y conexión del adaptador.
-2. Diferenciar respuesta del adaptador de respuesta de la ECU.
-3. Detectar el protocolo y consultar bloques de PIDs soportados.
-4. Probar RPM y refrigerante; verificar velocidad cero con el coche parado.
-5. Consultar VIN una vez y comprobar la reconstrucción de respuestas fragmentadas.
-6. Mantener una sesión de al menos 10 minutos; medir cadencia efectiva y errores.
-7. Bloquear pantalla, recuperar la app y comprobar continuidad de lo guardado.
-8. Desconectar/reconectar Bluetooth y comprobar recuperación sin duplicados.
-9. Repetir sin Internet.
-10. Para validar velocidad en movimiento, usar una grabación ya iniciada o un acompañante; revisar los resultados después.
+1. With the vehicle stationary, check adapter pairing and connection.
+2. Distinguish adapter responses from ECU responses.
+3. Detect the protocol and query supported PID blocks.
+4. Test RPM and coolant temperature; verify zero speed while stationary.
+5. Query the VIN once and check fragmented response reconstruction.
+6. Maintain a session for at least 10 minutes; measure effective sampling rate and errors.
+7. Lock the screen, return to the app, and verify recording continuity.
+8. Disconnect/reconnect Bluetooth and check recovery without duplicates.
+9. Repeat without an Internet connection.
+10. To validate speed while moving, use an already running recording or a passenger; review the results afterward.
 
-## Matriz de evidencia
+## Evidence matrix
 
-| Dato | Documentado | Soportado anunciado | Lectura validada | Unidad | Observaciones |
+| Data | Documented | Reported as supported | Reading validated | Unit | Notes |
 | --- | --- | --- | --- | --- | --- |
-| RPM | Sí, manual de primera serie | Pendiente | Pendiente | rpm | |
-| Refrigerante | Sí, manual de primera serie | Pendiente | Pendiente | °C | |
-| Velocidad | Sí, manual de primera serie | Pendiente | Pendiente | km/h | |
-| VIN | Petición estándar; soporte opcional | Pendiente | Pendiente | texto | Sin registrar valor real aquí |
-| Otros PIDs | Por investigar | Pendiente | Pendiente | Pendiente | |
+| RPM | Yes, first-series service manual | Pending | Pending | rpm | |
+| Coolant temperature | Yes, first-series service manual | Pending | Pending | °C | |
+| Speed | Yes, first-series service manual | Pending | Pending | km/h | |
+| VIN | Standard request; optional support | Pending | Pending | text | Do not record the actual value here |
+| Other PIDs | To investigate | Pending | Pending | Pending | |
 
-## Resultado aceptable
+## Acceptable outcome
 
-Registrar tanto éxitos como incompatibilidades. Una respuesta `NO DATA` no demuestra que el sensor valga cero.
-No sustituir una prueba física por capturas del simulador. Compartir solo registros anonimizados.
+Record both successes and incompatibilities. A `NO DATA` response does not mean the sensor value is zero.
+Do not replace physical testing with simulator screenshots. Share only anonymized logs.

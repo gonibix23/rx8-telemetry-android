@@ -1,62 +1,62 @@
 # RX-8 Telemetry Android
 
-Aplicación Android prevista para consultar datos del coche en directo y registrar recorridos sin conexión a Internet.
+Planned Android app for viewing live vehicle data and recording trips without an Internet connection.
 
-**Estado: planificación y preparación del repositorio. Todavía no hay aplicación compilable, APK ni API desplegada.**
+**Status: planning and repository preparation. There is no buildable app, APK, or deployed API yet.**
 
-## Vehículo y equipo de referencia
+## Reference vehicle and equipment
 
-- Mazda RX-8 de 2004, 231 CV, mercado europeo.
-- Samsung Galaxy A53; versión de Android pendiente de comprobar.
-- Adaptador iLC OBD2 Bluetooth, ASIN B0BDRHRR22. [Producto indicado](https://www.amazon.es/dp/B0BDRHRR22).
-- Bluetooth clásico y comandos compatibles con ELM327 son la hipótesis inicial; deben comprobarse con la unidad real.
+- 2004 Mazda RX-8, 231 metric horsepower (CV), European market.
+- Samsung Galaxy A53; Android version still to be checked.
+- iLC OBD2 Bluetooth adapter, ASIN B0BDRHRR22. [Selected product](https://www.amazon.es/dp/B0BDRHRR22).
+- Classic Bluetooth and ELM327-compatible commands are the initial assumptions; both must be checked with the actual adapter.
 
-El objetivo es mostrar **todos los datos disponibles y verificados** en este coche. OBD2 no garantiza acceso a todos los módulos o sensores.
+The goal is to display **all available and verified data** from this vehicle. OBD2 does not guarantee access to every module or sensor.
 
-## Primera versión
+## First version
 
-- Conectar el adaptador y descubrir protocolo y parámetros compatibles.
-- Panel de datos en directo con unidades y estado de cada lectura.
-- Perfil de coche con ID permanente y bastidor (VIN) opcional.
-- Inicio y fin manual de recorridos, guardado local, historial, gráficas y exportación.
-- Grabación con pantalla bloqueada, gestionada como sesión explícita.
-- Preparación de datos y cola para una API futura, con los envíos desactivados.
+- Connect the adapter and discover the supported protocol and parameters.
+- Live dashboard with units and the status of each reading.
+- Vehicle profile with a permanent ID and an optional vehicle identification number (VIN).
+- Manual trip start and stop, local storage, history, charts, and export.
+- Recording with the screen locked, managed as an explicit session.
+- Data models and a queue for a future API, with uploads disabled.
 
-Diagnóstico de averías, sensores específicos Mazda, GPS/mapas y servidor quedan para fases posteriores. La primera versión no incorpora control de actuadores, reprogramación ni borrado de averías.
+Fault diagnostics, Mazda-specific sensors, GPS/maps, and a server are deferred to later phases. The first version does not include actuator control, ECU reprogramming, or clearing fault codes.
 
-## Documentación
+## Documentation
 
-| Documento | Contenido |
+| Document | Contents |
 | --- | --- |
-| [Producto](docs/product.md) | Alcance, pantallas y criterios de aceptación |
-| [Arquitectura](docs/architecture.md) | Android, Bluetooth, OBD, almacenamiento y sincronización |
-| [Contrato de API](docs/api-contract.md) | Diseño de integración futura; no es un servicio existente |
-| [Plan de desarrollo](docs/roadmap.md) | Fases, prioridades y dependencias |
-| [Prueba con el coche](docs/hardware-validation.md) | Evidencia necesaria para confirmar compatibilidad |
-| [Contribución](CONTRIBUTING.md) | Issues, ramas, PRs, revisión y releases |
-| [Pautas para agentes](AGENTS.md) | Reglas de implementación y verificación |
-| [Privacidad y seguridad](SECURITY.md) | Tratamiento de VIN, registros y credenciales |
+| [Product](docs/product.md) | Scope, screens, and acceptance criteria |
+| [Architecture](docs/architecture.md) | Android, Bluetooth, OBD, storage, and synchronization |
+| [API contract](docs/api-contract.md) | Future integration design; not an existing service |
+| [Roadmap](docs/roadmap.md) | Phases, priorities, and dependencies |
+| [Hardware validation](docs/hardware-validation.md) | Evidence needed to confirm compatibility |
+| [Contributing](CONTRIBUTING.md) | Issues, branches, PRs, reviews, and releases |
+| [Agent guidelines](AGENTS.md) | Implementation and verification rules |
+| [Privacy and security](SECURITY.md) | Handling VINs, logs, and credentials |
 
-## Seguimiento
+## Tracking
 
 - [Issues](https://github.com/gonibix23/rx8-telemetry-android/issues)
-- [Hitos](https://github.com/gonibix23/rx8-telemetry-android/milestones)
-- [Nueva issue](https://github.com/gonibix23/rx8-telemetry-android/issues/new/choose)
+- [Milestones](https://github.com/gonibix23/rx8-telemetry-android/milestones)
+- [New issue](https://github.com/gonibix23/rx8-telemetry-android/issues/new/choose)
 - [Pull requests](https://github.com/gonibix23/rx8-telemetry-android/pulls)
 
-Cada issue tiene alcance y criterios de aceptación. Los cambios de implementación se realizan mediante PR vinculada a una issue.
+Each issue has a scope and acceptance criteria. Implementation changes go through a PR linked to an issue.
 
-## Comprobar este repositorio
+## Checking this repository
 
-Requisitos para comprobar documentación: Node.js 22 o posterior y npm.
+Documentation checks require Node.js 22 or later and npm.
 
 ```sh
 npm ci
 npm run lint:docs
 ```
 
-Estas comprobaciones revisan documentación. No compilan Android ni verifican el adaptador. La base Android, su instalación y sus pruebas se incorporarán en RX8-002.
+These checks review documentation. They do not build Android or validate the adapter. The Android foundation, setup instructions, and tests will be added in RX8-002.
 
-## Licencia
+## License
 
-Repositorio privado. No se ha seleccionado una licencia de distribución.
+Private repository. No distribution license has been selected.
