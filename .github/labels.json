@@ -1,0 +1,102 @@
+[
+  {
+    "name": "type:bug",
+    "color": "1D76DB",
+    "description": "A reproducible defect"
+  },
+  {
+    "name": "type:feature",
+    "color": "1D76DB",
+    "description": "User-facing functionality"
+  },
+  {
+    "name": "type:task",
+    "color": "1D76DB",
+    "description": "Implementation or documentation work"
+  },
+  {
+    "name": "type:research",
+    "color": "1D76DB",
+    "description": "Investigation with recorded evidence"
+  },
+  {
+    "name": "area:android",
+    "color": "5319E7",
+    "description": "Android platform and application setup"
+  },
+  {
+    "name": "area:bluetooth",
+    "color": "5319E7",
+    "description": "Adapter connection and permissions"
+  },
+  {
+    "name": "area:obd",
+    "color": "5319E7",
+    "description": "OBD protocol, capabilities, and decoding"
+  },
+  {
+    "name": "area:data",
+    "color": "5319E7",
+    "description": "Identity, persistence, and exports"
+  },
+  {
+    "name": "area:ui",
+    "color": "5319E7",
+    "description": "User interface and interaction"
+  },
+  {
+    "name": "area:sync",
+    "color": "5319E7",
+    "description": "Future API contract and synchronization"
+  },
+  {
+    "name": "area:docs",
+    "color": "5319E7",
+    "description": "Project documentation"
+  },
+  {
+    "name": "priority:P0",
+    "color": "B60205",
+    "description": "Critical failure, data loss, or severe blocker"
+  },
+  {
+    "name": "priority:P1",
+    "color": "B60205",
+    "description": "Required for the initial MVP"
+  },
+  {
+    "name": "priority:P2",
+    "color": "B60205",
+    "description": "Improvement or later phase"
+  },
+  {
+    "name": "status:triage",
+    "color": "FBCA04",
+    "description": "Awaiting scope or priority assessment"
+  },
+  {
+    "name": "status:ready",
+    "color": "FBCA04",
+    "description": "Ready to start"
+  },
+  {
+    "name": "status:in-progress",
+    "color": "FBCA04",
+    "description": "Implementation in progress"
+  },
+  {
+    "name": "status:blocked",
+    "color": "FBCA04",
+    "description": "Waiting for a prerequisite"
+  },
+  {
+    "name": "status:review",
+    "color": "FBCA04",
+    "description": "Ready for review"
+  },
+  {
+    "name": "needs:hardware",
+    "color": "0E8A16",
+    "description": "Requires evidence from the real vehicle and adapter"
+  }
+]

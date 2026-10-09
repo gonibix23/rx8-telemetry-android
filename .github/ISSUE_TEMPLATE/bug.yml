@@ -1,68 +1,42 @@
-{
-  "name": "Error",
-  "description": "Comunicar un fallo reproducible",
-  "title": "[Bug] ",
-  "labels": [
-    "type:bug",
-    "status:triage"
-  ],
-  "body": [
-    {
-      "type": "textarea",
-      "id": "problem",
-      "attributes": {
-        "label": "Qué ocurre y qué esperabas",
-        "description": "Incluye el resultado observado y el esperado."
-      },
-      "validations": {
-        "required": true
-      }
-    },
-    {
-      "type": "textarea",
-      "id": "steps",
-      "attributes": {
-        "label": "Pasos para reproducir",
-        "description": "Pasos concretos, frecuencia y momento del fallo."
-      },
-      "validations": {
-        "required": true
-      }
-    },
-    {
-      "type": "textarea",
-      "id": "environment",
-      "attributes": {
-        "label": "Entorno",
-        "description": "Versión app/Android, móvil, coche, adaptador, protocolo y modo real o simulador."
-      },
-      "validations": {
-        "required": true
-      }
-    },
-    {
-      "type": "textarea",
-      "id": "evidence",
-      "attributes": {
-        "label": "Evidencia",
-        "description": "Registros anonimizados o capturas."
-      },
-      "validations": {
-        "required": false
-      }
-    },
-    {
-      "type": "checkboxes",
-      "id": "privacy",
-      "attributes": {
-        "label": "Revisión de datos",
-        "options": [
-          {
-            "label": "He eliminado VIN, MAC, credenciales y datos personales de lo adjunto.",
-            "required": true
-          }
-        ]
-      }
-    }
-  ]
-}
+name: Bug report
+description: Report a reproducible problem
+title: '[Bug] '
+labels:
+  - type:bug
+  - status:triage
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Actual and expected behavior
+      description: Describe what happened and what you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Specific steps, frequency, and when the problem occurs.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: App/Android version, phone, vehicle, adapter, protocol, and real or simulated mode.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Redacted logs or screenshots.
+    validations:
+      required: false
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Data review
+      options:
+        - label: I have removed VINs, MAC addresses, credentials, and personal data from attachments.
+          required: true

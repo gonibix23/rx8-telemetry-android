@@ -1,55 +1,35 @@
-{
-  "name": "Funcionalidad",
-  "description": "Proponer una mejora con alcance concreto",
-  "title": "[Feature] ",
-  "labels": [
-    "type:feature",
-    "status:triage"
-  ],
-  "body": [
-    {
-      "type": "textarea",
-      "id": "problem",
-      "attributes": {
-        "label": "Necesidad",
-        "description": "Describe para quién y para qué."
-      },
-      "validations": {
-        "required": true
-      }
-    },
-    {
-      "type": "textarea",
-      "id": "scope",
-      "attributes": {
-        "label": "Alcance y exclusiones",
-        "description": "Qué debe incluir y qué queda fuera."
-      },
-      "validations": {
-        "required": true
-      }
-    },
-    {
-      "type": "textarea",
-      "id": "acceptance",
-      "attributes": {
-        "label": "Criterios de aceptación",
-        "description": "Lista de resultados verificables."
-      },
-      "validations": {
-        "required": true
-      }
-    },
-    {
-      "type": "textarea",
-      "id": "dependencies",
-      "attributes": {
-        "label": "Dependencias",
-        "description": "Issues o decisiones relacionadas."
-      },
-      "validations": {
-        "required": false
-      }
-    }
-  ]
-}
+name: Feature request
+description: Propose a focused improvement
+title: '[Feature] '
+labels:
+  - type:feature
+  - status:triage
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: User need
+      description: Who needs this, and why?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and exclusions
+      description: What should be included, and what is out of scope?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: A list of verifiable outcomes.
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Related issues or decisions.
+    validations:
+      required: false

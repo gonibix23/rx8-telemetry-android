@@ -1,53 +1,53 @@
-# Contrato propuesto de API v1
+# Proposed API v1 contract
 
-## Estado y límites
+## Status and boundaries
 
-Diseño para preparar la app. No existe API, URL real, autenticación configurada ni base de datos remota.
-RX8-008 implementará modelos, interfaz y pruebas aisladas; el backend se hará en otra fase.
-Todos los ejemplos son sintéticos. Diagnóstico de averías y eliminación remota quedan fuera de este contrato inicial.
+Design for preparing the app. No API, live URL, configured authentication, or remote database exists.
+RX8-008 will implement models, an interface, and isolated tests; the backend belongs to a later phase.
+All examples are synthetic. Fault diagnostics and remote deletion are outside this initial contract.
 
-## Convenciones
+## Conventions
 
-HTTPS/JSON; rutas /v1; schemaVersion igual a 1; fechas UTC ISO 8601 terminadas en Z.
-UUID generados por el cliente y conservados para vehículo, sesión, muestra y lote.
-Unidades canónicas explícitas, sin depender del idioma del móvil.
-VIN opcional; ni VIN ni UUID son una credencial. La autorización debe comprobar pertenencia de cada recurso.
+HTTPS/JSON; /v1 routes; schemaVersion equal to 1; UTC ISO 8601 timestamps ending in Z.
+Client-generated UUIDs are retained for vehicles, sessions, samples, and batches.
+Explicit canonical units do not depend on the phone's language.
+VIN is optional; neither a VIN nor a UUID is a credential. Authorization must verify ownership of each resource.
 
-## Recursos previstos
+## Planned resources
 
-| Método | Ruta | Propósito |
+| Method | Route | Purpose |
 | --- | --- | --- |
-| PUT | /v1/vehicles/{vehicleId} | Crear o actualizar metadatos del vehículo |
-| PUT | /v1/sessions/{sessionId} | Crear o actualizar recorrido |
-| POST | /v1/telemetry/batches | Guardar muestras por lotes |
+| PUT | /v1/vehicles/{vehicleId} | Create or update vehicle metadata |
+| PUT | /v1/sessions/{sessionId} | Create or update a trip |
+| POST | /v1/telemetry/batches | Store samples in batches |
 
-Confirmar primero vehículo, después sesión y por último muestras.
-No se realizan solicitudes mientras no haya servidor configurado.
+Confirm the vehicle first, then the session, and finally the samples.
+Do not make requests until a server is configured.
 
-## Vehículo y sesión
+## Vehicle and session
 
-Vehículo: vehicleId, revision, vin nullable, vinSource (obd/manual/null), alias, make, model, modelYear, market y powerCv.
-Los metadatos del RX-8 los confirma el usuario; no se presupone que los entregue OBD.
-Añadir VIN conserva vehicleId.
+Vehicle: vehicleId, revision, nullable vin, vinSource (obd/manual/null), alias, make, model, modelYear, market, and powerCv.
+The user confirms RX-8 metadata; do not assume OBD provides it.
+Adding a VIN preserves vehicleId.
 
-Sesión: sessionId, vehicleId, revision, startedAt, endedAt nullable, durationMs nullable, status, appVersion, obdProtocol nullable y dataOrigin (real/simulated).
-Estados: recording, completed, interrupted.
-La duración usa reloj monotónico; los cambios del reloj de calendario no deben producir duraciones negativas.
+Session: sessionId, vehicleId, revision, startedAt, nullable endedAt, nullable durationMs, status, appVersion, nullable obdProtocol, and dataOrigin (real/simulated).
+States: recording, completed, interrupted.
+Duration uses a monotonic clock; wall-clock changes must not produce negative durations.
 
-revision es un entero positivo que aumenta con cada cambio:
+revision is a positive integer that increases with every change:
 
-- Superior a la almacenada: aplicar.
-- Igual y mismo contenido: confirmar sin duplicar.
-- Igual con otro contenido: conflicto.
-- Inferior: rechazar como desactualizada.
+- Higher than the stored revision: apply it.
+- Equal with the same content: acknowledge without duplication.
+- Equal with different content: conflict.
+- Lower: reject as outdated.
 
-Esto presupone un solo escritor por vehículo; concurrencia entre dispositivos es una ampliación posterior.
-El cierre aumenta revision para evitar que un reintento antiguo reabra un recorrido.
+This assumes a single writer per vehicle; concurrent editing across devices is a later extension.
+Closing a session increases revision so an old retry cannot reopen a trip.
 
-## Lote de telemetría
+## Telemetry batch
 
-Un lote pertenece a un único vehículo y sesión. Su cuerpo queda inmutable al intentar enviarlo.
-La cabecera Idempotency-Key debe coincidir con batchId.
+A batch belongs to a single vehicle and session. Its body becomes immutable when an upload is attempted.
+The Idempotency-Key header must match batchId.
 
 ```json
 {
@@ -74,31 +74,31 @@ La cabecera Idempotency-Key debe coincidir con batchId.
 }
 ```
 
-sampleId es único; sequence crece dentro de la sesión y se conserva tras reintentos.
-Cada muestra tiene su propio instante. service, pid y ecuAddress son opcionales.
-status admite ok, timeout, unsupported y parse_error. Si no es ok, value es null.
-Una lectura caducada es un estado de presentación, no una nueva muestra del último valor.
+sampleId is unique; sequence increases within the session and is preserved across retries.
+Each sample has its own timestamp. service, pid, and ecuAddress are optional.
+status accepts ok, timeout, unsupported, and parse_error. If it is not ok, value is null.
+A stale reading is a display state, not a new sample containing the last value.
 
-source admite obd_standard, obd_vendor, adapter y derived.
-Una magnitud calculada documenta fórmula y versión antes de incorporarse.
-La tensión medida por el adaptador usa una métrica distinta de la informada por la ECU.
+source accepts obd_standard, obd_vendor, adapter, and derived.
+A calculated metric must document its formula and version before being added.
+Voltage measured by the adapter uses a different metric from voltage reported by the ECU.
 
-| Magnitud | Unidad |
+| Quantity | Unit |
 | --- | --- |
-| Régimen | rpm |
-| Velocidad | km/h |
-| Temperatura | Cel |
-| Porcentaje | % |
-| Presión | kPa |
-| Caudal de aire | g/s |
-| Tensión | V |
+| Engine speed | rpm |
+| Vehicle speed | km/h |
+| Temperature | Cel |
+| Percentage | % |
+| Pressure | kPa |
+| Air mass flow | g/s |
+| Voltage | V |
 
-El tamaño máximo de lote se fijará y probará con el backend. Debe ser configurable y permitir división.
-No se envían datos simulados como sesiones reales.
+The maximum batch size will be defined and tested with the backend. It must be configurable and support splitting.
+Do not upload simulated data as real sessions.
 
-## Confirmación y duplicados
+## Acknowledgments and duplicates
 
-Respuesta propuesta HTTP 200:
+Proposed HTTP 200 response:
 
 ```json
 {
@@ -113,44 +113,44 @@ Respuesta propuesta HTTP 200:
 }
 ```
 
-Estados por muestra: stored, already_stored o rejected. Un rechazo añade code y message.
-Solo stored y already_stored confirman persistencia duradera. HTTP 200 sin esos resultados no confirma el lote.
+Per-sample states: stored, already_stored, or rejected. A rejection adds code and message.
+Only stored and already_stored acknowledge durable persistence. HTTP 200 without those results does not acknowledge the batch.
 
-El servidor deduplica por sampleId dentro del ámbito autorizado, incluso entre lotes distintos.
-Reutilizar sampleId con otro contenido o Idempotency-Key con otro cuerpo produce conflicto.
-Nunca sobrescribir una muestra existente por un reintento.
+The server deduplicates by sampleId within the authorized scope, including across different batches.
+Reusing a sampleId with different content or an Idempotency-Key with a different body causes a conflict.
+Never overwrite an existing sample because of a retry.
 
-Si se pierde la respuesta, reenviar el mismo lote inmutable.
-Si hay ACK parcial, guardar confirmaciones atómicamente y crear un nuevo lote con lo pendiente que admita reintento.
-Los sampleId desconocidos o repetidos de una respuesta no se aceptan ciegamente.
-Una muestra omitida sigue pendiente; un rechazo permanente queda bloqueado para revisión.
+If the response is lost, resend the same immutable batch.
+For a partial ACK, store acknowledgments atomically and create a new batch containing pending samples eligible for retry.
+Do not blindly accept unknown or repeated sampleId values in a response.
+An omitted sample remains pending; a permanent rejection is blocked for review.
 
-## Cola local
+## Local queue
 
-Estados: pending, sending, acknowledged, blocked.
-Guardar muestra y trabajo pendiente en una misma transacción.
-Registrar intentos, último error, siguiente intento y una reclamación temporal para evitar workers duplicados.
-Una reclamación caducada tras terminar el proceso permite recuperar trabajos atascados en sending.
+States: pending, sending, acknowledged, blocked.
+Save a sample and its pending work in the same transaction.
+Record attempts, the latest error, the next attempt, and a temporary lease to prevent duplicate workers.
+An expired lease after process termination allows work stuck in sending to be recovered.
 
-Mientras no exista servidor la sincronización se muestra desactivada y no genera intentos de conexión.
-Las pruebas usan almacenamiento aislado; sus ACK no modifican registros reales.
+Until a server exists, synchronization is shown as disabled and does not generate connection attempts.
+Tests use isolated storage; their ACKs do not modify real records.
 
-## Errores y retención
+## Errors and retention
 
-| Caso | Acción |
+| Case | Action |
 | --- | --- |
-| Sin conexión, timeout, 5xx | Espera creciente con variación aleatoria y reintento |
-| 429 | Respetar Retry-After cuando exista |
-| 401/403 | Pausar hasta resolver autenticación o acceso |
-| 409 | Conservar datos y resolver conflicto |
-| 413 | Crear lotes más pequeños con nuevos batchId |
-| Validación permanente | Bloquear muestra afectada, conservar localmente |
+| Offline, timeout, 5xx | Increasing delay with random jitter and retry |
+| 429 | Respect Retry-After when present |
+| 401/403 | Pause until authentication or access is resolved |
+| 409 | Preserve data and resolve the conflict |
+| 413 | Create smaller batches with new batchId values |
+| Permanent validation error | Block the affected sample and retain it locally |
 
-Sincronizar no elimina el historial local.
-Exportar incluye registros pendientes y bloqueados.
-Eliminar localmente retira trabajos que los referencian y no implica borrar en un servidor futuro.
+Synchronization does not delete local history.
+Exports include pending and blocked records.
+Local deletion removes work referencing those records and does not imply deletion from a future server.
 
-## Verificación prevista
+## Planned verification
 
-Reenvío idéntico; respuesta perdida; ACK parcial; misma muestra en otro lote; conflictos; recuperación de sending; VIN añadido después; revisión antigua; sesión interrumpida; errores de autorización; exportación sin servidor.
-Estas pruebas están pendientes de implementación en RX8-008.
+Identical resend; lost response; partial ACK; the same sample in another batch; conflicts; recovery from sending; VIN added later; old revision; interrupted session; authorization errors; export without a server.
+These tests are pending implementation in RX8-008.

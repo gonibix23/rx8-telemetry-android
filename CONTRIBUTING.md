@@ -1,77 +1,81 @@
-# Cómo contribuir
+# Contributing
 
-## Antes de empezar
+## Language
 
-Lee [el alcance](docs/product.md) y [la arquitectura](docs/architecture.md).
-La prioridad inicial es datos en directo y recorridos del RX-8 europeo de 2004, 231 CV, en un Samsung A53.
+Write documentation, UI text, source comments, issues, PRs, and commit messages in English.
+
+## Before you start
+
+Read the [scope](docs/product.md) and [architecture](docs/architecture.md).
+The initial priority is live data and trips for a European 2004 RX-8 with 231 metric horsepower (CV), using a Samsung A53.
 
 ## Issues
 
-Usa el formulario de error, funcionalidad, tarea o prueba con hardware.
-Una issue debe describir un resultado concreto e incluir:
+Use the bug, feature, task, or hardware validation form.
+An issue should describe a concrete outcome and include:
 
-- Problema o necesidad y resultado esperado.
-- Alcance y exclusiones.
-- Criterios de aceptación verificables.
-- Dependencias mediante enlaces a otras issues.
-- Evidencia y forma de comprobar el resultado.
+- The problem or need and the expected result.
+- Scope and exclusions.
+- Verifiable acceptance criteria.
+- Dependencies linked to other issues.
+- Evidence and a way to verify the result.
 
-Para fallos del coche registra versión de app/Android, adaptador, protocolo, PIDs y pasos de reproducción, con los identificadores personales ocultos.
-Un dato pendiente de comprobar nunca se documenta como compatible.
+For failures involving the vehicle, record the app/Android version, adapter, protocol, PIDs, and reproduction steps, with personal identifiers removed.
+Never document an unverified capability as supported.
 
-## Etiquetas y prioridad
+## Labels and priorities
 
-- Tipo: `type:bug`, `type:feature`, `type:task`, `type:research`.
-- Área: `area:android`, `area:bluetooth`, `area:obd`, `area:data`, `area:ui`, `area:sync`, `area:docs`.
-- Prioridad: `priority:P0` (pérdida de datos o bloqueo grave), `priority:P1` (necesario para MVP), `priority:P2` (mejora o fase posterior).
-- Estado: una sola entre `status:triage`, `status:ready`, `status:in-progress`, `status:blocked`, `status:review`.
-- Evidencia: `needs:hardware` cuando falta validación con coche/adaptador real.
+- Type: `type:bug`, `type:feature`, `type:task`, `type:research`.
+- Area: `area:android`, `area:bluetooth`, `area:obd`, `area:data`, `area:ui`, `area:sync`, `area:docs`.
+- Priority: `priority:P0` (data loss or a major blocker), `priority:P1` (required for the MVP), `priority:P2` (improvement or later phase).
+- Status: exactly one of `status:triage`, `status:ready`, `status:in-progress`, `status:blocked`, `status:review`.
+- Evidence: `needs:hardware` when validation with the actual vehicle/adapter is still required.
 
-Las issues completadas se cierran. No se sustituyen las dependencias por etiquetas: enlaza qué issue bloquea y por qué.
-Las etiquetas de estado se actualizan manualmente; no hay un bot configurado.
+Close completed issues. Labels do not replace dependencies: link the blocking issue and explain why it blocks progress.
+Status labels are updated manually; no bot is configured.
 
-## Ramas y commits
+## Branches and commits
 
-`main` contiene trabajo integrado. Después de la preparación inicial, trabaja en ramas cortas:
+`main` contains integrated work. After the initial setup, use short-lived branches:
 
 - `feat/12-live-dashboard`
 - `fix/18-reconnect-timeout`
 - `docs/21-api-contract`
 - `chore/2-android-bootstrap`
 
-Usa commits descriptivos: `feat(obd): decode coolant temperature`, `fix(data): preserve interrupted trips`.
-Preferimos mensajes de tipo Conventional Commits, sin exigirlos mediante una automatización.
-No subas claves, ficheros de firma, bases de datos reales ni exportaciones del coche.
+Use descriptive commits: `feat(obd): decode coolant temperature`, `fix(data): preserve interrupted trips`.
+Conventional Commits are preferred, but not enforced by automation.
+Do not commit keys, signing files, real databases, or vehicle exports.
 
 ## Pull requests
 
-Abre una PR pequeña por objetivo. Puede ser borrador mientras falten pruebas.
-Completa la plantilla: problema, comportamiento resultante, issue relacionada, validación, limitaciones y capturas cuando cambie la interfaz.
+Open a small PR for each objective. Keep it in draft while verification is incomplete.
+Complete the template: problem, resulting behavior, related issue, validation, limitations, and screenshots when the interface changes.
 
-Usa `Closes #N` solo si se cumplen todos los criterios; para avances parciales usa `Refs #N`.
-No cierres una issue de compatibilidad con una prueba de simulador.
+Use `Closes #N` only when all acceptance criteria are met; use `Refs #N` for partial progress.
+Do not close a compatibility issue based on a simulator test.
 
-Antes de integrar:
+Before merging:
 
-1. Revisa el diff completo y comprueba que no incluye datos personales ni cambios ajenos.
-2. Ejecuta las comprobaciones que correspondan al cambio.
-3. Explica cualquier prueba pendiente o limitación de hardware.
-4. Solicita revisión si hay otra persona colaborando. En trabajo individual deja constancia de la revisión propia; no se exige una aprobación que el autor no puede darse.
-5. Integra con squash y elimina la rama cuando ya no sea necesaria.
+1. Review the entire diff and check for personal data or unrelated changes.
+2. Run the checks relevant to the change.
+3. Explain any pending tests or hardware limitations.
+4. Request a review if someone else is collaborating. When working alone, record your own review; an approval that the author cannot provide is not required.
+5. Squash merge and delete the branch when it is no longer needed.
 
-Las reglas documentadas no implican que GitHub las haga cumplir. El estado real de protección se registra en [el plan](docs/roadmap.md).
+Documented rules do not imply that GitHub enforces them. The actual protection status is recorded in the [roadmap](docs/roadmap.md).
 
-## Comprobaciones y definición de terminado
+## Checks and definition of done
 
-En esta fase ejecuta `npm ci` y `npm run lint:docs`.
-Al crear el proyecto Android, añade compilación, lint Android y pruebas del parser, persistencia y sincronización al flujo de CI.
-Prueba migraciones de base de datos y respuestas OBD fragmentadas. No añadas pruebas que se limiten a repetir la implementación.
+At this stage, run `npm ci` and `npm run lint:docs`.
+When the Android project is created, add builds, Android lint, and parser, persistence, and synchronization tests to CI.
+Test database migrations and fragmented OBD responses. Do not add tests that merely repeat the implementation.
 
-Una tarea está terminada cuando cumple sus criterios, conserva el historial existente, documenta su comportamiento, tiene verificación suficiente y sus cambios están integrados.
-Los cambios que dependen del coche deben registrar explícitamente si solo se han probado con simulador.
+A task is done when it meets its criteria, preserves existing history, documents its behavior, has sufficient verification, and its changes are merged.
+Changes that depend on the vehicle must explicitly state if they were tested only with a simulator.
 
-## Decisiones y releases
+## Decisions and releases
 
-Registra decisiones importantes con contexto, alternativas y consecuencias en `docs/decisions/` cuando aparezcan.
-Usa versiones `0.x.y` durante el desarrollo y notas de versión con cambios, compatibilidad comprobada y limitaciones.
-No crees una release de APK hasta contar con una compilación real y pruebas de instalación.
+Record important decisions, including context, alternatives, and consequences, in `docs/decisions/` as they arise.
+Use `0.x.y` versions during development and release notes covering changes, verified compatibility, and limitations.
+Do not publish an APK release until there is a real build and installation testing.

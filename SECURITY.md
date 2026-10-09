@@ -1,27 +1,27 @@
-# Privacidad y seguridad
+# Privacy and security
 
-## Datos del coche
+## Vehicle data
 
-El VIN, recorridos y registros completos pueden identificar un vehículo o sus hábitos de uso.
-Usa datos sintéticos en ejemplos, simuladores, issues y pruebas. Oculta VIN, MAC Bluetooth y ubicaciones en registros compartidos.
-No se solicita GPS en el MVP.
+VINs, trips, and complete logs can identify a vehicle or its usage patterns.
+Use synthetic data in examples, simulators, issues, and tests. Remove VINs, Bluetooth MAC addresses, and locations from shared logs.
+The MVP does not request GPS access.
 
-Las bases de datos se guardarán en almacenamiento privado de la app. La política de copia de seguridad, exportación y retención debe implementarse explícitamente antes de distribuirla.
-Permite exportar y eliminar recorridos; muestra el espacio usado y evita borrar registros pendientes de envío sin indicarlo al usuario.
+Databases will be stored in the app's private storage. Backup, export, and retention policies must be explicitly implemented before distribution.
+Allow trips to be exported and deleted; show storage usage and do not delete records pending upload without informing the user.
 
-## Integración futura
+## Future integration
 
-La API estará desactivada hasta disponer de servidor, autenticación y consentimiento para enviar datos.
-Usa HTTPS y credenciales fuera del repositorio. No envíes datos reales a un servidor de prueba por defecto.
-Un UUID o un VIN no son credenciales ni autorizan acceso al vehículo en el servidor.
+The API will remain disabled until a server, authentication, and consent to upload data are in place.
+Use HTTPS and keep credentials outside the repository. Do not send real data to a test server by default.
+A UUID or VIN is not a credential and does not authorize access to the vehicle on the server.
 
-## Comunicar un problema
+## Reporting a problem
 
-No publiques secretos o datos del coche en una issue. Contacta de forma privada con el propietario por un canal ya acordado.
-Cuando GitHub permita informes privados de seguridad, se podrán usar desde la pestaña Security.
-No se ha configurado una dirección de correo para avisos.
+Do not post secrets or vehicle data in an issue. Contact the owner privately through an already agreed channel.
+When GitHub supports private security reports for this repository, they can be submitted from the Security tab.
+No reporting email address has been configured.
 
-## Dependencias y distribución
+## Dependencies and distribution
 
-Revisa dependencias y permisos. Los ficheros de firma, keystores, tokens y archivos locales de SDK no se versionan.
-La versión inicial recopila información mediante consultas de lectura. No modifica la centralita.
+Review dependencies and permissions. Signing files, keystores, tokens, and local SDK configuration files must not be committed.
+The initial version collects information through read requests. It does not modify the ECU.

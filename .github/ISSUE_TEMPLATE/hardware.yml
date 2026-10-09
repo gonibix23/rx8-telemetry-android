@@ -1,70 +1,44 @@
-{
-  "name": "Prueba de compatibilidad",
-  "description": "Registrar evidencia del coche o adaptador",
-  "title": "[Hardware] ",
-  "labels": [
-    "type:research",
-    "area:obd",
-    "needs:hardware",
-    "status:triage"
-  ],
-  "body": [
-    {
-      "type": "textarea",
-      "id": "environment",
-      "attributes": {
-        "label": "Vehículo y equipo",
-        "description": "Año/versión/mercado, Android, móvil, adaptador y app. Sin VIN ni MAC completos."
-      },
-      "validations": {
-        "required": true
-      }
-    },
-    {
-      "type": "textarea",
-      "id": "procedure",
-      "attributes": {
-        "label": "Procedimiento",
-        "description": "Condiciones, pasos, protocolo y consultas."
-      },
-      "validations": {
-        "required": true
-      }
-    },
-    {
-      "type": "textarea",
-      "id": "results",
-      "attributes": {
-        "label": "Resultados",
-        "description": "PIDs, valores/unidades, latencia, errores y reconexión."
-      },
-      "validations": {
-        "required": true
-      }
-    },
-    {
-      "type": "textarea",
-      "id": "acceptance",
-      "attributes": {
-        "label": "Conclusión y siguiente paso",
-        "description": "Qué queda probado, qué falla y qué requiere más evidencia."
-      },
-      "validations": {
-        "required": true
-      }
-    },
-    {
-      "type": "checkboxes",
-      "id": "privacy",
-      "attributes": {
-        "label": "Revisión de datos",
-        "options": [
-          {
-            "label": "He eliminado VIN, MAC, credenciales y datos personales de lo adjunto.",
-            "required": true
-          }
-        ]
-      }
-    }
-  ]
-}
+name: Hardware compatibility
+description: Record evidence from a vehicle or adapter
+title: '[Hardware] '
+labels:
+  - type:research
+  - area:obd
+  - needs:hardware
+  - status:triage
+body:
+  - type: textarea
+    id: environment
+    attributes:
+      label: Vehicle and equipment
+      description: Year, variant, market, Android, phone, adapter, and app. No full VINs or MAC addresses.
+    validations:
+      required: true
+  - type: textarea
+    id: procedure
+    attributes:
+      label: Procedure
+      description: Conditions, steps, protocol, and requests.
+    validations:
+      required: true
+  - type: textarea
+    id: results
+    attributes:
+      label: Results
+      description: PIDs, values and units, latency, errors, and reconnection.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Conclusion and next step
+      description: What is proven, what failed, and what needs more evidence?
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Data review
+      options:
+        - label: I have removed VINs, MAC addresses, credentials, and personal data from attachments.
+          required: true
