@@ -3,10 +3,10 @@
 ## Goal and current evidence
 
 Confirm actual communication and data availability before promising sensors or sampling rates.
-Vehicle: 2004 RX-8, 231 metric horsepower (CV), Europe. Reference phone: Galaxy A53. Adapter: iLC B0BDRHRR22.
+Vehicle: 2004 RX-8, 231 metric horsepower (CV), Europe. Reference phone: Galaxy A53 running Android 16. Adapter: iLC B0BDRHRR22.
 
 On October 10, 2026, the user reported that the simulator app worked after testing.
-The phone's Android version has not yet been supplied for RX8-002.
+The user confirmed Android 16 on the A53, completing the remaining device information for RX8-002. Bluetooth pairing has not been tried yet; RX8-001 and RX8-003 hardware validation remain pending.
 No detailed lifecycle test, adapter connection, ECU response, PID, or VIN result has been reported.
 A simulator test and a Bluetooth socket connection are separate from ECU validation.
 
@@ -26,9 +26,10 @@ An adapter identification string is not proof of authenticity. Share anonymized 
 
 ## Bluetooth transport checklist (RX8-003)
 
-Use the actual adapter with the vehicle stationary. This checklist is pending until results are recorded.
+Use the actual adapter with the vehicle stationary. The Android version is confirmed; pairing and all adapter checks below remain pending.
 
-- [ ] Record the A53 Android version and tested app version.
+- [x] Samsung Galaxy A53 runs Android 16, confirmed by the user.
+- [ ] Record the app version used for the Bluetooth transport test.
 - [ ] Pair the adapter in Android settings, then return to the app.
 - [ ] On API 31+, check denied and granted Nearby devices permission; confirm the screen remains usable.
 - [ ] Confirm the adapter appears among paired Classic/dual devices; record a missing or differently typed device as a limitation.

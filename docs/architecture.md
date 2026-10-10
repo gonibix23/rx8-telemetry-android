@@ -7,14 +7,14 @@ The Bluetooth screen lists already-paired Classic or dual-mode devices, handles 
 It sends no application bytes or ELM/OBD requests and keeps **Bluetooth connection** separate from **ECU communication: not checked**.
 
 Both screens are foreground-only: simulation pauses when its tab is hidden, and leaving the Adapter tab or app closes the connection and requires manual reconnection.
-The user reported the simulator app worked after testing on October 10, 2026. The reference phone is a Samsung A53; its Android version has not been supplied.
+The user reported the simulator app worked after testing on October 10, 2026 and confirmed the Samsung A53 runs Android 16. Bluetooth pairing has not been tried yet.
 No detailed lifecycle or adapter test results can be inferred from that report.
 
 The diagram and later storage, identity, recording, and synchronization sections describe the **target MVP architecture**.
 Actual OBD queries, vehicle identity, saved trips, Room/DataStore storage, and API integration remain planned.
 See [Development](development.md) for setup and current behavior.
 
-Target: European-market 2004 RX-8 with 231 PS, Samsung A53, and iLC B0BDRHRR22 adapter.
+Target: European-market 2004 RX-8 with 231 PS, Samsung A53 running Android 16, and iLC B0BDRHRR22 adapter.
 Secure Classic/SPP is an initial implementation assumption; RX8-001 must establish physical compatibility.
 
 ## Components

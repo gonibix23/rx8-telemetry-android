@@ -13,14 +13,14 @@ It sends no application bytes or ELM/OBD commands and distinguishes Bluetooth co
 Connections close when leaving the Adapter tab or putting the app in the background; reconnect manually when ready.
 
 On October 10, 2026, the user reported that the app worked after testing the simulator foundation.
-The reference phone is a Samsung A53; its Android version has not yet been supplied.
+The user confirmed that the Samsung A53 runs Android 16 and that Bluetooth pairing has not been tried yet.
 That report does not validate the new Bluetooth transport or compatibility with the adapter and car.
 There are no published APK releases or deployed APIs.
 
 ## Reference vehicle and equipment
 
 - 2004 Mazda RX-8, 231 metric horsepower (CV), European market.
-- Samsung Galaxy A53; Android version still to be checked.
+- Samsung Galaxy A53 running Android 16, confirmed by the user.
 - iLC OBD2 Bluetooth adapter, ASIN B0BDRHRR22. [Selected product](https://www.amazon.es/dp/B0BDRHRR22).
 - Classic Bluetooth and ELM327-compatible commands are the initial assumptions; both must be checked with the actual adapter.
 
@@ -70,7 +70,7 @@ Build and test results belong in the relevant PR; setup instructions alone are n
 - [Pull requests](https://github.com/gonibix23/rx8-telemetry-android/pulls)
 
 Each issue has a scope and acceptance criteria. Implementation changes go through a PR linked to an issue.
-[RX8-002](https://github.com/gonibix23/rx8-telemetry-android/issues/2) records the successful user-reported app test; the phone's Android version is still required.
+[RX8-002](https://github.com/gonibix23/rx8-telemetry-android/issues/2) records the completed foundation and successful user-reported simulator test on the Samsung A53 running Android 16.
 [RX8-003](https://github.com/gonibix23/rx8-telemetry-android/issues/3) adds provisional Bluetooth transport and still requires real-adapter validation.
 [RX8-001](https://github.com/gonibix23/rx8-telemetry-android/issues/1) tracks separate validation with the real car and adapter.
 

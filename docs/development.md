@@ -85,7 +85,7 @@ If more than one device is connected, select the intended device with the `adb -
 The application package is `com.gonibix.rx8`.
 
 On October 10, 2026, the user reported that the app worked after testing the simulator foundation.
-The reference phone is a Samsung A53, but its Android version has not yet been supplied; record it in RX8-002.
+The user confirmed that the Samsung A53 runs Android 16, completing the remaining device information for RX8-002. Bluetooth pairing has not been tried yet.
 No detailed lifecycle test results were supplied. The report does not validate the new Bluetooth transport or any ECU communication.
 
 ## Connecting a paired Bluetooth adapter
@@ -135,7 +135,8 @@ These checks validate documentation formatting separately from Android checks.
 
 ## Validation still required
 
-- [RX8-002](https://github.com/gonibix23/rx8-telemetry-android/issues/2): record the phone's Android version alongside the user-reported successful app test.
+The RX8-002 foundation is complete with the user-reported successful simulator test and confirmed Android 16 version. Bluetooth pairing and adapter testing have not been tried.
+
 - [RX8-001](https://github.com/gonibix23/rx8-telemetry-android/issues/1): test the real adapter and RX-8, including ECU communication, supported PIDs, VIN availability, stability, and reconnection.
 - [RX8-003](https://github.com/gonibix23/rx8-telemetry-android/issues/3): validate permissions, pairing selection, connection, cancellation, disconnection, and manual reconnection with the actual adapter.
 - Later issues: implement and validate OBD acquisition, vehicle identity, persistence, trip recording, and API preparation.

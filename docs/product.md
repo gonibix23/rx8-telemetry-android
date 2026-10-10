@@ -2,9 +2,10 @@
 
 ## Confirmed context
 
-The user has a European-market 2004 Mazda RX-8 with 231 PS and a Samsung Galaxy A53; the Android version remains to be identified.
+The user has a European-market 2004 Mazda RX-8 with 231 PS and a Samsung Galaxy A53 running Android 16.
 User's adapter: iLC OBD2 Bluetooth, ASIN B0BDRHRR22.
 Selected priority: live data and trip recording. Prepare for a future API without developing it yet.
+The user reported a successful simulator app test on October 10, 2026. Bluetooth pairing has not been tried; adapter and ECU compatibility remain unverified.
 
 ## Expected MVP outcome
 
