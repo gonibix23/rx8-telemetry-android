@@ -109,6 +109,8 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: pixel_6
+          disk-size: 2048M
+          emulator-boot-timeout: 300
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: mkdir -p screenshots; ./gradlew --no-daemon :app:connectedDebugAndroidTest; test_result=$?; adb pull /data/local/tmp/rx8-dashboard.png screenshots/dashboard.png; capture_result=$?; if [ "$test_result" -ne 0 ]; then exit "$test_result"; fi; exit "$capture_result"
