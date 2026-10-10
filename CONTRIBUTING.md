@@ -67,12 +67,26 @@ Documented rules do not imply that GitHub enforces them. The actual protection s
 
 ## Checks and definition of done
 
-At this stage, run `npm ci` and `npm run lint:docs`.
-When the Android project is created, add builds, Android lint, and parser, persistence, and synchronization tests to CI.
-Test database migrations and fragmented OBD responses. Do not add tests that merely repeat the implementation.
+For documentation changes, run `npm ci` and `npm run lint:docs`.
+
+For Android or telemetry changes, use the Gradle wrapper from the repository root:
+
+```powershell
+.\gradlew.bat :core:telemetry:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+```
+
+On macOS or Linux, use `./gradlew` with the same tasks.
+See [Development](docs/development.md) for the JDK, SDK, installation, and simulator setup.
+Report the commands actually run and their results; compilation is not evidence of installation on the A53.
+
+The current simulator checks deterministic data, timeout, and missing-data behavior.
+Add parser, persistence, migration, and synchronization coverage when those features are implemented, including fragmented OBD responses.
+Do not add tests that merely repeat the implementation.
 
 A task is done when it meets its criteria, preserves existing history, documents its behavior, has sufficient verification, and its changes are merged.
 Changes that depend on the vehicle must explicitly state if they were tested only with a simulator.
+RX8-002 remains open while installation and the human device check on the Samsung A53 are pending; a software-only foundation PR uses `Refs #2`.
+Actual adapter and ECU compatibility is tracked separately in RX8-001.
 
 ## Decisions and releases
 

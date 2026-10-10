@@ -2,7 +2,15 @@
 
 ## Status
 
-Initial design; neither the app nor the server has been implemented.
+The initial Android foundation contains a Compose `:app` module and a pure Kotlin `:core:telemetry` module.
+Its deterministic simulator supports normal operation, timeouts, and missing data, with connect, disconnect, and reset controls.
+Sampling pauses while the app is in the background; no foreground recording service is implemented yet.
+
+The remaining sections describe the **target MVP architecture**.
+Bluetooth transport, actual OBD queries, persistent vehicle identity, saved trips, Room/DataStore storage, and API synchronization remain planned.
+The simulator is not evidence of real-car compatibility, and installation on the Samsung A53 remains pending under RX8-002.
+See [Development](development.md) for setup, commands, and the current validation boundary.
+
 Target: European-market 2004 RX-8 with 231 PS, Samsung A53, and iLC B0BDRHRR22 adapter.
 Exact compatibility will be confirmed in RX8-001.
 

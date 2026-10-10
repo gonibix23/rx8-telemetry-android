@@ -2,7 +2,7 @@
   "name": "rx8-telemetry-android-repository",
   "version": "0.0.0",
   "private": true,
-  "description": "Documentation checks; the Android application has not been implemented yet.",
+  "description": "Documentation checks for the RX-8 Telemetry Android project.",
   "scripts": {
     "lint:docs": "markdownlint-cli2"
   },
