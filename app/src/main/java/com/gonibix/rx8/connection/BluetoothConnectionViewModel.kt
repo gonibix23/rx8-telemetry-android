@@ -12,9 +12,11 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -27,9 +29,13 @@ data class BluetoothConnectionUiState(
     val phase: BluetoothConnectionPhase = BluetoothConnectionPhase.DISCONNECTED,
     val message: String? = null,
     val isForeground: Boolean = false,
+    val discoveryAvailability: BluetoothAvailability = availability,
+    val isScanning: Boolean = false,
+    val hasScanned: Boolean = false,
+    val discoveryMessage: String? = null,
 )
 
-/** Owns one manually initiated adapter link. It never sends an OBD request. */
+/** Owns one manually initiated adapter link and bounded discovery. It sends no OBD requests. */
 class BluetoothConnectionViewModel(
     private val gateway: BluetoothGateway,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
@@ -41,6 +47,10 @@ class BluetoothConnectionViewModel(
     private var connection: AdapterConnection? = null
     private var sessionAddress: String? = null
     private var generation = 0L
+    private var scanJob: Job? = null
+    private var scanGeneration = 0L
+    private var paired = emptyList<AdapterDevice>()
+    private val discovered = linkedMapOf<String, AdapterDevice>()
 
     init {
         refresh()
@@ -57,10 +67,21 @@ class BluetoothConnectionViewModel(
             )
             return
         }
+        val discoveryAvailability = try {
+            gateway.discoveryAvailability()
+        } catch (_: SecurityException) {
+            BluetoothAvailability.PERMISSION_REQUIRED
+        } catch (_: Exception) {
+            BluetoothAvailability.UNSUPPORTED
+        }
         if (availability != BluetoothAvailability.READY) {
             endSession()
+            cancelScan()
+            paired = emptyList()
+            discovered.clear()
             mutableState.value = mutableState.value.copy(
                 availability = availability,
+                discoveryAvailability = discoveryAvailability,
                 devices = emptyList(),
                 selectedDevice = null,
                 phase = BluetoothConnectionPhase.DISCONNECTED,
@@ -68,35 +89,27 @@ class BluetoothConnectionViewModel(
             )
             return
         }
-        val devices = try {
+        if (discoveryAvailability != BluetoothAvailability.READY) cancelScan()
+        paired = try {
             gateway.pairedDevices()
-                .distinctBy { it.address.uppercase(Locale.ROOT) }
-                .sortedWith(compareBy({ it.name.lowercase(Locale.ROOT) }, { it.address }))
+                .distinctBy { it.key() }
+                .map { it.copy(isPaired = true) }
         } catch (_: SecurityException) {
             permissionRevoked()
             return
         } catch (_: Exception) {
-            endSession()
             mutableState.value = mutableState.value.copy(
                 availability = availability,
-                devices = emptyList(),
-                selectedDevice = null,
-                phase = BluetoothConnectionPhase.DISCONNECTED,
+                discoveryAvailability = discoveryAvailability,
                 message = "Paired devices could not be read. Check Bluetooth settings and refresh.",
             )
             return
         }
-        val old = mutableState.value
-        val selected = devices.firstOrNull { it.address.sameAddress(old.selectedDevice?.address) }
-        val selectionRemoved = old.selectedDevice != null && selected == null
-        if (selectionRemoved) endSession()
-        mutableState.value = old.copy(
+        mutableState.value = mutableState.value.copy(
             availability = availability,
-            devices = devices,
-            selectedDevice = selected,
-            phase = if (selectionRemoved) BluetoothConnectionPhase.DISCONNECTED else old.phase,
-            message = if (selectionRemoved) "The selected device is no longer paired." else null,
+            discoveryAvailability = discoveryAvailability,
         )
+        publishDevices()
     }
 
     fun setForeground(isForeground: Boolean) {
@@ -104,6 +117,7 @@ class BluetoothConnectionViewModel(
         val hadSession = mutableState.value.phase != BluetoothConnectionPhase.DISCONNECTED
         mutableState.value = mutableState.value.copy(isForeground = isForeground)
         if (!isForeground) {
+            cancelScan()
             endSession()
             mutableState.value = mutableState.value.copy(
                 phase = BluetoothConnectionPhase.DISCONNECTED,
@@ -118,12 +132,84 @@ class BluetoothConnectionViewModel(
         }
     }
 
+    fun startDiscovery() {
+        if (!mutableState.value.isForeground ||
+            mutableState.value.isScanning ||
+            mutableState.value.phase != BluetoothConnectionPhase.DISCONNECTED
+        ) return
+        refresh()
+        if (mutableState.value.availability != BluetoothAvailability.READY ||
+            mutableState.value.discoveryAvailability != BluetoothAvailability.READY
+        ) return
+        val previousScan = scanJob
+        val expectedGeneration = ++scanGeneration
+        mutableState.value = mutableState.value.copy(
+            isScanning = true,
+            hasScanned = true,
+            discoveryMessage = null,
+        )
+        scanJob = viewModelScope.launch(dispatcher) {
+            val found = mutableSetOf<String>()
+            try {
+                // Wait for the previous scanner to release its receiver and discovery session.
+                previousScan?.cancelAndJoin()
+                if (!isActive || expectedGeneration != scanGeneration) return@launch
+                gateway.discover().collect { device ->
+                    if (expectedGeneration == scanGeneration &&
+                        mutableState.value.isForeground &&
+                        mutableState.value.phase == BluetoothConnectionPhase.DISCONNECTED
+                    ) {
+                        found += device.key()
+                        val previous = discovered[device.key()]
+                        discovered[device.key()] = if (device.name.isBlank() && previous != null) {
+                            device.copy(name = previous.name, isPaired = false)
+                        } else {
+                            device.copy(isPaired = false)
+                        }
+                        publishDevices()
+                    }
+                }
+                if (expectedGeneration == scanGeneration) {
+                    mutableState.value = mutableState.value.copy(
+                        discoveryMessage = if (found.isEmpty()) {
+                            "No nearby devices found in this scan. Disconnect Car Scanner, power the adapter, keep it within range, and try again."
+                        } else {
+                            "Scan complete. Found devices remain available for selection."
+                        },
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: SecurityException) {
+                if (expectedGeneration == scanGeneration) {
+                    mutableState.value = mutableState.value.copy(
+                        discoveryAvailability = BluetoothAvailability.PERMISSION_REQUIRED,
+                        discoveryMessage = "Scan access was denied. Allow access or open app settings to scan again.",
+                    )
+                }
+            } catch (_: Exception) {
+                if (expectedGeneration == scanGeneration) {
+                    mutableState.value = mutableState.value.copy(
+                        discoveryMessage = "Scan failed. Any devices already found are kept. Check Bluetooth and try again.",
+                    )
+                }
+            } finally {
+                if (expectedGeneration == scanGeneration) {
+                    mutableState.value = mutableState.value.copy(isScanning = false)
+                    scanJob = null
+                }
+            }
+        }
+    }
+
+    fun stopDiscovery() {
+        cancelScan()
+    }
+
     fun selectDevice(device: AdapterDevice) {
         if (mutableState.value.phase != BluetoothConnectionPhase.DISCONNECTED) return
-        val paired = mutableState.value.devices.firstOrNull {
-            it.address.sameAddress(device.address)
-        } ?: return
-        mutableState.value = mutableState.value.copy(selectedDevice = paired, message = null)
+        val listed = mutableState.value.devices.firstOrNull { it.key() == device.key() } ?: return
+        mutableState.value = mutableState.value.copy(selectedDevice = listed, message = null)
     }
 
     fun connect() {
@@ -131,14 +217,22 @@ class BluetoothConnectionViewModel(
             mutableState.value.phase != BluetoothConnectionPhase.DISCONNECTED
         ) return
         refresh()
-        val state = mutableState.value
-        val device = state.selectedDevice ?: return
-        if (state.availability != BluetoothAvailability.READY) return
+        val device = mutableState.value.selectedDevice ?: return
+        if (mutableState.value.availability != BluetoothAvailability.READY) return
+        val previousScan = scanJob
+        cancelScan()
         val sessionGeneration = ++generation
         sessionAddress = device.address
-        mutableState.value = state.copy(phase = BluetoothConnectionPhase.CONNECTING, message = null)
+        mutableState.value = mutableState.value.copy(
+            phase = BluetoothConnectionPhase.CONNECTING,
+            message = null,
+        )
         attempt = viewModelScope.launch(dispatcher) {
             try {
+                previousScan?.cancelAndJoin()
+                if (!isActive || sessionGeneration != generation || !mutableState.value.isForeground) {
+                    return@launch
+                }
                 val opened = gateway.connect(device)
                 if (!isActive || sessionGeneration != generation || !mutableState.value.isForeground) {
                     opened.closeSafely()
@@ -150,19 +244,17 @@ class BluetoothConnectionViewModel(
                     message = null,
                 )
             } catch (_: TimeoutCancellationException) {
-                failCurrentSession(sessionGeneration, "Connection timed out. Check the adapter and reconnect manually.")
+                failCurrentSession(sessionGeneration, "Connection timed out. Disconnect Car Scanner, check the adapter, and reconnect manually.")
             } catch (cancelled: CancellationException) {
                 if (sessionGeneration == generation) {
                     sessionAddress = null
-                    mutableState.value = mutableState.value.copy(
-                        phase = BluetoothConnectionPhase.DISCONNECTED,
-                    )
+                    mutableState.value = mutableState.value.copy(phase = BluetoothConnectionPhase.DISCONNECTED)
                 }
                 throw cancelled
             } catch (_: SecurityException) {
                 if (sessionGeneration == generation) permissionRevoked()
             } catch (_: Exception) {
-                failCurrentSession(sessionGeneration, "Connection failed. Check the adapter and reconnect manually.")
+                failCurrentSession(sessionGeneration, "Connection failed. Disconnect Car Scanner, check the adapter, and reconnect manually.")
             } finally {
                 if (sessionGeneration == generation) attempt = null
             }
@@ -178,8 +270,7 @@ class BluetoothConnectionViewModel(
     }
 
     fun onDeviceDisconnected(address: String) {
-        // A delayed ACL broadcast from the previous link must not cancel its replacement.
-        // Pending attempts resolve through their own bounded connect result or timeout.
+        // Old ACL broadcasts must not cancel a pending replacement link to the same adapter.
         if (mutableState.value.phase != BluetoothConnectionPhase.CONNECTED ||
             !address.sameAddress(sessionAddress)
         ) return
@@ -188,6 +279,45 @@ class BluetoothConnectionViewModel(
             phase = BluetoothConnectionPhase.DISCONNECTED,
             message = "The Bluetooth connection was lost. Reconnect manually when ready.",
         )
+    }
+
+    private fun publishDevices() {
+        val devices = linkedMapOf<String, AdapterDevice>()
+        discovered.forEach { (key, device) -> devices[key] = device.copy(isPaired = false) }
+        paired.forEach { device ->
+            val name = device.name.ifBlank { devices[device.key()]?.name.orEmpty() }
+            devices[device.key()] = device.copy(name = name, isPaired = true)
+        }
+        val sorted = devices.values.sortedWith(
+            compareByDescending<AdapterDevice> { it.isPaired }
+                .thenBy { it.name.lowercase(Locale.ROOT) }
+                .thenBy { it.key() },
+        )
+        val old = mutableState.value
+        val selected = sorted.firstOrNull { it.address.sameAddress(old.selectedDevice?.address) }
+        val removed = old.selectedDevice != null && selected == null
+        if (removed) endSession()
+        mutableState.value = old.copy(
+            devices = sorted,
+            selectedDevice = selected,
+            phase = if (removed) BluetoothConnectionPhase.DISCONNECTED else old.phase,
+            message = if (removed) "The selected device is no longer available. Scan or refresh again." else old.message,
+        )
+    }
+
+    private fun cancelScan() {
+        scanGeneration++
+        scanJob?.cancel()
+        val old = mutableState.value
+        mutableState.value = old.copy(
+            isScanning = false,
+            discoveryMessage = if (old.isScanning) {
+                "Scan stopped. Any devices already found remain available."
+            } else {
+                old.discoveryMessage
+            },
+        )
+        // Keep the cancelled job until its cleanup finishes so connect/new scans can join it.
     }
 
     private fun failCurrentSession(expectedGeneration: Long, message: String) {
@@ -202,8 +332,12 @@ class BluetoothConnectionViewModel(
 
     private fun permissionRevoked() {
         endSession()
+        cancelScan()
+        paired = emptyList()
+        discovered.clear()
         mutableState.value = mutableState.value.copy(
             availability = BluetoothAvailability.PERMISSION_REQUIRED,
+            discoveryAvailability = BluetoothAvailability.PERMISSION_REQUIRED,
             devices = emptyList(),
             selectedDevice = null,
             phase = BluetoothConnectionPhase.DISCONNECTED,
@@ -221,10 +355,13 @@ class BluetoothConnectionViewModel(
     }
 
     override fun onCleared() {
+        cancelScan()
         endSession()
         super.onCleared()
     }
 }
+
+private fun AdapterDevice.key(): String = address.uppercase(Locale.ROOT)
 
 private fun String.sameAddress(other: String?): Boolean =
     other != null && equals(other, ignoreCase = true)

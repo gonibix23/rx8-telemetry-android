@@ -4,12 +4,18 @@ import com.gonibix.rx8.bluetooth.AdapterConnection
 import com.gonibix.rx8.bluetooth.AdapterDevice
 import com.gonibix.rx8.bluetooth.BluetoothAvailability
 import com.gonibix.rx8.bluetooth.BluetoothGateway
+import java.io.IOException
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -297,6 +303,215 @@ class BluetoothConnectionViewModelTest {
         assertEquals(0, gateway.connectCalls)
     }
 
+    @Test
+    fun discoveryMergesByAddressAndKeepsEveryDeviceName() = connectionTest {
+        val nearby = AdapterDevice("02:00:00:AA:BB:CC", "OBDII", isPaired = false)
+        gateway.discoverBehavior = {
+            flow {
+                emit(device.copy(address = device.address.lowercase(), isPaired = false))
+                emit(nearby)
+                emit(nearby.copy(address = nearby.address.lowercase()))
+                emit(AdapterDevice("02:00:00:00:00:88", "Other device", isPaired = false))
+            }
+        }
+        viewModel.setForeground(true)
+        viewModel.startDiscovery()
+        runCurrent()
+
+        assertEquals(3, viewModel.uiState.value.devices.size)
+        assertTrue(viewModel.uiState.value.devices.first { it.address == device.address }.isPaired)
+        assertTrue(viewModel.uiState.value.devices.any { it.name == "Other device" })
+        assertFalse(viewModel.uiState.value.isScanning)
+        assertTrue(viewModel.uiState.value.hasScanned)
+        viewModel.refresh()
+        assertEquals(3, viewModel.uiState.value.devices.size)
+        viewModel.selectDevice(nearby)
+        assertEquals("OBDII", viewModel.uiState.value.selectedDevice?.name)
+    }
+
+    @Test
+    fun emptyDiscoveryHasExplicitRetryGuidance() = connectionTest {
+        gateway.devices = emptyList()
+        viewModel.setForeground(true)
+        viewModel.startDiscovery()
+        runCurrent()
+        assertTrue(viewModel.uiState.value.devices.isEmpty())
+        assertFalse(viewModel.uiState.value.isScanning)
+        assertTrue(viewModel.uiState.value.discoveryMessage.orEmpty().contains("No nearby devices found"))
+    }
+
+    @Test
+    fun partialDiscoveryResultsSurviveFailure() = connectionTest {
+        val nearby = AdapterDevice("02:00:00:00:00:44", "OBDII", isPaired = false)
+        gateway.discoverBehavior = { flow { emit(nearby); throw IOException("Synthetic discovery failure") } }
+        viewModel.setForeground(true)
+        viewModel.startDiscovery()
+        runCurrent()
+        assertTrue(viewModel.uiState.value.devices.contains(nearby))
+        assertFalse(viewModel.uiState.value.isScanning)
+        assertTrue(viewModel.uiState.value.discoveryMessage.orEmpty().contains("Scan failed"))
+    }
+
+    @Test
+    fun scanPermissionIsIndependentOfPairedConnectionPermission() = connectionTest {
+        gateway.discoveryAvailabilityValue = BluetoothAvailability.PERMISSION_REQUIRED
+        prepareSelection()
+        viewModel.startDiscovery()
+        runCurrent()
+        assertEquals(0, gateway.discoverCalls)
+        assertEquals(BluetoothAvailability.READY, viewModel.uiState.value.availability)
+        assertEquals(BluetoothAvailability.PERMISSION_REQUIRED, viewModel.uiState.value.discoveryAvailability)
+        viewModel.connect()
+        runCurrent()
+        assertEquals(BluetoothConnectionPhase.CONNECTED, viewModel.uiState.value.phase)
+    }
+
+    @Test
+    fun disabledLocationOnlyBlocksDiscovery() = connectionTest {
+        gateway.discoveryAvailabilityValue = BluetoothAvailability.LOCATION_DISABLED
+        prepareSelection()
+        viewModel.startDiscovery()
+        runCurrent()
+        assertEquals(0, gateway.discoverCalls)
+        viewModel.connect()
+        runCurrent()
+        assertEquals(BluetoothConnectionPhase.CONNECTED, viewModel.uiState.value.phase)
+    }
+
+    @Test
+    fun backgroundCancelsDiscoveryAndDoesNotRestartItOnReturn() = connectionTest {
+        var cancelled = false
+        gateway.discoverBehavior = {
+            flow {
+                try { awaitCancellation() } finally { cancelled = true }
+            }
+        }
+        viewModel.setForeground(true)
+        viewModel.startDiscovery()
+        viewModel.startDiscovery()
+        runCurrent()
+        assertEquals(1, gateway.discoverCalls)
+        assertTrue(viewModel.uiState.value.isScanning)
+        viewModel.setForeground(false)
+        runCurrent()
+        assertTrue(cancelled)
+        assertFalse(viewModel.uiState.value.isScanning)
+        viewModel.setForeground(true)
+        runCurrent()
+        assertEquals(1, gateway.discoverCalls)
+    }
+
+    @Test
+    fun connectWaitsForScanCleanupAndAcceptsAnUnpairedDiscoveredDevice() = connectionTest {
+        var cleaned = false
+        val nearby = AdapterDevice("02:00:00:00:00:44", "OBDII", isPaired = false)
+        gateway.discoverBehavior = {
+            flow {
+                emit(nearby)
+                try {
+                    awaitCancellation()
+                } finally {
+                    withContext(NonCancellable) { delay(500L); cleaned = true }
+                }
+            }
+        }
+        viewModel.setForeground(true)
+        viewModel.startDiscovery()
+        runCurrent()
+        viewModel.selectDevice(nearby)
+        viewModel.connect()
+        runCurrent()
+        assertFalse(cleaned)
+        assertEquals(0, gateway.connectCalls)
+        assertEquals(BluetoothConnectionPhase.CONNECTING, viewModel.uiState.value.phase)
+        advanceTimeBy(500L)
+        runCurrent()
+        assertTrue(cleaned)
+        assertEquals(nearby, gateway.lastConnectedDevice)
+        assertEquals(BluetoothConnectionPhase.CONNECTED, viewModel.uiState.value.phase)
+    }
+
+    @Test
+    fun scanPermissionRevocationCancelsScanButKeepsPairedDevices() = connectionTest {
+        var cancelled = false
+        gateway.discoverBehavior = {
+            flow { try { awaitCancellation() } finally { cancelled = true } }
+        }
+        viewModel.setForeground(true)
+        viewModel.startDiscovery()
+        runCurrent()
+        gateway.discoveryAvailabilityValue = BluetoothAvailability.PERMISSION_REQUIRED
+        viewModel.refresh()
+        runCurrent()
+        assertTrue(cancelled)
+        assertFalse(viewModel.uiState.value.isScanning)
+        assertEquals(listOf(device), viewModel.uiState.value.devices)
+        assertEquals(BluetoothAvailability.READY, viewModel.uiState.value.availability)
+    }
+
+    @Test
+    fun BluetoothOffCancelsDiscoveryAndClearsResults() = connectionTest {
+        var cancelled = false
+        gateway.discoverBehavior = {
+            flow {
+                emit(AdapterDevice("02:00:00:00:00:44", "OBDII", isPaired = false))
+                try { awaitCancellation() } finally { cancelled = true }
+            }
+        }
+        viewModel.setForeground(true)
+        viewModel.startDiscovery()
+        runCurrent()
+        gateway.availabilityValue = BluetoothAvailability.OFF
+        viewModel.refresh()
+        runCurrent()
+        assertTrue(cancelled)
+        assertFalse(viewModel.uiState.value.isScanning)
+        assertTrue(viewModel.uiState.value.devices.isEmpty())
+    }
+
+    @Test
+    fun staleScanFailureCannotReplaceTheNextScansState() = connectionTest {
+        gateway.discoverBehavior = {
+            flow {
+                try {
+                    awaitCancellation()
+                } finally {
+                    withContext(NonCancellable) { delay(500L) }
+                    throw IOException("Synthetic stale cleanup error")
+                }
+            }
+        }
+        viewModel.setForeground(true)
+        viewModel.startDiscovery()
+        runCurrent()
+        viewModel.stopDiscovery()
+        val nearby = AdapterDevice("02:00:00:00:00:44", "OBDII", isPaired = false)
+        gateway.discoverBehavior = { flow { emit(nearby) } }
+        viewModel.startDiscovery()
+        runCurrent()
+        assertTrue(viewModel.uiState.value.isScanning)
+        advanceTimeBy(500L)
+        runCurrent()
+        assertTrue(viewModel.uiState.value.devices.contains(nearby))
+        assertFalse(viewModel.uiState.value.isScanning)
+        assertEquals("Scan complete. Found devices remain available for selection.", viewModel.uiState.value.discoveryMessage)
+    }
+
+
+    @Test
+    fun discoveryCannotStartBeforeTheAdapterScreenIsForeground() = connectionTest {
+        viewModel.startDiscovery()
+        runCurrent()
+        assertEquals(0, gateway.discoverCalls)
+        assertFalse(viewModel.uiState.value.isScanning)
+        viewModel.setForeground(true)
+        runCurrent()
+        assertEquals(0, gateway.discoverCalls)
+        viewModel.startDiscovery()
+        runCurrent()
+        assertEquals(1, gateway.discoverCalls)
+    }
+
     private fun prepareSelection() {
         viewModel.setForeground(true)
         viewModel.selectDevice(device)
@@ -316,11 +531,22 @@ class BluetoothConnectionViewModelTest {
         var devices = listOf(device)
         var pairedFailure: Exception? = null
         var pairedCalls = 0
+        var discoveryAvailabilityValue: BluetoothAvailability? = null
+        var discoverCalls = 0
+        var discoverBehavior: () -> Flow<AdapterDevice> = { emptyFlow() }
+        var lastConnectedDevice: AdapterDevice? = null
         var connectCalls = 0
         val connection = FakeConnection()
         var connectBehavior: suspend (AdapterDevice) -> AdapterConnection = { connection }
 
         override fun availability() = availabilityValue
+
+        override fun discoveryAvailability() = discoveryAvailabilityValue ?: availabilityValue
+
+        override fun discover(): Flow<AdapterDevice> {
+            discoverCalls++
+            return discoverBehavior()
+        }
 
         override fun pairedDevices(): List<AdapterDevice> {
             pairedCalls++
@@ -330,6 +556,7 @@ class BluetoothConnectionViewModelTest {
 
         override suspend fun connect(device: AdapterDevice): AdapterConnection {
             connectCalls++
+            lastConnectedDevice = device
             return connectBehavior(device)
         }
     }

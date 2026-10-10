@@ -2,19 +2,21 @@
 
 Android app in development for viewing live vehicle data and recording trips without an Internet connection.
 
-**Current implementation: a simulator and a provisional connection screen for paired Bluetooth Classic devices. ECU/OBD queries, saved trips, and API integration are not implemented yet.**
+**Current implementation: a simulator and a provisional Bluetooth Classic connection screen with in-app device discovery. ECU/OBD queries, saved trips, and API integration are not implemented yet.**
 
 The simulator uses deterministic synthetic readings and supports normal operation, timeouts, and missing data.
 Connect, disconnect, and reset controls make demonstrations repeatable.
 Sampling runs only while the Simulator tab is visible in the foreground; this foundation does not record in the background.
 
-The Bluetooth screen selects an already-paired Classic or dual-mode device and attempts a secure RFCOMM/SPP connection.
+The Bluetooth screen searches for nearby devices, displays names and MAC addresses, and allows selection of paired or newly discovered Classic devices.
+It attempts a secure RFCOMM/SPP connection; Android can request pairing during connection.
 It sends no application bytes or ELM/OBD commands and distinguishes Bluetooth connection from ECU communication, which is not checked.
 Connections close when leaving the Adapter tab or putting the app in the background; reconnect manually when ready.
 
 On October 10, 2026, the user reported that the app worked after testing the simulator foundation.
-The user confirmed that the Samsung A53 runs Android 16 and that Bluetooth pairing has not been tried yet.
-That report does not validate the new Bluetooth transport or compatibility with the adapter and car.
+The user confirmed that the Samsung A53 runs Android 16. The paired-only Bluetooth build failed to list the adapter.
+The user reports that Car Scanner finds it through an in-app search with plain Bluetooth selected, displaying OBDII and its MAC address.
+The updated discovery workflow and secure SPP connection still need testing on the actual adapter; ECU communication remains unverified.
 There are no published APK releases or deployed APIs.
 
 ## Reference vehicle and equipment
@@ -22,7 +24,7 @@ There are no published APK releases or deployed APIs.
 - 2004 Mazda RX-8, 231 metric horsepower (CV), European market.
 - Samsung Galaxy A53 running Android 16, confirmed by the user.
 - iLC OBD2 Bluetooth adapter, ASIN B0BDRHRR22. [Selected product](https://www.amazon.es/dp/B0BDRHRR22).
-- Classic Bluetooth and ELM327-compatible commands are the initial assumptions; both must be checked with the actual adapter.
+- Plain Bluetooth is the user-reported Car Scanner setting. Secure SPP and ELM327-compatible commands still need checking with the actual adapter.
 
 The goal is to display **all available and verified data** from this vehicle. OBD2 does not guarantee access to every module or sensor.
 A working simulator does not prove that the adapter or car supports any particular parameter.

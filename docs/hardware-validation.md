@@ -6,8 +6,10 @@ Confirm actual communication and data availability before promising sensors or s
 Vehicle: 2004 RX-8, 231 metric horsepower (CV), Europe. Reference phone: Galaxy A53 running Android 16. Adapter: iLC B0BDRHRR22.
 
 On October 10, 2026, the user reported that the simulator app worked after testing.
-The user confirmed Android 16 on the A53, completing the remaining device information for RX8-002. Bluetooth pairing has not been tried yet; RX8-001 and RX8-003 hardware validation remain pending.
-No detailed lifecycle test, adapter connection, ECU response, PID, or VIN result has been reported.
+The user confirmed Android 16 on the A53, completing RX8-002. The paired-only Bluetooth build failed to list the adapter.
+The user reports that Car Scanner searches inside the app with plain Bluetooth selected and displays OBDII with its MAC address.
+RX8-001 and RX8-003 remain open: the new discovery workflow and secure SPP connection need verification in this app.
+No successful adapter connection in this app, ECU response, PID, or VIN result has been reported.
 A simulator test and a Bluetooth socket connection are separate from ECU validation.
 
 ## Test record
@@ -26,25 +28,26 @@ An adapter identification string is not proof of authenticity. Share anonymized 
 
 ## Bluetooth transport checklist (RX8-003)
 
-Use the actual adapter with the vehicle stationary. The Android version is confirmed; pairing and all adapter checks below remain pending.
+Use the actual adapter with the vehicle stationary. Disconnect Car Scanner before testing this app. The Android version and reported Car Scanner connection setting are confirmed; the new workflow checks below remain pending.
 
 - [x] Samsung Galaxy A53 runs Android 16, confirmed by the user.
 - [ ] Record the app version used for the Bluetooth transport test.
-- [ ] Pair the adapter in Android settings, then return to the app.
+- [x] Record the reference app setting: Car Scanner uses plain Bluetooth and shows OBDII with its MAC address, as reported by the user. Do not publish the real address.
+- [ ] Choose Scan nearby in the Adapter tab with the adapter powered; compare the displayed name and MAC address with Car Scanner.
 - [ ] On API 31+, check denied and granted Nearby devices permission; confirm the screen remains usable.
-- [ ] Confirm the adapter appears among paired Classic/dual devices; record a missing or differently typed device as a limitation.
-- [ ] Select it and connect; record success, error, or the 15-second application timeout.
+- [ ] Check denied and granted scan access, scan cancellation, no-results guidance, and a second scan without duplicate rows. On API 26-30 only, check location permission and disabled location services.
+- [ ] Select the discovered adapter and connect; complete Android's pairing prompt if shown. Record success, error, or timeout.
 - [ ] Confirm that a successful socket connection is labelled separately from ECU communication, which remains not checked.
 - [ ] Cancel a connection attempt and disconnect a connected session; confirm the controls allow another manual attempt.
 - [ ] Turn Bluetooth off or remove adapter power and record the observed response. No ECU heartbeat is implemented.
-- [ ] Switch to Simulator, leave the app, and lock the screen in separate checks; confirm the connection closes and requires manual reconnection after returning to Adapter.
+- [ ] Switch to Simulator, leave the app, and lock the screen in separate checks; confirm discovery stops and the connection closes. Returning to Adapter requires manual reconnection.
 - [ ] Reconnect repeatedly and record failures or signs of duplicate connections.
 - [ ] Repeat with Internet connectivity disabled and verify the simulator remains a separate synthetic-data screen.
 
 The connection UI sends no ELM/OBD requests or other application bytes. System connection handshakes still occur.
 This screen cannot yet validate byte responses, OBD protocols, sensor values, VIN retrieval, or recorded-trip continuity.
 Bounded byte read/write and cancellation behavior also require transport-level checks; do not claim these were physically tested by opening a socket alone.
-Secure Classic/SPP remains an assumption until the adapter test establishes support. BLE and active discovery are not implemented.
+Secure Classic/SPP remains provisional until the adapter test establishes support. Bounded Classic discovery is implemented; BLE transport is not.
 
 ## ECU validation sequence (RX8-001 and later RX8-004)
 
@@ -82,5 +85,5 @@ Do not replace physical testing with simulator screenshots, infer ECU communicat
 Checked on October 10, 2026:
 
 - [Bluetooth permissions](https://developer.android.com/develop/connectivity/bluetooth/bt-permissions).
-- [Querying paired devices](https://developer.android.com/develop/connectivity/bluetooth/find-bluetooth-devices#query-paired-devices).
+- [Finding paired and nearby devices](https://developer.android.com/develop/connectivity/bluetooth/find-bluetooth-devices).
 - [RFCOMM client connections](https://developer.android.com/develop/connectivity/bluetooth/connect-bluetooth-devices#connect-as-a-client).

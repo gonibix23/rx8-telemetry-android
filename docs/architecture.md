@@ -2,13 +2,15 @@
 
 ## Status
 
-The app contains a deterministic simulator and provisional paired Bluetooth Classic/SPP transport.
-The Bluetooth screen lists already-paired Classic or dual-mode devices, handles connection permission, and opens a secure RFCOMM socket.
+The app contains a deterministic simulator and provisional Bluetooth Classic/SPP transport with bounded in-app discovery.
+The Bluetooth screen combines paired devices and nearby discoveries, handles scan and connection permissions separately, and opens a secure RFCOMM socket.
+Device names and MAC addresses are shown locally so the user can identify the OBDII adapter reported in Car Scanner.
 It sends no application bytes or ELM/OBD requests and keeps **Bluetooth connection** separate from **ECU communication: not checked**.
 
 Both screens are foreground-only: simulation pauses when its tab is hidden, and leaving the Adapter tab or app closes the connection and requires manual reconnection.
-The user reported the simulator app worked after testing on October 10, 2026 and confirmed the Samsung A53 runs Android 16. Bluetooth pairing has not been tried yet.
-No detailed lifecycle or adapter test results can be inferred from that report.
+The user reported the simulator app worked after testing on October 10, 2026 and confirmed the Samsung A53 runs Android 16.
+The paired-only Bluetooth build failed to list the adapter, which the user finds by searching in Car Scanner with plain Bluetooth selected.
+Discovery and secure SPP still require validation in this app; no ECU result has been reported.
 
 The diagram and later storage, identity, recording, and synchronization sections describe the **target MVP architecture**.
 Actual OBD queries, vehicle identity, saved trips, Room/DataStore storage, and API integration remain planned.
@@ -40,13 +42,16 @@ Components can start as packages; there is no need to create a Gradle module for
 
 ## Transport and OBD engine
 
-### Current paired-device transport
+### Current discovery and transport
 
 The Android transport is separate from Compose presentation and the synthetic telemetry source.
-It lists bonded Classic/dual devices and attempts secure RFCOMM using the standard Serial Port Profile service UUID.
-It does not perform device discovery, BLE operations, or a fallback to an unverified connection method.
+It lists bonded devices and performs a user-started, bounded Classic inquiry. Results are merged by MAC address, without filtering by adapter name.
+Discovery stops before connecting, when cancelled, or when leaving the foreground. Scanning is unavailable during a connection.
+It attempts secure RFCOMM using the standard Serial Port Profile service UUID; Android handles pairing when the selected device is not bonded.
+It does not implement a BLE transport or fallback to an unverified connection method.
 
-Connection attempts run away from the UI thread with a 15-second application timeout.
+Connection attempts run away from the UI thread with a 15-second timeout for bonded devices or 45 seconds for unbonded devices to allow Android's pairing prompt.
+Each discovery inquiry is limited to 15 seconds, after allowing up to two seconds to stop an existing inquiry.
 Byte reads and writes are bounded and cancellable; closing the socket cancels blocked operations.
 These byte operations prepare for RX8-004. The connection screen does not call them to send ELM initialization or ECU commands.
 Android still performs the protocol handshakes needed to establish the Bluetooth connection.
@@ -103,9 +108,11 @@ Import/restore has not been implemented and is not guaranteed in the MVP; JSON r
 
 ### Current connection permissions
 
-On Android 12/API 31 and later, the app requests `BLUETOOTH_CONNECT` through the Nearby devices runtime prompt.
-On API 26-30, it uses the legacy `BLUETOOTH` permission limited to those versions.
-Pairing and Bluetooth settings are handled in Android settings. The app does not request scan, advertise, location, or Internet permissions.
+On Android 12/API 31 and later, connecting requires `BLUETOOTH_CONNECT`, and discovery also requires `BLUETOOTH_SCAN`, through Nearby devices runtime prompts.
+Scan access uses `neverForLocation`; the app does not derive physical location from scan results.
+On API 26-30, legacy `BLUETOOTH` and `BLUETOOTH_ADMIN` apply, and discovery requires foreground fine-location permission and enabled location services.
+Those legacy permissions are limited to API 30. Android 12+ does not request location permission. No GPS collection, advertising, or Internet permission is implemented.
+Android can present pairing during connection. Bluetooth and permission settings remain available for recovery.
 See Android's [Bluetooth permission guidance](https://developer.android.com/develop/connectivity/bluetooth/bt-permissions).
 
 The connection closes when the Adapter tab is hidden or the app leaves the foreground. Returning requires a manual reconnect.

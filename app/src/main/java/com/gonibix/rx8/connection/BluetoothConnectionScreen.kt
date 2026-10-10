@@ -40,6 +40,7 @@ import com.gonibix.rx8.ui.theme.CardColor
 import com.gonibix.rx8.ui.theme.MintColor
 import com.gonibix.rx8.ui.theme.MutedColor
 import com.gonibix.rx8.ui.theme.WarmWhite
+import java.util.Locale
 
 @Composable
 fun BluetoothConnectionScreen(
@@ -51,6 +52,9 @@ fun BluetoothConnectionScreen(
     onSelectDevice: (AdapterDevice) -> Unit,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
+    onScan: () -> Unit,
+    onStopScan: () -> Unit,
+    onOpenLocationSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -89,7 +93,7 @@ fun BluetoothConnectionScreen(
             when (state.availability) {
                 BluetoothAvailability.PERMISSION_REQUIRED -> {
                     Text(
-                        "Allow Nearby devices access to list and connect to paired Bluetooth devices.",
+                        "Allow Nearby devices access to list and connect to Bluetooth devices.",
                         color = MutedColor,
                         style = MaterialTheme.typography.bodyMedium,
                     )
@@ -125,21 +129,26 @@ fun BluetoothConnectionScreen(
                         color = MutedColor,
                     )
                 }
+                BluetoothAvailability.LOCATION_DISABLED -> {
+                    Text("Location services are off. Enable them to discover nearby devices on this Android version.", color = MutedColor)
+                    OutlinedButton(onClick = onOpenLocationSettings) { Text("Open location settings") }
+                }
                 BluetoothAvailability.READY -> {
+                    DiscoveryControls(state, onScan, onStopScan, onOpenLocationSettings, onOpenAppSettings)
                     Text(
-                        "Paired Bluetooth devices",
+                        "Available Bluetooth devices",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                     )
                     if (state.devices.isEmpty()) {
                         Text(
-                            "No paired Classic devices found. Pair your OBD adapter in Bluetooth settings, then refresh.",
+                            "No devices listed yet. Scan nearby with your adapter powered on, or pair it in Bluetooth settings.",
                             color = MutedColor,
                             modifier = Modifier.testTag("no_paired_devices"),
                         )
                     } else {
                         Text(
-                            "Select your OBD adapter. A listed device has not been verified as compatible.",
+                            "Look for OBDII and match its MAC address with Car Scanner.",
                             color = MutedColor,
                             style = MaterialTheme.typography.bodySmall,
                         )
@@ -152,6 +161,13 @@ fun BluetoothConnectionScreen(
                                 modifier = Modifier.testTag("paired_device_$index"),
                             )
                         }
+                    }
+                    if (state.phase == BluetoothConnectionPhase.DISCONNECTED && state.selectedDevice != null) {
+                        Text(
+                            "Disconnect Car Scanner before connecting here. Android may show a pairing prompt for a nearby device.",
+                            color = MutedColor,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                     }
                     ConnectionAction(state, onConnect, onDisconnect)
                     SettingsButton(onOpenBluetoothSettings)
@@ -201,12 +217,91 @@ fun BluetoothConnectionScreen(
 }
 
 @Composable
+private fun DiscoveryControls(
+    state: BluetoothConnectionUiState,
+    onScan: () -> Unit,
+    onStopScan: () -> Unit,
+    onOpenLocationSettings: () -> Unit,
+    onOpenAppSettings: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        when {
+            state.isScanning -> {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Text(
+                        "Scanning nearby Bluetooth devices…",
+                        color = MutedColor,
+                        modifier = Modifier.testTag("discovery_status"),
+                    )
+                }
+                OutlinedButton(
+                    onClick = onStopScan,
+                    modifier = Modifier.fillMaxWidth().testTag("stop_discovery"),
+                ) { Text("Stop scan") }
+            }
+            state.discoveryAvailability == BluetoothAvailability.READY -> Button(
+                onClick = onScan,
+                enabled = state.isForeground && state.phase == BluetoothConnectionPhase.DISCONNECTED,
+                modifier = Modifier.fillMaxWidth().testTag("start_discovery"),
+                shape = RoundedCornerShape(12.dp),
+            ) { Text("Scan nearby") }
+            state.discoveryAvailability == BluetoothAvailability.PERMISSION_REQUIRED -> {
+                Text(
+                    "Scanning needs additional access. Already paired devices can still connect. On older Android versions, allow location access to discover devices.",
+                    color = MutedColor,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Button(
+                    onClick = onScan,
+                    enabled = state.phase == BluetoothConnectionPhase.DISCONNECTED,
+                    modifier = Modifier.fillMaxWidth().testTag("request_scan_permission"),
+                ) { Text("Allow scan access") }
+                TextButton(
+                    onClick = onOpenAppSettings,
+                    modifier = Modifier.testTag("scan_app_settings"),
+                ) { Text("Open app settings") }
+            }
+            state.discoveryAvailability == BluetoothAvailability.LOCATION_DISABLED -> {
+                Text(
+                    "This Android version needs location services enabled for discovery. Paired devices can still connect.",
+                    color = MutedColor,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedButton(
+                    onClick = onOpenLocationSettings,
+                    modifier = Modifier.fillMaxWidth().testTag("open_location_settings"),
+                ) { Text("Open location settings") }
+            }
+            else -> Text(
+                "Discovery is unavailable. Check Bluetooth settings and refresh.",
+                color = MutedColor,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        state.discoveryMessage?.let {
+            Text(
+                it,
+                color = MutedColor,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.testTag("discovery_message"),
+            )
+        }
+    }
+}
+
+
+@Composable
 private fun ConnectionStatus(state: BluetoothConnectionUiState) {
     val connected = state.availability == BluetoothAvailability.READY &&
         state.phase == BluetoothConnectionPhase.CONNECTED
     val status = when (state.availability) {
         BluetoothAvailability.PERMISSION_REQUIRED -> "Bluetooth permission needed"
         BluetoothAvailability.OFF -> "Bluetooth is off"
+        BluetoothAvailability.LOCATION_DISABLED -> "Location services are off"
         BluetoothAvailability.UNSUPPORTED -> "Bluetooth unavailable"
         BluetoothAvailability.READY -> when (state.phase) {
             BluetoothConnectionPhase.DISCONNECTED -> "Bluetooth disconnected"
@@ -240,6 +335,13 @@ private fun ConnectionStatus(state: BluetoothConnectionUiState) {
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.testTag("bluetooth_connection_status"),
+                )
+            }
+            if (state.phase == BluetoothConnectionPhase.CONNECTING && state.selectedDevice?.isPaired == false) {
+                Text(
+                    "Complete the Android pairing prompt if it appears. Keep the adapter powered on.",
+                    color = MutedColor,
+                    style = MaterialTheme.typography.bodySmall,
                 )
             }
             Text(
@@ -283,9 +385,14 @@ private fun PairedDeviceRow(
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Text(
-                    "Address ending ${device.address.takeLast(5)}",
+                    device.address.uppercase(Locale.ROOT),
                     color = MutedColor,
                     style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    if (device.isPaired) "Paired" else "Nearby · pairing may be requested",
+                    color = if (device.isPaired) MintColor else MutedColor,
+                    style = MaterialTheme.typography.labelSmall,
                 )
             }
         }
