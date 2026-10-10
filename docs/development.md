@@ -2,16 +2,16 @@
 
 ## Current implementation
 
-The 0.3.0-dev iteration adds in-app Classic Bluetooth discovery to the provisional transport and simulator foundation:
+The 0.4.0-dev iteration adds read-only OBD initialization, capability discovery, and six live parameters to the Bluetooth and simulator foundation:
 
 | Module | Responsibility |
 | --- | --- |
-| `:app` | Compose interface, Bluetooth permissions and transport, and foreground lifecycle integration |
-| `:core:telemetry` | Pure Kotlin telemetry types and deterministic simulated data |
+| `:app` | Compose interface, Bluetooth transport, OBD session scheduling, and foreground lifecycle integration |
+| `:core:telemetry` | Pure Kotlin OBD parsing/decoding, telemetry types, and deterministic simulated data |
 
 The simulator is identified in the interface and supplies synthetic engine speed, vehicle speed, coolant temperature, intake air temperature, throttle position, and engine load readings.
-The simulator stays separate from the Bluetooth screen. Neither screen queries an ECU, identifies the car, saves trips, or uploads data.
-The Bluetooth transport currently opens a socket only; the connection screen does not send application bytes or ELM/OBD commands.
+The simulator stays separate from real acquisition. Neither screen identifies the vehicle permanently, saves trips, or uploads data.
+Bluetooth connection alone opens a socket. Read live data explicitly starts ELM initialization and read-only Mode 01 queries.
 The architecture and API documents describe later implementation work unless explicitly marked as implemented.
 
 ## Toolchain
@@ -97,7 +97,7 @@ The application package is `com.gonibix.rx8`.
 On October 10, 2026, the user reported that the app worked after testing the simulator foundation.
 The user confirmed that the Samsung A53 runs Android 16, completing RX8-002. The paired-only Bluetooth build failed to list the adapter.
 Car Scanner reportedly finds it through in-app search with plain Bluetooth selected, showing OBDII and its MAC address.
-The new discovery workflow still requires testing on that adapter. No ECU communication has been validated.
+The user subsequently confirmed that Bluetooth connects successfully, and PR #13 is merged. No detailed interruption tests or ECU responses have been reported.
 
 ## Finding and connecting the Bluetooth adapter
 
@@ -105,7 +105,7 @@ The new discovery workflow still requires testing on that adapter. No ECU commun
 2. Open the Adapter tab and choose Scan nearby. On Android 12/API 31 or later, allow Nearby devices access.
 3. On Android 8-11/API 26-30 only, grant the location permission required for discovery and enable location services. No location is collected.
 4. Select OBDII, comparing its MAC address with the device shown by Car Scanner. Unnamed nearby devices also show an address. Already-paired devices remain available.
-5. Connect and complete Android's pairing prompt if it appears. A successful result means a Bluetooth socket is open; the screen must still say ECU communication is not checked.
+5. Connect and complete Android's pairing prompt if it appears. A successful result means a Bluetooth socket is open; ECU communication remains unchecked until Read live data succeeds.
 6. Disconnect explicitly, switch to Simulator, or leave the app to close the connection. Reconnect manually after returning to Adapter.
 
 This is a provisional secure RFCOMM/SPP connection. Discovery is bounded and stops before connection or when leaving the Adapter tab.
@@ -115,10 +115,31 @@ BLE-only devices are outside the current transport scope, consistent with the us
 On API 31+, scan and connection permissions are separate; a paired adapter can be connected without scan access. Location permission is limited to API 26-30.
 Android's [permissions](https://developer.android.com/develop/connectivity/bluetooth/bt-permissions) and [device discovery guidance](https://developer.android.com/develop/connectivity/bluetooth/find-bluetooth-devices) describe these requirements.
 
-The connection UI sends no application bytes or ELM/OBD commands. System Bluetooth handshakes still occur.
-The transport has bounded byte read/write operations for future OBD work, but no sensor decoding or ECU heartbeat.
-It does not automatically reconnect, retain an adapter connection in the background, or prove the iLC adapter supports this transport.
+The connection action sends no application bytes. Read live data uses the transport's bounded byte read/write operations for OBD commands.
+There is no automatic reconnection or background recording. The user-reported successful Bluetooth connection does not establish sensor support.
 Use the [hardware checklist](hardware-validation.md#bluetooth-transport-checklist-rx8-003) to record actual behavior.
+
+## Reading live OBD data
+
+1. With the vehicle stationary and ignition on, connect the adapter and select Read live data.
+2. Wait for adapter initialization, automatic protocol detection, and supported-parameter discovery. Initialization failures remain separate from a successful Bluetooth connection.
+3. Inspect the protocol, responding ECU identifiers, and six parameter cards. Each ECU is shown separately when more than one responds.
+4. Confirm engine speed, stationary vehicle speed, and coolant temperature against the actual operating conditions. A valid zero value is allowed; a missing reading must show its status instead.
+5. Observe the timestamps, stale markers, and measured response rate. A parameter appearing in the capability bitmap does not guarantee a valid reading on every request.
+6. Disconnect to stop polling, or leave Adapter/the app. Reconnect and choose Read live data again for a fresh session.
+
+The current decoders cover engine speed (rpm), vehicle speed (km/h), coolant and intake temperatures (°C), throttle position (%), and engine load (%).
+The engine only requests metrics reported as supported. Mode 01 capability bitmaps can report additional parameters that this build does not yet decode.
+Missing replies, unsupported parameters, adapter errors, malformed frames, and stale cached values have distinct states. Failed readings are never represented by a fabricated zero.
+Values older than five seconds are marked stale. Disconnecting marks retained valid readings stale immediately; selecting another adapter clears the previous readings.
+
+The engine serializes all exchanges, assembles Bluetooth fragments through the ELM prompt, and limits command time and reply size.
+Losing prompt framing closes the connection and requires a manual reconnect, preventing delayed responses from being mistaken for new readings.
+RPM and speed receive priority; measured latency and errors slow requests instead of allowing a backlog. Actual rates still require a real-car test.
+
+This build configures the adapter and sends only read-only Mode 01 diagnostics. It does not clear faults, control actuators, query the VIN, or save a trip.
+Current Mode 01 replies fit a single CAN frame; arbitrary ISO-TP multi-frame responses and VIN reconstruction are deferred.
+Read [Architecture](architecture.md#current-read-only-obd-engine) for the separation between transport, parser, session, and UI.
 
 ## Using the simulator
 
@@ -148,11 +169,12 @@ These checks validate documentation formatting separately from Android checks.
 
 ## Validation still required
 
-The RX8-002 foundation is complete with the user-reported successful simulator test and confirmed Android 16 version. The paired-only adapter list failed; in-app discovery and connection need a new device test.
+The RX8-002 foundation is complete, and the user has confirmed a successful Bluetooth connection after the discovery fix. OBD acquisition still needs its first real-car test.
 
 - [RX8-001](https://github.com/gonibix23/rx8-telemetry-android/issues/1): test the real adapter and RX-8, including ECU communication, supported PIDs, VIN availability, stability, and reconnection.
 - [RX8-003](https://github.com/gonibix23/rx8-telemetry-android/issues/3): validate scan and connection permissions, nearby discovery, pairing, connection, cancellation, disconnection, and manual reconnection with the actual adapter.
-- Later issues: implement and validate OBD acquisition, vehicle identity, persistence, trip recording, and API preparation.
+- [RX8-004](https://github.com/gonibix23/rx8-telemetry-android/issues/4): validate ELM initialization, detected protocol, capabilities, actual values, observed rate, and failure recovery.
+- Later issues: implement and validate vehicle identity, persistence, trip recording, and API preparation.
 
-Keep issues open while required evidence is missing. A software-only transport PR uses `Refs #3`; it does not close RX8-001 or establish adapter compatibility.
+Keep issues open while required evidence is missing. The software OBD PR uses `Refs #4`; it does not close RX8-001 or establish ECU compatibility.
 There are no published APK releases.

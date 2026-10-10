@@ -6,6 +6,11 @@ import com.gonibix.rx8.bluetooth.AdapterConnection
 import com.gonibix.rx8.bluetooth.AdapterDevice
 import com.gonibix.rx8.bluetooth.BluetoothAvailability
 import com.gonibix.rx8.bluetooth.BluetoothGateway
+import com.gonibix.rx8.obd.Elm327Session
+import com.gonibix.rx8.obd.ObdPhase
+import com.gonibix.rx8.obd.ObdReadingStatus
+import com.gonibix.rx8.obd.ObdSessionFactory
+import com.gonibix.rx8.obd.ObdSessionSnapshot
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -33,12 +38,14 @@ data class BluetoothConnectionUiState(
     val isScanning: Boolean = false,
     val hasScanned: Boolean = false,
     val discoveryMessage: String? = null,
+    val obd: ObdSessionSnapshot = ObdSessionSnapshot(),
 )
 
-/** Owns one manually initiated adapter link and bounded discovery. It sends no OBD requests. */
+/** Owns one adapter link; read-only OBD acquisition starts only on explicit user action. */
 class BluetoothConnectionViewModel(
     private val gateway: BluetoothGateway,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
+    private val obdSessionFactory: ObdSessionFactory = ObdSessionFactory { Elm327Session(it) },
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(BluetoothConnectionUiState())
     val uiState: StateFlow<BluetoothConnectionUiState> = mutableState.asStateFlow()
@@ -49,6 +56,7 @@ class BluetoothConnectionViewModel(
     private var generation = 0L
     private var scanJob: Job? = null
     private var scanGeneration = 0L
+    private var obdJob: Job? = null
     private var paired = emptyList<AdapterDevice>()
     private val discovered = linkedMapOf<String, AdapterDevice>()
 
@@ -209,7 +217,12 @@ class BluetoothConnectionViewModel(
     fun selectDevice(device: AdapterDevice) {
         if (mutableState.value.phase != BluetoothConnectionPhase.DISCONNECTED) return
         val listed = mutableState.value.devices.firstOrNull { it.key() == device.key() } ?: return
-        mutableState.value = mutableState.value.copy(selectedDevice = listed, message = null)
+        val old = mutableState.value
+        mutableState.value = old.copy(
+            selectedDevice = listed,
+            message = null,
+            obd = if (listed.address.sameAddress(old.selectedDevice?.address)) old.obd else ObdSessionSnapshot(),
+        )
     }
 
     fun connect() {
@@ -242,6 +255,7 @@ class BluetoothConnectionViewModel(
                 mutableState.value = mutableState.value.copy(
                     phase = BluetoothConnectionPhase.CONNECTED,
                     message = null,
+                    obd = ObdSessionSnapshot(),
                 )
             } catch (_: TimeoutCancellationException) {
                 failCurrentSession(sessionGeneration, "Connection timed out. Disconnect Car Scanner, check the adapter, and reconnect manually.")
@@ -267,6 +281,56 @@ class BluetoothConnectionViewModel(
             phase = BluetoothConnectionPhase.DISCONNECTED,
             message = null,
         )
+    }
+
+    fun startObd() {
+        val current = mutableState.value
+        val ownedConnection = connection ?: return
+        if (!current.isForeground || current.phase != BluetoothConnectionPhase.CONNECTED || obdJob?.isActive == true) return
+        val sessionGeneration = generation
+        mutableState.value = current.copy(
+            message = null,
+            obd = ObdSessionSnapshot(phase = ObdPhase.INITIALIZING, statusMessage = "Preparing the adapter…"),
+        )
+        obdJob = viewModelScope.launch(dispatcher) {
+            try {
+                obdSessionFactory.create(ownedConnection).run { snapshot ->
+                    if (sessionGeneration == generation && connection === ownedConnection && mutableState.value.isForeground) {
+                        mutableState.value = mutableState.value.copy(obd = snapshot)
+                    }
+                }
+                if (sessionGeneration == generation) {
+                    endSession()
+                    mutableState.value = mutableState.value.copy(phase = BluetoothConnectionPhase.DISCONNECTED)
+                }
+            } catch (cancelled: CancellationException) {
+                if (sessionGeneration == generation) {
+                    endSession()
+                    mutableState.value = mutableState.value.copy(phase = BluetoothConnectionPhase.DISCONNECTED)
+                }
+                throw cancelled
+            } catch (_: SecurityException) {
+                if (sessionGeneration == generation) permissionRevoked()
+            } catch (_: Exception) {
+                if (sessionGeneration == generation) {
+                    val last = mutableState.value.obd
+                    endSession()
+                    mutableState.value = mutableState.value.copy(
+                        phase = BluetoothConnectionPhase.DISCONNECTED,
+                        obd = last.copy(
+                            phase = ObdPhase.ERROR,
+                            statusMessage = if (last.phase == ObdPhase.ERROR) last.statusMessage else
+                                "Readings stopped. Check the adapter and ignition, then reconnect.",
+                            readings = last.readings.map {
+                                if (it.status == ObdReadingStatus.VALID) it.copy(status = ObdReadingStatus.STALE) else it
+                            },
+                        ),
+                    )
+                }
+            } finally {
+                if (sessionGeneration == generation) obdJob = null
+            }
+        }
     }
 
     fun onDeviceDisconnected(address: String) {
@@ -297,7 +361,7 @@ class BluetoothConnectionViewModel(
         val selected = sorted.firstOrNull { it.address.sameAddress(old.selectedDevice?.address) }
         val removed = old.selectedDevice != null && selected == null
         if (removed) endSession()
-        mutableState.value = old.copy(
+        mutableState.value = mutableState.value.copy(
             devices = sorted,
             selectedDevice = selected,
             phase = if (removed) BluetoothConnectionPhase.DISCONNECTED else old.phase,
@@ -347,11 +411,26 @@ class BluetoothConnectionViewModel(
 
     private fun endSession() {
         generation++
+        obdJob?.cancel()
+        obdJob = null
         attempt?.cancel()
         attempt = null
         connection?.closeSafely()
         connection = null
         sessionAddress = null
+        val last = mutableState.value.obd
+        if (last.phase != ObdPhase.IDLE) {
+            mutableState.value = mutableState.value.copy(
+                obd = last.copy(
+                    phase = if (last.phase == ObdPhase.ERROR) ObdPhase.ERROR else ObdPhase.STOPPED,
+                    statusMessage = if (last.phase == ObdPhase.ERROR) last.statusMessage else
+                        "Readings stopped. Reconnect to read from the car again.",
+                    readings = last.readings.map {
+                        if (it.status == ObdReadingStatus.VALID) it.copy(status = ObdReadingStatus.STALE) else it
+                    },
+                ),
+            )
+        }
     }
 
     override fun onCleared() {

@@ -22,6 +22,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import com.gonibix.rx8.bluetooth.AdapterDevice
 import com.gonibix.rx8.bluetooth.BluetoothAvailability
+import com.gonibix.rx8.obd.ObdPhase
+import com.gonibix.rx8.obd.ObdSessionSnapshot
 import com.gonibix.rx8.ui.theme.Rx8Theme
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -304,6 +306,75 @@ class BluetoothConnectionScreenTest {
         compose.onNodeWithTag("open_location_settings").performScrollTo().performClick()
         compose.onNodeWithTag("connect_adapter").assertIsEnabled()
         compose.runOnIdle { assertEquals(1, locationSettings) }
+    }
+
+
+    @Test
+    fun bluetoothConnectionRequiresAnExplicitStartForObdReadings() {
+        val state = mutableStateOf(
+            BluetoothConnectionUiState(
+                availability = BluetoothAvailability.READY,
+                phase = BluetoothConnectionPhase.CONNECTED,
+                isForeground = true,
+            ),
+        )
+        var starts = 0
+        compose.setContent {
+            Rx8Theme {
+                Surface(
+                    color = MaterialTheme.colorScheme.background,
+                    contentColor = MaterialTheme.colorScheme.onBackground,
+                ) {
+                    BluetoothConnectionScreen(
+                        state = state.value,
+                        onRefresh = {},
+                        onRequestPermission = {},
+                        onOpenBluetoothSettings = {},
+                        onOpenAppSettings = {},
+                        onSelectDevice = {},
+                        onConnect = {},
+                        onDisconnect = {},
+                        onScan = {},
+                        onStopScan = {},
+                        onOpenLocationSettings = {},
+                        onStartObd = {
+                            starts++
+                            state.value = state.value.copy(
+                                obd = ObdSessionSnapshot(
+                                    phase = ObdPhase.INITIALIZING,
+                                    statusMessage = "Preparing the adapter.",
+                                ),
+                            )
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+        }
+        compose.onNodeWithTag("ecu_status").assertTextEquals("ECU not checked")
+        compose.onNodeWithTag("obd_session_status").assertDoesNotExist()
+        compose.onNodeWithTag("start_obd").assertIsEnabled()
+        compose.runOnIdle { assertEquals(0, starts) }
+        compose.onNodeWithTag("start_obd").performScrollTo().performClick()
+        compose.onNodeWithTag("obd_session_status").assertTextEquals("Preparing the adapter")
+        compose.onNodeWithTag("start_obd").assertDoesNotExist()
+        compose.onNodeWithTag("disconnect_adapter").assertIsEnabled()
+        compose.runOnIdle {
+            assertEquals(1, starts)
+            state.value = state.value.copy(
+                obd = ObdSessionSnapshot(phase = ObdPhase.DISCOVERING, statusMessage = "Checking the ECU."),
+            )
+        }
+        compose.onNodeWithTag("obd_session_status").assertTextEquals("Finding protocol and ECU capabilities")
+        compose.onNodeWithTag("ecu_status").assertTextEquals("ECU check in progress")
+        compose.runOnIdle {
+            state.value = state.value.copy(
+                obd = ObdSessionSnapshot(phase = ObdPhase.ERROR, statusMessage = "The ECU did not respond."),
+            )
+        }
+        compose.onNodeWithTag("obd_session_status").assertTextEquals("Unable to continue reading")
+        compose.onNodeWithTag("obd_session_message").assertTextEquals("The ECU did not respond.")
+        compose.onNodeWithTag("start_obd").assertIsEnabled()
     }
 
 

@@ -2,8 +2,8 @@
 
 Current status: the simulator foundation was merged in [PR #12](https://github.com/gonibix23/rx8-telemetry-android/pull/12) after the user reported a successful app test on October 10, 2026.
 The user confirmed that the Samsung A53 runs Android 16, completing RX8-002. The paired-only Bluetooth build failed to list the adapter.
-Car Scanner reportedly finds OBDII through in-app search with plain Bluetooth selected. RX8-003 adds Classic discovery to address that failure.
-Secure SPP and ECU communication still require hardware validation in this app.
+Car Scanner reportedly finds OBDII through in-app search with plain Bluetooth selected. After the discovery fix, the user confirmed the app's Bluetooth connection works, and [PR #13](https://github.com/gonibix23/rx8-telemetry-android/pull/13) is merged.
+RX8-004 now adds the first read-only OBD engine and a live panel for verifying six standard parameters. ECU communication and detailed transport behavior still require device testing.
 
 ## Milestones and issues
 
@@ -21,23 +21,23 @@ Secure SPP and ECU communication still require hardware validation in this app.
 
 [Project issues](https://github.com/gonibix23/rx8-telemetry-android/issues) and [milestones](https://github.com/gonibix23/rx8-telemetry-android/milestones) are the operational tracker.
 RX8-xxx codes remain stable even if an issue number changes.
-RX8-003 can develop against the reported Classic Bluetooth setting, but physical RX8-001 evidence is still required before claiming compatibility or completing dependent hardware criteria.
-Actual connection failures constrain RX8-003 and RX8-004.
+The reported successful connection allows RX8-004 software development to proceed. RX8-003 stays open for remaining device-specific scenarios, while RX8-001 tracks ECU support and sustained behavior.
 
 ## Repository status
 
 - Initial documentation, issue forms, and PR template.
 - Android foundation with deterministic simulation in normal, timeout, and missing-data modes; foreground-only sampling.
-- Bounded Classic discovery, paired and nearby device selection with names and MAC addresses, separate scan/connection permissions, secure SPP connection, cancellation, and manual reconnection. No BLE transport or ECU queries.
+- Bounded Classic discovery, paired and nearby device selection with names and MAC addresses, separate scan/connection permissions, secure SPP connection, cancellation, and manual reconnection. No BLE transport.
+- User-started read-only OBD initialization, protocol and supported-PID discovery, six standard decoders, and per-ECU live values with explicit error and stale states. The dedicated dashboard/favorites work remains RX8-006.
 - Android build, unit-test, lint, and Markdown check commands are documented in [Development](development.md). Record actual check results in each PR.
 - Squash merging and automatic deletion of merged branches are enabled.
 - Main branch protection is enabled: pull requests, passing Documentation checks on an up-to-date branch, and resolved review conversations are required, including for administrators. Force-push and branch deletion are disabled. No additional reviewer approval is required for solo maintenance.
-- Debug APK assembly is part of the development workflow. The simulator works on the A53 running Android 16 according to the user; the new discovery workflow awaits testing after the paired-only list failed. No backend, deployment, published APK release, or GitHub Projects board has been created.
+- Debug APK assembly and delivery to a configured local folder are part of the development workflow. The simulator and Bluetooth connection work on the A53 running Android 16 according to the user. No backend, deployment, published APK release, or GitHub Projects board has been created.
 
 ## Pending decisions
 
-- In-app discovery, pairing, and detailed adapter validation on the A53 running Android 16. The minimum SDK is 26; compile and target SDK are 36.
-- Actual transport and protocol detected.
+- Detailed interruption, permission, and reconnection validation on the A53 running Android 16. The minimum SDK is 26; compile and target SDK are 36.
+- Actual ECU protocol and compatibility with the adapter's ELM command implementation.
 - Supported PIDs and sustained sampling rate with this adapter.
 - Local retention policy and limits measured with real data.
 - Authentication, hosting, and database engine for the future server.
@@ -45,6 +45,6 @@ Actual connection failures constrain RX8-003 and RX8-004.
 
 ## Next verifiable outcome
 
-Find OBDII with Scan nearby on the A53 running Android 16, connect through Android's pairing prompt if required, then exercise the [Bluetooth connection checklist](hardware-validation.md#bluetooth-transport-checklist-rx8-003).
-A successful socket connection proves only the phone-to-adapter link. ECU requests and PID/VIN validation require the later OBD implementation or an appropriate diagnostic tool under RX8-001.
+Connect OBDII on the A53, select Read live data with the vehicle stationary and ignition on, and record the detected protocol and actual RPM, speed, and coolant values or explicit errors.
+Follow the [hardware checklist](hardware-validation.md) for sustained readings, interruptions, and manual reconnection. VIN retrieval, permanent vehicle identity, and saved trips follow in later increments.
 No backend is required.

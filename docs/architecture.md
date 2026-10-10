@@ -2,22 +2,22 @@
 
 ## Status
 
-The app contains a deterministic simulator and provisional Bluetooth Classic/SPP transport with bounded in-app discovery.
+The app contains a deterministic simulator, Bluetooth Classic/SPP transport with bounded discovery, and a read-only OBD acquisition engine.
 The Bluetooth screen combines paired devices and nearby discoveries, handles scan and connection permissions separately, and opens a secure RFCOMM socket.
 Device names and MAC addresses are shown locally so the user can identify the OBDII adapter reported in Car Scanner.
-It sends no application bytes or ELM/OBD requests and keeps **Bluetooth connection** separate from **ECU communication: not checked**.
+The connection starts without OBD commands. An explicit Read live data action initializes the adapter and starts Mode 01 acquisition, keeping Bluetooth status separate from ECU communication.
 
 Both screens are foreground-only: simulation pauses when its tab is hidden, and leaving the Adapter tab or app closes the connection and requires manual reconnection.
 The user reported the simulator app worked after testing on October 10, 2026 and confirmed the Samsung A53 runs Android 16.
 The paired-only Bluetooth build failed to list the adapter, which the user finds by searching in Car Scanner with plain Bluetooth selected.
-Discovery and secure SPP still require validation in this app; no ECU result has been reported.
+The user subsequently confirmed that the Bluetooth connection works; PR #13 is merged. No ECU result or detailed lifecycle test has been reported.
 
 The diagram and later storage, identity, recording, and synchronization sections describe the **target MVP architecture**.
-Actual OBD queries, vehicle identity, saved trips, Room/DataStore storage, and API integration remain planned.
+The current engine provides six standard Mode 01 decoders and capability discovery. Vehicle identity, saved trips, Room/DataStore storage, and API integration remain planned.
 See [Development](development.md) for setup and current behavior.
 
 Target: European-market 2004 RX-8 with 231 PS, Samsung A53 running Android 16, and iLC B0BDRHRR22 adapter.
-Secure Classic/SPP is an initial implementation assumption; RX8-001 must establish physical compatibility.
+Secure Classic/SPP has a successful user-reported connection. RX8-001 must establish actual ECU compatibility and sustained behavior.
 
 ## Components
 
@@ -53,26 +53,34 @@ It does not implement a BLE transport or fallback to an unverified connection me
 Connection attempts run away from the UI thread with a 15-second timeout for bonded devices or 45 seconds for unbonded devices to allow Android's pairing prompt.
 Each discovery inquiry is limited to 15 seconds, after allowing up to two seconds to stop an existing inquiry.
 Byte reads and writes are bounded and cancellable; closing the socket cancels blocked operations.
-These byte operations prepare for RX8-004. The connection screen does not call them to send ELM initialization or ECU commands.
+The OBD engine uses these operations only after the user selects Read live data. Connecting alone sends no application commands.
 Android still performs the protocol handshakes needed to establish the Bluetooth connection.
 
-No automatic reconnection, background service, or ECU heartbeat is implemented.
+No automatic reconnection or background service is implemented. While live readings are active, command deadlines detect missing replies.
 The user reconnects manually, and a connected socket does not establish adapter command compatibility or sensor availability.
 This follows Android's [paired-device](https://developer.android.com/develop/connectivity/bluetooth/find-bluetooth-devices) and [RFCOMM client](https://developer.android.com/develop/connectivity/bluetooth/connect-bluetooth-devices) guidance.
 
-### Planned OBD engine
+### Current read-only OBD engine
 
-RX8-004 will:
+RX8-004 separates pure parsing in `:core:telemetry` from the session scheduler in `:app`:
 
-- Initialize the adapter and discover the protocol and capabilities.
-- Serialize requests through a queue with timeouts and bounded retries.
-- Reassemble fragments and preserve the source ECU when multiple modules respond.
-- Distinguish adapter errors, missing responses, and unsupported parameters.
-- Prioritize visible/selected sensors and adjust polling intervals to latency.
-- Avoid repeatedly querying parameters reported as unsupported.
+- Reset and configure the ELM interface, use automatic vehicle-protocol selection, and read the detected protocol. Configuration replies must be valid before acquisition continues.
+- Assemble Bluetooth byte fragments into complete prompt-terminated replies. A single serialized exchange owns the connection; bounded buffers and whole-command deadlines prevent a slow or broken adapter from hanging indefinitely.
+- Close the link after a missing prompt or transport failure so a late reply cannot be treated as the answer to a new command. Retry only complete, recoverable replies within a bounded policy.
+- Read Mode 01 supported-PID bitmaps and retain each ECU's capabilities. Request only the six implemented metrics reported by at least one responding ECU.
+- Parse CAN 11/29-bit single-frame and supported legacy header formats, keeping ECU source identifiers. Unexpected layouts, wrong PIDs, and malformed data fail visibly rather than being interpreted as values.
+- Schedule RPM and speed more often than slower parameters, with serial requests and latency/error backoff. Report the observed response rate without promising a fixed sampling frequency.
+- Preserve timestamps and units, distinguish missing/unsupported/error results, and mark old valid values stale. Disconnecting or leaving Adapter cancels acquisition and marks retained values stale.
+
+The first decoders cover PIDs `04`, `05`, `0C`, `0D`, `0F`, and `11`: load, coolant temperature, RPM, speed, intake temperature, and throttle position.
+Capability blocks are discovered separately from decoding; a reported PID is not a promise that this build displays that parameter.
+All current requests fit a single CAN data frame. Reassembling Bluetooth fragments does not implement general ISO-TP multi-frame messages; VIN retrieval remains RX8-005 work.
+The live panel displays separate ECU groups when several modules respond; it does not silently combine their values or identify an ECU as the engine controller based only on its address.
+The engine uses read-only diagnostic requests and adapter configuration. It sends no fault-clearing, actuator, or ECU programming commands.
 
 Do not commit to a per-sensor sampling rate before measuring it. Sequential readings are not simultaneous: each has its own timestamp.
 The adapter's identification string alone does not prove its authenticity or all of its capabilities.
+Command and response layouts follow the [ELM327 data sheet](https://www.elmelectronics.com/wp-content/uploads/2016/07/ELM327DS.pdf). Adapter clones and the actual RX-8 still require hardware testing.
 
 ## Local model
 

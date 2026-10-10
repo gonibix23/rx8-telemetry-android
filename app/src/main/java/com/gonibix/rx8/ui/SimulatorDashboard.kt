@@ -115,7 +115,7 @@ fun SimulatorDashboard(
                             fontWeight = FontWeight.SemiBold,
                         )
                         Text(
-                            "Real OBD connection and trip recording are planned. This demo pauses in the background; nothing is saved or uploaded.",
+                            "Use the Adapter tab for real OBD readings. This simulation pauses in the background; nothing is saved or uploaded. Trip recording is planned.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MutedColor,
                         )

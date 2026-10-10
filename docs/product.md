@@ -7,7 +7,8 @@ User's adapter: iLC OBD2 Bluetooth, ASIN B0BDRHRR22.
 Selected priority: live data and trip recording. Prepare for a future API without developing it yet.
 The user reported a successful simulator app test on October 10, 2026. The paired-only Bluetooth build failed to list the adapter.
 Car Scanner reportedly finds OBDII and its MAC address through in-app search with plain Bluetooth selected.
-The app now supports Classic discovery; its connection and ECU compatibility remain unverified on real hardware.
+The user subsequently confirmed that the app's Bluetooth connection works. Detailed transport checks and ECU compatibility remain unverified.
+The 0.4.0-dev increment adds an explicit Read live data action, six standard Mode 01 decoders, supported-PID discovery, and per-ECU readings; actual values still need testing with the RX-8.
 
 ## Expected MVP outcome
 

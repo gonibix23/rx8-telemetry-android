@@ -168,6 +168,7 @@ class MainActivity : ComponentActivity() {
                                     onSelectDevice = bluetoothViewModel::selectDevice,
                                     onConnect = bluetoothViewModel::connect,
                                     onDisconnect = bluetoothViewModel::disconnect,
+                                    onStartObd = bluetoothViewModel::startObd,
                                     onScan = ::requestDiscovery,
                                     onStopScan = bluetoothViewModel::stopDiscovery,
                                     onOpenLocationSettings = {
