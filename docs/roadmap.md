@@ -1,6 +1,6 @@
 # Development roadmap
 
-Initial status: planning. No adapter capability has been physically validated yet.
+Current status: the initial Android simulator foundation is implemented. RX8-002 remains open pending installation and validation on the Samsung A53. No adapter capability has been physically validated yet.
 
 ## Milestones and issues
 
@@ -23,14 +23,15 @@ RX8-001 and RX8-002 can progress in parallel. Actual connection failures constra
 ## Repository status
 
 - Initial documentation, issue forms, and PR template.
-- Automated Markdown checks; no Android build yet.
+- Android foundation with deterministic simulation in normal, timeout, and missing-data modes; foreground-only sampling.
+- Android build, unit-test, lint, and Markdown check commands are documented in [Development](development.md). Record actual check results in each PR.
 - Squash merging and automatic deletion of merged branches are enabled.
 - Main branch protection is enabled: pull requests, passing Documentation checks on an up-to-date branch, and resolved review conversations are required, including for administrators. Force-push and branch deletion are disabled. No additional reviewer approval is required for solo maintenance.
-- No APK, backend, deployment, release, or GitHub Projects board has been created.
+- Debug APK assembly is part of the development workflow. A53 installation is pending; no backend, deployment, published APK release, or GitHub Projects board has been created.
 
 ## Pending decisions
 
-- Android version on the A53 and minimum supported version.
+- Android version on the A53 and device validation. The initial minimum SDK is 26; compile and target SDK are 36.
 - Actual transport and protocol detected.
 - Supported PIDs and sustained sampling rate with this adapter.
 - Local retention policy and limits measured with real data.
@@ -39,5 +40,7 @@ RX8-001 and RX8-002 can progress in parallel. Actual connection failures constra
 
 ## Next verifiable outcome
 
-A short documented test identifies the Android version, confirms ECU communication, records capabilities, and obtains reliable readings.
-This test does not require a backend.
+Build and run the documented software checks, then install the simulator on the Samsung A53 and record its Android version and behavior.
+RX8-002 remains open until this device check is complete.
+Separately, RX8-001 requires a short documented test that confirms ECU communication, records capabilities, and obtains reliable readings from the actual car.
+Neither validation requires a backend.
