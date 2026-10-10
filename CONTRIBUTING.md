@@ -85,7 +85,7 @@ Do not add tests that merely repeat the implementation.
 
 A task is done when it meets its criteria, preserves existing history, documents its behavior, has sufficient verification, and its changes are merged.
 Changes that depend on the vehicle must explicitly state if they were tested only with a simulator.
-RX8-002 remains open while installation and the human device check on the Samsung A53 are pending; a software-only foundation PR uses `Refs #2`.
+The user reported a successful app test on October 10, 2026. RX8-002 remains open until the A53 Android version is recorded; PR #12 is merged. Use `Refs #N` while any criteria remain pending.
 Actual adapter and ECU compatibility is tracked separately in RX8-001.
 
 ## Decisions and releases

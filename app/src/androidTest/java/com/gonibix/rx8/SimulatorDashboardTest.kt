@@ -20,6 +20,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -28,6 +29,11 @@ import org.junit.runner.RunWith
 class SimulatorDashboardTest {
     @get:Rule
     val compose = createAndroidComposeRule<MainActivity>()
+
+    @Before
+    fun openSimulator() {
+        compose.onNodeWithTag("simulator_tab").performClick()
+    }
 
     @Test
     fun startsDisconnectedAndIdentifiesSyntheticData() {
@@ -108,7 +114,27 @@ class SimulatorDashboardTest {
         compose.onNodeWithTag("status_engine_rpm").assertTextEquals("Simulated")
     }
 
-    private fun captureDashboard() {
+    @Test
+    fun adapterAndSimulatorStaySeparate() {
+        lateinit var viewModel: SimulatorViewModel
+        compose.activityRule.scenario.onActivity { activity ->
+            viewModel = ViewModelProvider(activity)[SimulatorViewModel::class.java]
+        }
+        compose.onNodeWithTag("toggle_simulator").performClick()
+        compose.onNodeWithTag("adapter_tab").performClick()
+        compose.onNodeWithTag("simulation_status").assertDoesNotExist()
+        compose.onNodeWithTag("reading_engine_rpm").assertDoesNotExist()
+        val pausedAt = viewModel.uiState.value.elapsedMs
+        captureDashboard("connection")
+        SystemClock.sleep(1_250L)
+        assertEquals("The simulator must pause on the Adapter tab", pausedAt, viewModel.uiState.value.elapsedMs)
+        compose.onNodeWithTag("simulator_tab").performClick()
+        compose.onNodeWithTag("simulation_status").assertTextEquals("Simulator running")
+        compose.waitUntil(timeoutMillis = 5_000L) { viewModel.uiState.value.elapsedMs > pausedAt }
+    }
+
+    private fun captureDashboard(name: String = "dashboard") {
+        require(name == "dashboard" || name == "connection")
         compose.waitForIdle()
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val directory = File(instrumentation.targetContext.getExternalFilesDir(null), "screenshots")
@@ -117,25 +143,25 @@ class SimulatorDashboardTest {
         assertNotNull("The emulator must provide a dashboard screenshot", screenshot)
         val captured = requireNotNull(screenshot)
         try {
-            File(directory, "dashboard.png").outputStream().use { output ->
+            File(directory, "$name.png").outputStream().use { output ->
                 assertTrue(captured.compress(Bitmap.CompressFormat.PNG, 100, output))
             }
             // Preserve the artifact before Gradle uninstalls the app and removes its files.
             // Both paths are fixed, test-owned locations; no external input enters the command.
             ParcelFileDescriptor.AutoCloseInputStream(
                 instrumentation.uiAutomation.executeShellCommand(
-                    "cp /sdcard/Android/data/com.gonibix.rx8/files/screenshots/dashboard.png " +
-                        "/data/local/tmp/rx8-dashboard.png",
+                    "cp /sdcard/Android/data/com.gonibix.rx8/files/screenshots/$name.png " +
+                        "/data/local/tmp/rx8-$name.png",
                 ),
             ).use { it.readBytes() }
             val copiedPng = ParcelFileDescriptor.AutoCloseInputStream(
                 instrumentation.uiAutomation.executeShellCommand(
-                    "cat /data/local/tmp/rx8-dashboard.png",
+                    "cat /data/local/tmp/rx8-$name.png",
                 ),
             ).use { it.readBytes() }
             assertArrayEquals(
                 "The dashboard screenshot must survive app teardown unchanged",
-                File(directory, "dashboard.png").readBytes(),
+                File(directory, "$name.png").readBytes(),
                 copiedPng,
             )
         } finally {
