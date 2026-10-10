@@ -16,6 +16,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -121,16 +122,21 @@ class SimulatorDashboardTest {
             }
             // Preserve the artifact before Gradle uninstalls the app and removes its files.
             // Both paths are fixed, test-owned locations; no external input enters the command.
-            val copyResult = ParcelFileDescriptor.AutoCloseInputStream(
+            ParcelFileDescriptor.AutoCloseInputStream(
                 instrumentation.uiAutomation.executeShellCommand(
                     "cp /sdcard/Android/data/com.gonibix.rx8/files/screenshots/dashboard.png " +
-                        "/data/local/tmp/rx8-dashboard.png && echo rx8_screenshot_copied",
+                        "/data/local/tmp/rx8-dashboard.png",
                 ),
-            ).bufferedReader().use { it.readText() }
-            assertEquals(
-                "The dashboard screenshot must survive app teardown",
-                "rx8_screenshot_copied",
-                copyResult.trim(),
+            ).use { it.readBytes() }
+            val copiedPng = ParcelFileDescriptor.AutoCloseInputStream(
+                instrumentation.uiAutomation.executeShellCommand(
+                    "cat /data/local/tmp/rx8-dashboard.png",
+                ),
+            ).use { it.readBytes() }
+            assertArrayEquals(
+                "The dashboard screenshot must survive app teardown unchanged",
+                File(directory, "dashboard.png").readBytes(),
+                copiedPng,
             )
         } finally {
             captured.recycle()
