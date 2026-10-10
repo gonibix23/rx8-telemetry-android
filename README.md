@@ -2,21 +2,29 @@
 
 Android app in development for viewing live vehicle data and recording trips without an Internet connection.
 
-**Current implementation: an Android simulator foundation. Real Bluetooth/OBD acquisition, saved trips, and API integration are not implemented yet.**
+**Current implementation: a simulator and a provisional Bluetooth Classic connection screen with in-app device discovery. ECU/OBD queries, saved trips, and API integration are not implemented yet.**
 
 The simulator uses deterministic synthetic readings and supports normal operation, timeouts, and missing data.
 Connect, disconnect, and reset controls make demonstrations repeatable.
-Sampling runs only while the app is in the foreground; this foundation does not record in the background.
+Sampling runs only while the Simulator tab is visible in the foreground; this foundation does not record in the background.
 
-Installation on the Samsung A53 and physical compatibility with the car remain unverified.
+The Bluetooth screen searches for nearby devices, displays names and MAC addresses, and allows selection of paired or newly discovered Classic devices.
+It attempts a secure RFCOMM/SPP connection; Android can request pairing during connection.
+It sends no application bytes or ELM/OBD commands and distinguishes Bluetooth connection from ECU communication, which is not checked.
+Connections close when leaving the Adapter tab or putting the app in the background; reconnect manually when ready.
+
+On October 10, 2026, the user reported that the app worked after testing the simulator foundation.
+The user confirmed that the Samsung A53 runs Android 16. The paired-only Bluetooth build failed to list the adapter.
+The user reports that Car Scanner finds it through an in-app search with plain Bluetooth selected, displaying OBDII and its MAC address.
+The updated discovery workflow and secure SPP connection still need testing on the actual adapter; ECU communication remains unverified.
 There are no published APK releases or deployed APIs.
 
 ## Reference vehicle and equipment
 
 - 2004 Mazda RX-8, 231 metric horsepower (CV), European market.
-- Samsung Galaxy A53; Android version still to be checked.
+- Samsung Galaxy A53 running Android 16, confirmed by the user.
 - iLC OBD2 Bluetooth adapter, ASIN B0BDRHRR22. [Selected product](https://www.amazon.es/dp/B0BDRHRR22).
-- Classic Bluetooth and ELM327-compatible commands are the initial assumptions; both must be checked with the actual adapter.
+- Plain Bluetooth is the user-reported Car Scanner setting. Secure SPP and ELM327-compatible commands still need checking with the actual adapter.
 
 The goal is to display **all available and verified data** from this vehicle. OBD2 does not guarantee access to every module or sensor.
 A working simulator does not prove that the adapter or car supports any particular parameter.
@@ -30,7 +38,7 @@ A working simulator does not prove that the adapter or car supports any particul
 - Recording with the screen locked, managed as an explicit session.
 - Data models and a queue for a future API, with uploads disabled.
 
-These features describe the target MVP, not the capabilities of the current simulator.
+These features describe the target MVP; opening a Bluetooth socket does not yet acquire vehicle data.
 Fault diagnostics, Mazda-specific sensors, GPS/maps, and a server are deferred to later phases.
 The first version does not include actuator control, ECU reprogramming, or clearing fault codes.
 
@@ -39,7 +47,7 @@ The first version does not include actuator control, ECU reprogramming, or clear
 Open the repository in Android Studio with JDK 17 or 21 and Android SDK Platform 36.
 The project contains the Android `:app` module and the pure Kotlin `:core:telemetry` module.
 
-See [Development](docs/development.md) for pinned tool versions, SDK setup, simulator behavior, build commands, and pending device checks.
+See [Development](docs/development.md) for pinned tool versions, SDK setup, Bluetooth and simulator behavior, build commands, and pending device checks.
 Build and test results belong in the relevant PR; setup instructions alone are not evidence that checks passed.
 
 ## Documentation
@@ -64,7 +72,8 @@ Build and test results belong in the relevant PR; setup instructions alone are n
 - [Pull requests](https://github.com/gonibix23/rx8-telemetry-android/pulls)
 
 Each issue has a scope and acceptance criteria. Implementation changes go through a PR linked to an issue.
-[RX8-002](https://github.com/gonibix23/rx8-telemetry-android/issues/2) remains open until its Samsung A53 installation check is completed.
+[RX8-002](https://github.com/gonibix23/rx8-telemetry-android/issues/2) records the completed foundation and successful user-reported simulator test on the Samsung A53 running Android 16.
+[RX8-003](https://github.com/gonibix23/rx8-telemetry-android/issues/3) adds provisional Bluetooth transport and still requires real-adapter validation.
 [RX8-001](https://github.com/gonibix23/rx8-telemetry-android/issues/1) tracks separate validation with the real car and adapter.
 
 ## Documentation checks

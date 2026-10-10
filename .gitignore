@@ -3,6 +3,7 @@
 .kotlin/
 **/build/
 local.properties
+apk-delivery.local.json
 *.apk
 *.aab
 *.jks

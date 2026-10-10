@@ -7,7 +7,7 @@ Write documentation, UI text, source comments, issues, PRs, and commit messages 
 ## Before you start
 
 Read the [scope](docs/product.md) and [architecture](docs/architecture.md).
-The initial priority is live data and trips for a European 2004 RX-8 with 231 metric horsepower (CV), using a Samsung A53.
+The initial priority is live data and trips for a European 2004 RX-8 with 231 metric horsepower (CV), using a Samsung A53 running Android 16.
 
 ## Issues
 
@@ -85,7 +85,7 @@ Do not add tests that merely repeat the implementation.
 
 A task is done when it meets its criteria, preserves existing history, documents its behavior, has sufficient verification, and its changes are merged.
 Changes that depend on the vehicle must explicitly state if they were tested only with a simulator.
-RX8-002 remains open while installation and the human device check on the Samsung A53 are pending; a software-only foundation PR uses `Refs #2`.
+The user reported a successful simulator test on October 10, 2026 and confirmed the Samsung A53 runs Android 16. The RX8-002 foundation is complete and PR #12 is merged. The paired-only Bluetooth build failed to list the adapter; the new in-app Classic discovery workflow needs testing. RX8-001 and RX8-003 hardware validation remain pending. Use `Refs #N` while any criteria remain pending.
 Actual adapter and ECU compatibility is tracked separately in RX8-001.
 
 ## Decisions and releases

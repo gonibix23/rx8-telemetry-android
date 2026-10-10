@@ -2,17 +2,22 @@
 
 ## Status
 
-The initial Android foundation contains a Compose `:app` module and a pure Kotlin `:core:telemetry` module.
-Its deterministic simulator supports normal operation, timeouts, and missing data, with connect, disconnect, and reset controls.
-Sampling pauses while the app is in the background; no foreground recording service is implemented yet.
+The app contains a deterministic simulator and provisional Bluetooth Classic/SPP transport with bounded in-app discovery.
+The Bluetooth screen combines paired devices and nearby discoveries, handles scan and connection permissions separately, and opens a secure RFCOMM socket.
+Device names and MAC addresses are shown locally so the user can identify the OBDII adapter reported in Car Scanner.
+It sends no application bytes or ELM/OBD requests and keeps **Bluetooth connection** separate from **ECU communication: not checked**.
 
-The remaining sections describe the **target MVP architecture**.
-Bluetooth transport, actual OBD queries, persistent vehicle identity, saved trips, Room/DataStore storage, and API synchronization remain planned.
-The simulator is not evidence of real-car compatibility, and installation on the Samsung A53 remains pending under RX8-002.
-See [Development](development.md) for setup, commands, and the current validation boundary.
+Both screens are foreground-only: simulation pauses when its tab is hidden, and leaving the Adapter tab or app closes the connection and requires manual reconnection.
+The user reported the simulator app worked after testing on October 10, 2026 and confirmed the Samsung A53 runs Android 16.
+The paired-only Bluetooth build failed to list the adapter, which the user finds by searching in Car Scanner with plain Bluetooth selected.
+Discovery and secure SPP still require validation in this app; no ECU result has been reported.
 
-Target: European-market 2004 RX-8 with 231 PS, Samsung A53, and iLC B0BDRHRR22 adapter.
-Exact compatibility will be confirmed in RX8-001.
+The diagram and later storage, identity, recording, and synchronization sections describe the **target MVP architecture**.
+Actual OBD queries, vehicle identity, saved trips, Room/DataStore storage, and API integration remain planned.
+See [Development](development.md) for setup and current behavior.
+
+Target: European-market 2004 RX-8 with 231 PS, Samsung A53 running Android 16, and iLC B0BDRHRR22 adapter.
+Secure Classic/SPP is an initial implementation assumption; RX8-001 must establish physical compatibility.
 
 ## Components
 
@@ -37,17 +42,34 @@ Components can start as packages; there is no need to create a Gradle module for
 
 ## Transport and OBD engine
 
-Bluetooth Classic RFCOMM/SPP is the initial assumption for this adapter; validate it before committing to that transport.
-BLE requires a different implementation. The transport interface exposes connections, bytes, and cancellation without interpreting sensor data.
+### Current discovery and transport
 
-The OBD engine:
+The Android transport is separate from Compose presentation and the synthetic telemetry source.
+It lists bonded devices and performs a user-started, bounded Classic inquiry. Results are merged by MAC address, without filtering by adapter name.
+Discovery stops before connecting, when cancelled, or when leaving the foreground. Scanning is unavailable during a connection.
+It attempts secure RFCOMM using the standard Serial Port Profile service UUID; Android handles pairing when the selected device is not bonded.
+It does not implement a BLE transport or fallback to an unverified connection method.
 
-- Initializes the adapter and discovers the protocol and capabilities.
-- Serializes requests through a queue with timeouts and bounded retries.
-- Reassembles fragments and preserves the source ECU when multiple modules respond.
-- Distinguishes adapter errors, missing responses, and unsupported parameters.
-- Prioritizes visible/selected sensors and adjusts polling intervals to latency.
-- Avoids repeatedly querying parameters reported as unsupported.
+Connection attempts run away from the UI thread with a 15-second timeout for bonded devices or 45 seconds for unbonded devices to allow Android's pairing prompt.
+Each discovery inquiry is limited to 15 seconds, after allowing up to two seconds to stop an existing inquiry.
+Byte reads and writes are bounded and cancellable; closing the socket cancels blocked operations.
+These byte operations prepare for RX8-004. The connection screen does not call them to send ELM initialization or ECU commands.
+Android still performs the protocol handshakes needed to establish the Bluetooth connection.
+
+No automatic reconnection, background service, or ECU heartbeat is implemented.
+The user reconnects manually, and a connected socket does not establish adapter command compatibility or sensor availability.
+This follows Android's [paired-device](https://developer.android.com/develop/connectivity/bluetooth/find-bluetooth-devices) and [RFCOMM client](https://developer.android.com/develop/connectivity/bluetooth/connect-bluetooth-devices) guidance.
+
+### Planned OBD engine
+
+RX8-004 will:
+
+- Initialize the adapter and discover the protocol and capabilities.
+- Serialize requests through a queue with timeouts and bounded retries.
+- Reassemble fragments and preserve the source ECU when multiple modules respond.
+- Distinguish adapter errors, missing responses, and unsupported parameters.
+- Prioritize visible/selected sensors and adjust polling intervals to latency.
+- Avoid repeatedly querying parameters reported as unsupported.
 
 Do not commit to a per-sensor sampling rate before measuring it. Sequential readings are not simultaneous: each has its own timestamp.
 The adapter's identification string alone does not prove its authenticity or all of its capabilities.
@@ -84,14 +106,25 @@ Import/restore has not been implemented and is not guaranteed in the MVP; JSON r
 
 ## Sessions and permissions
 
-A recording started by the user uses a connectedDevice foreground service with a notification and a stop action.
-Request BLUETOOTH_CONNECT on Android 12+ and BLUETOOTH_SCAN when discovery is needed.
-The service declares the permissions and type required by the Android version/target.
-Handle requirements for older versions separately.
+### Current connection permissions
+
+On Android 12/API 31 and later, connecting requires `BLUETOOTH_CONNECT`, and discovery also requires `BLUETOOTH_SCAN`, through Nearby devices runtime prompts.
+Scan access uses `neverForLocation`; the app does not derive physical location from scan results.
+On API 26-30, legacy `BLUETOOTH` and `BLUETOOTH_ADMIN` apply, and discovery requires foreground fine-location permission and enabled location services.
+Those legacy permissions are limited to API 30. Android 12+ does not request location permission. No GPS collection, advertising, or Internet permission is implemented.
+Android can present pairing during connection. Bluetooth and permission settings remain available for recovery.
+See Android's [Bluetooth permission guidance](https://developer.android.com/develop/connectivity/bluetooth/bt-permissions).
+
+The connection closes when the Adapter tab is hidden or the app leaves the foreground. Returning requires a manual reconnect.
+This is not screen-locked trip recording.
+
+### Planned recording sessions
+
+RX8-007 will add user-started recording with a `connectedDevice` foreground service, a notification, and a stop action.
+Declare the permissions and service type required by the Android version/target when implementing that feature.
 
 The MVP does not include GPS. WorkManager is reserved for future synchronization, not vehicle polling.
-
-Recording with the screen locked will be tested on the A53. Indefinite survival after process termination is not promised.
+Recording with the screen locked will need explicit A53 testing; indefinite survival after process termination is not promised.
 Record a gap when Bluetooth is lost; after restarting, recover persisted data and mark the unfinished session as interrupted.
 
 ## Future synchronization

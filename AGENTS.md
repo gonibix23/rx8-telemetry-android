@@ -3,9 +3,9 @@
 ## Context and scope
 
 Read README.md, docs/product.md, docs/architecture.md, and the issue before changing code.
-Initial project: European 2004 Mazda RX-8, 231 metric horsepower (CV); Samsung A53; iLC B0BDRHRR22.
+Initial project: European 2004 Mazda RX-8, 231 metric horsepower (CV); Samsung A53 running Android 16; iLC B0BDRHRR22.
 Priority: live data and local trip recording. Prepare for an API without deploying a backend.
-The repository contains an initial Android simulator foundation. Real Bluetooth/OBD acquisition, persistence, trip recording, and API integration remain planned.
+The repository contains a simulator and provisional Bluetooth Classic/SPP transport with in-app discovery. OBD acquisition, persistence, trip recording, and API integration remain planned.
 Read docs/development.md for the pinned toolchain and current build commands. Never claim that a check passed or that hardware was validated without evidence.
 
 ## Language
@@ -32,7 +32,10 @@ Use English for documentation, source comments, UI text, issues, pull requests, 
 - Run relevant checks. For documentation: `npm ci` and `npm run lint:docs`.
 - For Android or telemetry changes on Windows: `.\gradlew.bat :core:telemetry:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug`. On macOS/Linux, use `./gradlew` with the same tasks.
 - Keep meaningful unit tests, Android lint, and debug assembly in the validation workflow. Add parser, persistence, and synchronization tests as those features are implemented.
-- Do not claim A53 installation or physical compatibility based on a build or simulator. Keep RX8-002 open until its human device check passes; RX8-001 tracks the real adapter and car.
+- The user reported a successful simulator test on October 10, 2026 and confirmed the A53 runs Android 16, completing RX8-002. The paired-only Bluetooth build failed to list the adapter. Car Scanner finds it in-app using plain Bluetooth, named OBDII with its MAC address. RX8-001 and RX8-003 still require hardware validation; do not infer successful ECU communication.
+- RX8-003 includes bounded in-app Classic discovery and selection of paired or newly discovered devices. Request CONNECT and SCAN on API 31+; use legacy Bluetooth/Admin and foreground fine location for discovery on API 26-30. Do not add BLE transport, GPS tracking, Internet access, or ECU commands to this scope.
+- Copy every APK ready for user testing with `scripts/export-test-apk.ps1`, using the ignored `apk-delivery.local.json` destination or the user's requested directory. Keep that machine-specific path outside committed files; document the version delivered.
+- A connected RFCOMM socket is not proof of ECU communication. Preserve the UI distinction, foreground-only connection policy, and manual reconnection. RX8-001 tracks physical adapter and car evidence.
 - The current simulator samples only in the foreground. Do not describe it as background trip recording.
 - Clearly state completed tests, pending tests, and limitations.
 - Do not mark an issue complete until its criteria are met.
