@@ -1,6 +1,7 @@
 package com.gonibix.rx8
 
 import android.graphics.Bitmap
+import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
@@ -118,6 +119,19 @@ class SimulatorDashboardTest {
             File(directory, "dashboard.png").outputStream().use { output ->
                 assertTrue(captured.compress(Bitmap.CompressFormat.PNG, 100, output))
             }
+            // Preserve the artifact before Gradle uninstalls the app and removes its files.
+            // Both paths are fixed, test-owned locations; no external input enters the command.
+            val copyResult = ParcelFileDescriptor.AutoCloseInputStream(
+                instrumentation.uiAutomation.executeShellCommand(
+                    "cp /sdcard/Android/data/com.gonibix.rx8/files/screenshots/dashboard.png " +
+                        "/data/local/tmp/rx8-dashboard.png && echo rx8_screenshot_copied",
+                ),
+            ).bufferedReader().use { it.readText() }
+            assertEquals(
+                "The dashboard screenshot must survive app teardown",
+                "rx8_screenshot_copied",
+                copyResult.trim(),
+            )
         } finally {
             captured.recycle()
         }

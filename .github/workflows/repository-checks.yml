@@ -42,6 +42,8 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@0b6dd653ba04f4f93bf581ec31e66cbd7dcb644d # v4
+        with:
+          cache-read-only: false
       - name: Install pinned Android SDK tools and packages
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
         env:
@@ -83,6 +85,8 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@0b6dd653ba04f4f93bf581ec31e66cbd7dcb644d # v4
+        with:
+          cache-read-only: false
       - name: Install pinned Android SDK tools and packages
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
         env:
@@ -107,7 +111,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
-          script: ./gradlew --no-daemon :app:connectedDebugAndroidTest; result=$?; adb pull /sdcard/Android/data/com.gonibix.rx8/files/screenshots ./screenshots || true; exit "$result"
+          script: mkdir -p screenshots; ./gradlew --no-daemon :app:connectedDebugAndroidTest; test_result=$?; adb pull /data/local/tmp/rx8-dashboard.png screenshots/dashboard.png; capture_result=$?; if [ "$test_result" -ne 0 ]; then exit "$test_result"; fi; exit "$capture_result"
       - name: Upload UI test results and screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
