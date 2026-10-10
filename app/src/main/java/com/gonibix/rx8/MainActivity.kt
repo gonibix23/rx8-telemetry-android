@@ -18,7 +18,6 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
@@ -43,6 +43,8 @@ import com.gonibix.rx8.bluetooth.AndroidBluetoothGateway
 import com.gonibix.rx8.connection.BluetoothConnectionScreen
 import com.gonibix.rx8.connection.BluetoothConnectionViewModel
 import com.gonibix.rx8.ui.SimulatorDashboard
+import com.gonibix.rx8.ui.theme.AccentColor
+import com.gonibix.rx8.ui.theme.MutedColor
 import com.gonibix.rx8.ui.theme.Rx8Theme
 
 class MainActivity : ComponentActivity() {
@@ -97,59 +99,66 @@ class MainActivity : ComponentActivity() {
         setContent {
             Rx8Theme {
                 var showBluetooth by rememberSaveable { mutableStateOf(true) }
-                Column(
-                    Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
-                        .safeDrawingPadding(),
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background,
+                    contentColor = MaterialTheme.colorScheme.onBackground,
                 ) {
-                    Row(Modifier.fillMaxWidth().selectableGroup()) {
-                        Tab(
-                            selected = showBluetooth,
-                            onClick = { showBluetooth = true },
-                            text = { Text("Adapter") },
-                            modifier = Modifier.weight(1f).testTag("adapter_tab"),
-                        )
-                        Tab(
-                            selected = !showBluetooth,
-                            onClick = { showBluetooth = false },
-                            text = { Text("Simulator") },
-                            modifier = Modifier.weight(1f).testTag("simulator_tab"),
-                        )
-                    }
-                    Box(Modifier.weight(1f)) {
-                        if (showBluetooth) {
-                            val state by bluetoothViewModel.uiState.collectAsStateWithLifecycle()
-                            LifecycleStartEffect(bluetoothViewModel) {
-                                bluetoothViewModel.setForeground(true)
-                                onStopOrDispose { bluetoothViewModel.setForeground(false) }
-                            }
-                            BluetoothConnectionScreen(
-                                state = state,
-                                onRefresh = bluetoothViewModel::refresh,
-                                onRequestPermission = ::requestBluetoothPermission,
-                                onOpenBluetoothSettings = {
-                                    openSettings(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
-                                },
-                                onOpenAppSettings = {
-                                    openSettings(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                        data = Uri.fromParts("package", packageName, null)
-                                    })
-                                },
-                                onSelectDevice = bluetoothViewModel::selectDevice,
-                                onConnect = bluetoothViewModel::connect,
-                                onDisconnect = bluetoothViewModel::disconnect,
+                    Column(Modifier.fillMaxSize().safeDrawingPadding()) {
+                        Row(Modifier.fillMaxWidth().selectableGroup()) {
+                            Tab(
+                                selected = showBluetooth,
+                                selectedContentColor = AccentColor,
+                                unselectedContentColor = MutedColor,
+                                onClick = { showBluetooth = true },
+                                text = { Text("Adapter") },
+                                modifier = Modifier.weight(1f).testTag("adapter_tab"),
                             )
-                        } else {
-                            val state by simulatorViewModel.uiState.collectAsStateWithLifecycle()
-                            LifecycleStartEffect(simulatorViewModel) {
-                                simulatorViewModel.setActive(true)
-                                onStopOrDispose { simulatorViewModel.setActive(false) }
-                            }
-                            SimulatorDashboard(
-                                snapshot = state,
-                                onToggleSimulation = simulatorViewModel::toggleSimulation,
-                                onReset = simulatorViewModel::resetSimulation,
-                                onScenarioSelected = simulatorViewModel::selectScenario,
+                            Tab(
+                                selected = !showBluetooth,
+                                selectedContentColor = AccentColor,
+                                unselectedContentColor = MutedColor,
+                                onClick = { showBluetooth = false },
+                                text = { Text("Simulator") },
+                                modifier = Modifier.weight(1f).testTag("simulator_tab"),
                             )
+                        }
+                        Box(Modifier.weight(1f)) {
+                            if (showBluetooth) {
+                                val state by bluetoothViewModel.uiState.collectAsStateWithLifecycle()
+                                LifecycleStartEffect(bluetoothViewModel) {
+                                    bluetoothViewModel.setForeground(true)
+                                    onStopOrDispose { bluetoothViewModel.setForeground(false) }
+                                }
+                                BluetoothConnectionScreen(
+                                    state = state,
+                                    onRefresh = bluetoothViewModel::refresh,
+                                    onRequestPermission = ::requestBluetoothPermission,
+                                    onOpenBluetoothSettings = {
+                                        openSettings(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
+                                    },
+                                    onOpenAppSettings = {
+                                        openSettings(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                            data = Uri.fromParts("package", packageName, null)
+                                        })
+                                    },
+                                    onSelectDevice = bluetoothViewModel::selectDevice,
+                                    onConnect = bluetoothViewModel::connect,
+                                    onDisconnect = bluetoothViewModel::disconnect,
+                                )
+                            } else {
+                                val state by simulatorViewModel.uiState.collectAsStateWithLifecycle()
+                                LifecycleStartEffect(simulatorViewModel) {
+                                    simulatorViewModel.setActive(true)
+                                    onStopOrDispose { simulatorViewModel.setActive(false) }
+                                }
+                                SimulatorDashboard(
+                                    snapshot = state,
+                                    onToggleSimulation = simulatorViewModel::toggleSimulation,
+                                    onReset = simulatorViewModel::resetSimulation,
+                                    onScenarioSelected = simulatorViewModel::selectScenario,
+                                )
+                            }
                         }
                     }
                 }
