@@ -2,7 +2,7 @@
 
 ## Status
 
-The 0.6.0-dev app contains a live dashboard with saved favorites, a deterministic simulator, Bluetooth Classic/SPP discovery, service-owned read-only OBD acquisition, optional VIN acquisition, and Room vehicle profiles.
+The 0.7.0-dev app adds explicit offline trip recording, saved history, summaries, speed charts, JSON/CSV export, and deletion to the live dashboard, simulator, service-owned OBD acquisition, optional VIN acquisition, and vehicle profiles.
 The Bluetooth screen combines paired devices and nearby discoveries, handles scan and connection permissions separately, and opens a secure RFCOMM socket.
 Device names and MAC addresses are shown locally so the user can identify the OBDII adapter reported in Car Scanner.
 The connection starts without OBD commands. An explicit Read live data action initializes the adapter and starts Mode 01 acquisition, keeping Bluetooth status separate from ECU communication.
@@ -12,8 +12,8 @@ The user reported the simulator app worked after testing on October 10, 2026 and
 The paired-only Bluetooth build failed to list the adapter, which the user finds by searching in Car Scanner with plain Bluetooth selected.
 The user confirmed Bluetooth works and, on October 11, 2026, reported that live readings worked; PR #14 is merged. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed correct readings in 0.5.0-dev. These reports do not establish individual sensors, ECU identifiers, measured rates, sustained lifecycle behavior, VIN retrieval, or profile persistence. Detailed RX8-001/RX8-004 checks remain open.
 
-The diagram and recording/synchronization sections describe the **target MVP architecture**. The profile storage and identity sections below describe the implemented RX8-005 boundary.
-The engine provides six Mode 01 decoders, capability discovery, and an explicit Mode 09 PID 02 VIN request. Room stores profiles and active selection; SharedPreferences stores app-wide dashboard favorites. Saved trips, telemetry persistence, broader settings, and API integration remain planned.
+The diagram includes future synchronization components; recording and local storage are implemented. No API, outbox, upload worker, or remote database is implemented.
+The engine provides six Mode 01 decoders, capability discovery, and an explicit Mode 09 PID 02 VIN request. Room stores profiles, active selection, trips, and samples; SharedPreferences stores app-wide dashboard favorites. Broader settings and API integration remain planned.
 See [Development](development.md) for setup and current behavior.
 
 Target: European-market 2004 RX-8 with 231 PS, Samsung A53 running Android 16, and iLC B0BDRHRR22 adapter.
@@ -37,7 +37,7 @@ flowchart LR
 ```
 
 Use Kotlin and Jetpack Compose for the interface, ViewModel/StateFlow for its state, and coroutines for asynchronous work.
-Room currently stores vehicle profiles and active selection; dashboard favorites use private SharedPreferences. The target architecture adds trip/sample tables and broader settings later.
+Room currently stores vehicle profiles, active selection, trips, and samples; dashboard favorites use private SharedPreferences. Broader settings and synchronization remain future work.
 Components can start as packages; there is no need to create a Gradle module for each component from day one.
 
 ## Transport and OBD engine
@@ -103,7 +103,7 @@ The same card components render a simulator preview with an explicit synthetic l
 
 The private, app-wide SharedPreferences file `dashboard_preferences` stores `favorite_metric_ids_v1`. The stable IDs are `intake_temperature`, `throttle_position`, and `engine_load`; the default is empty. Fixed primary metrics cannot become favorites, and unknown saved IDs are ignored.
 These preferences have no vehicle, ECU, VIN, or adapter key. A capability change does not erase a favorite, and choosing a favorite does not change the acquisition schedule. No telemetry values or simulator samples are persisted with them.
-An application-scoped worker serializes writes away from the main thread. State is published as saved only after a successful commit; the UI shows loading/saving progress and errors while the dashboard or its simulator preview is visible. Pending toggles are serialized, and the last confirmed selection remains visible until a write succeeds. Queued writes are not owned by a screen's ViewModel lifetime. Existing backup exclusions remain; no export/restore or Room schema migration is added.
+An application-scoped worker serializes writes away from the main thread. State is published as saved only after a successful commit; the UI shows loading/saving progress and errors while the dashboard or its simulator preview is visible. Pending toggles are serialized, and the last confirmed selection remains visible until a write succeeds. Queued writes are not owned by a screen's ViewModel lifetime. Existing backup exclusions remain; favorite preferences are not included in trip exports or restored from files.
 
 ## Local model
 
@@ -116,14 +116,14 @@ An application-scoped worker serializes writes away from the main thread. State 
 | TelemetrySample | UUID, sequence, timestamps, metric, value, unit, source, and status |
 | OutboxEntry | Pending work, attempts, next execution, and acknowledgments |
 
-Of these entities, only Vehicle and the active selection are currently persisted; dashboard display preferences are stored separately. The other entities in this table are planned; no existing telemetry history is stored or reassigned by profile changes.
+Vehicle, active selection, Session, and TelemetrySample are persisted; dashboard display preferences are stored separately. Adapter/capability metadata stays in the live session, with the detected protocol copied into an explicitly started trip. Outbox remains planned. Profile changes never reassign previously stored telemetry.
 
-In the target recording model, samples are immutable. Sessions use the recording, completed, or interrupted states.
+Recorded samples are immutable. Sessions use the recording, completed, or interrupted states.
 Each reading carries a UTC timestamp and monotonic elapsed time since the start; sequence determines ordering.
 Values are normalized to canonical units and converted only for display.
 
 A failed reading has a null value. The interface may show the last valid reading as stale without storing it again as a new measurement.
-Distance integrated from speed is identified as an estimate and records intervals with missing data.
+Estimated distance integrates only adjacent valid speed samples from one selected ECU; uncovered intervals remain gaps.
 
 ## Identity and current persistence
 
@@ -134,12 +134,12 @@ Saved provenance is MANUAL or OBD; OBD provenance includes the ECU source. Attac
 
 The Vehicles screen shows saved profiles, selected state, permanent IDs, and masked VINs with explicit show/hide controls.
 A duplicate VIN points to its existing profile and requires explicit selection. A different VIN cannot overwrite a profile: the user must select the corresponding vehicle or create a separate one. No automatic profile assignment or merging is implemented.
-The adapter MAC address never identifies a vehicle. Selecting a profile does not persist or relabel the current telemetry buffer; recording and historical links are future work.
+The adapter MAC address never identifies a vehicle. Starting a trip freezes the selected profile's UUID and alias. Later profile selection or renaming does not relabel that trip or its samples.
 
-Room schema version 1 contains `vehicle_profiles` and a singleton `active_vehicle` reference. VIN uniqueness and a foreign key protect identity and selection; writes and returned state share a transaction.
+Room schema version 2 retains `vehicle_profiles` and the singleton `active_vehicle` reference, and adds `trip_sessions` and `trip_samples`. The explicit migration from version 1 preserves existing profiles and selection. VIN uniqueness and foreign keys protect the stored relationships; a unique trip/sequence index prevents duplicate sample positions.
 The application-scoped `rx8-vehicles.db` lives in private app storage. A failed read or write reports an error rather than replacing profiles with a new empty database. There is no destructive migration fallback; future changes require explicit migrations and schema review.
-Only successful storage results reach the UI as saved. Profile deletion, telemetry tables, export, import, and restore are not implemented.
-Android backups and device transfer are excluded. Clearing app data or reinstalling removes the UUIDs; recovering them would require a future compatible export/restore feature, and recovery is not currently promised.
+Only successful storage results reach the UI as saved. Trip deletion and JSON/CSV export are implemented; profile deletion, importing, and restoring an app database are not.
+Android backups and device transfer are excluded. Clearing app data or reinstalling removes saved profiles and trips. An exported trip can be inspected separately, but cannot currently restore the app's database or vehicle profiles.
 
 ## Sessions and permissions
 
@@ -164,18 +164,36 @@ On API 33+, the first Connect action requests `POST_NOTIFICATIONS`. Denial does 
 
 `KeepScreenAwake` applies only while Adapter or the real Dashboard is visible and OBD is INITIALIZING, DISCOVERING, or LIVE. It releases the screen-on flag when the screen stops being visible or acquisition stops; it does not override an explicit lock action. The service handles acquisition with the screen off.
 A partial wake lock keeps acquisition work eligible to run with the screen off. Each acquisition has a 120-second timeout, renewed every 60 seconds only during active initialization/discovery/live polling; it is released on stop/error/cleanup. An idle Bluetooth connection does not hold that wake lock.
-Stop/disconnect and terminal errors release the socket, jobs, wake lock, and foreground notification even if the UI remains bound. The service returns `START_NOT_STICKY`; there is no automatic reconnect or process-death session restoration. Old in-memory readings are not a saved trip.
+Stop/disconnect and terminal errors release the socket, acquisition jobs, and wake lock even if the UI remains bound. When a trip is ending, foreground-service ownership remains until its final queued writes finish; only then is the foreground notification removed. The service returns `START_NOT_STICKY`; there is no automatic reconnect or resumed recording after process death. Acquisition without an explicit Start trip action remains unsaved.
 Active sessions consume battery. No battery-optimization exemption is requested, and indefinite survival against process termination or device power policies is not promised. The user broadly confirmed the 0.5.1-dev background/screen fix; measured A53 durations, battery behavior, and detailed notification/cleanup scenarios still need hardware evidence.
 
 The user reported idle screen sleep and background disconnection in 0.5.0-dev, consistent with the old foreground-only policy. Actual Bluetooth bond removal is unconfirmed; the app has no `removeBond` call. A dropped socket and an Android pairing entry are separate states. PR #17 is merged; the later report that 0.5.1-dev worked does not establish an actual bond-removal test.
 
-### Planned recording sessions
+### Current trip recording
 
-RX8-007 will build on the service lifecycle to add explicit trip recording and persisted sessions/samples. Background acquisition by itself does not save history or recover it after process death.
+RX8-007 requires a saved vehicle selection and a LIVE real OBD session before the user explicitly starts a trip. The selected vehicle UUID and alias are copied into the trip and remain unchanged if the active profile changes. The simulator does not feed the recorder. Starting a trip does not backfill cached dashboard readings.
+
+`TripRuntime` owns a process-scoped repository, recorder, and IO coroutine scope. The controller forwards acquisition snapshots directly to the recorder; storage does not subscribe to a conflated UI StateFlow. An ordered command channel serializes create, append, and finish transactions. The channel has an explicit limit of 512 pending samples; exceeding that limit interrupts recording visibly instead of silently discarding data and claiming success.
+
+The recorder deduplicates each ECU/metric by its reading timestamp fingerprint. It skips STALE and UNSUPPORTED display states. Every saved sample has its own UUID, trip ID, increasing sequence, absolute UTC timestamp, monotonic elapsed time since the recording button press, metric, canonical unit, ECU source, and quality. Failed readings store a null value. Sample elapsed time uses the acquisition timestamp when available, not the later disk-write time.
+
+Start, sample counts, and successful stop reflect committed database writes. Before creating or appending, recording requires at least 10 MiB of free storage. A failed write stops recording, reports that some samples may not have been saved, and attempts to mark the trip interrupted. If even that terminal update fails, startup recovery handles the remaining RECORDING row. This guard is a minimum-space check, not a promise that every later write will succeed.
+
+Stop trip completes the trip while leaving live acquisition running. Disconnect and the notification Stop action finish the trip and close acquisition. Bluetooth/OBD loss marks an active trip interrupted; reconnecting requires a new explicit trip, so no interval is invented across separate connections. Foreground ownership is retained while final writes are pending.
+
+On process startup, recovery preserves committed samples and changes unfinished trips to INTERRUPTED. The end is derived from the last saved measurement, or the start for an empty trip; it does not claim to know the exact process-kill time. No session or recording restarts automatically. Real A53 screen-lock recording, duration, and battery behavior remain hardware checks.
 
 The MVP does not include GPS. WorkManager is reserved for future synchronization, not vehicle polling.
-Recording with the screen locked will need explicit A53 testing; indefinite survival after process termination is not promised.
-Record a gap when Bluetooth is lost; after restarting, recover persisted data and mark the unfinished session as interrupted.
+
+### Trip summaries and charts
+
+History shows the latest 100 trips and the app database footprint, including profiles and trips. Complete summaries, exports, and deletion require a completed or interrupted trip, keeping paged reads independent of an actively growing recording.
+
+Analysis reads sequence-ordered pages of at most 500 samples. It selects the lexicographically first speed ECU with usable valid km/h data, falling back to the first observed speed ECU if none has usable values. Speed maxima, the chart, and distance all use that one source; different ECU readings are never averaged or joined. Peak recorded RPM considers finite, valid canonical RPM readings across sources.
+
+Estimated distance uses trapezoidal integration between adjacent valid, nonnegative speed samples from the selected source only when the monotonic interval is positive and at most five seconds. Missing/invalid readings, wrong units, reversed timestamps, and longer intervals break coverage. There is no endpoint extrapolation. An estimate requires at least one covered interval; valid stationary intervals can produce a true zero. The UI labels the result as an estimate, identifies the source, and shows covered and uncovered duration; it is not an odometer reading.
+
+The speed chart holds at most 500 points. Streaming reduction preserves null gap barriers, and rendering breaks the line at those barriers. Reduction affects chart detail only; distance uses the original paged samples. Analysis and export support coroutine cancellation and reject broken page ordering or foreign-trip samples.
 
 ## Future synchronization
 
@@ -190,20 +208,20 @@ See [the contract](api-contract.md) for details.
 
 ## Retention and export
 
-The following policies apply to future trip storage; current persistence covers vehicle profiles/selection and dashboard preferences only. Keep trips until explicitly deleted, show storage usage, and warn before storage runs out.
-If data cannot be saved, stop recording in a controlled way and display the error.
-When deleting records pending upload, explain which data will be lost and remove their queued work.
+Trips remain stored until explicitly deleted. Deletion requires confirmation and removes that trip and its samples in a transaction; it does not delete vehicle profiles or previously exported files. Database space may be retained for reuse rather than immediately shrinking the file. No upload queue exists yet.
 
-Export versioned JSON with IDs, units, and statuses; use CSV for analysis.
-Do not commit real databases or private exports.
-Current app data is excluded from Android backup and device transfer. Any future backup/export design must explicitly address identifiers, encryption, and restore behavior.
+The user chooses a JSON or CSV destination through Android's document picker, without a broad storage permission or automatic upload. Exports stream sequence-ordered pages instead of materializing the full history. Success is reported only after writing, flushing, and closing the destination; a failed or cancelled write may leave a partial file and is not reported as saved.
+
+Local export schema version 1 includes trip/vehicle/sample IDs, the recorded vehicle alias, timestamps, monotonic times, protocol, origin, terminal status/reason, units, ECU sources, and sample quality. It contains no VIN or Bluetooth address. JSON preserves null values and escaped text; CSV repeats trip metadata on each sample row and writes a metadata-only row for an empty trip. CSV text beginning with spreadsheet formula triggers receives a protective apostrophe. Non-finite numeric values cause export failure instead of invalid output or replacement zeros. See [the local export contract](api-contract.md#implemented-local-trip-export) for fields and its boundary with the future API.
+
+Exports contain private trip information and are shared only through the user's chosen destination. Do not commit real databases or private exports. Android backup/device transfer remain disabled, and importing or restoring exports is not implemented.
 
 ## Validation
 
 Parser tests cover complete, fragmented, multi-ECU, and malformed Mode 01/VIN responses. Identity tests cover duplicate/different VINs, UUID/provenance preservation, explicit selection, storage failures, and reopening Room. Actual run results belong in the PR.
 Tests for persistence, migrations, identity, unexpected termination, the queue, and retries.
 Interface checks cover the live dashboard and clearly identified simulator preview, per-ECU capabilities, stale/error/zero states, unavailable favorites, and preference persistence/failure. Actual run results belong in the PR.
-Lifecycle checks cover Activity recreation, continued background samples, notification denial/Stop, and resource release. Real-vehicle validation still needs compatibility, measured rates, battery use, and background/lock continuity; saved recording remains future work.
+Lifecycle checks cover Activity recreation, continued background samples, notification denial/Stop, and resource release. Trip checks cover ordered durable recording, bounded backpressure, storage failures, migration/recovery, vehicle identity freezing, source-isolated analytics, chart gaps, cancellation, export escaping, and deletion. Actual test results belong in the PR. Real-vehicle validation still needs compatibility, measured rates, battery use, and saved recording with the A53 screen locked.
 
 ## References
 

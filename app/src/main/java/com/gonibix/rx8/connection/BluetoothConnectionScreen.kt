@@ -248,7 +248,7 @@ fun BluetoothConnectionScreen(
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Text(
-                        "Trip recording and API sync are not available yet. Readings are not saved or uploaded.",
+                        "To save readings, select a vehicle in Vehicles and choose Start recording in Trips. Data stays on this device unless you export it.",
                         color = MutedColor,
                         style = MaterialTheme.typography.bodySmall,
                     )

@@ -14,10 +14,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -33,7 +37,6 @@ import com.gonibix.rx8.ui.theme.Rx8Theme
 import java.io.File
 import java.time.Instant
 import org.junit.Assert.assertArrayEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -113,8 +116,10 @@ class LiveObdReadingsTest {
             ).copy(elapsedMillis = 1_400L),
             screenshotFixture = true,
         )
-        compose.onNodeWithTag("obd_value_7E8_engine_rpm").assertTextEquals("900")
-        compose.onNodeWithTag("obd_observed_rate").assertTextEquals("Observed: 2.7 responses/s · 6 supported PIDs")
+        compose.onNodeWithText("UI TEST FIXTURE · SYNTHETIC VALUES").assertIsDisplayed()
+        compose.onNodeWithTag("obd_value_7E8_engine_rpm").assertTextEquals("900").assertIsDisplayed()
+        compose.onNodeWithTag("obd_observed_rate")
+            .assertTextEquals("Observed: 2.7 responses/s · 6 supported PIDs").assertIsDisplayed()
         captureLiveScreen()
     }
 
@@ -178,9 +183,19 @@ class LiveObdReadingsTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val directory = File(instrumentation.targetContext.getExternalFilesDir(null), "screenshots")
         assertTrue(directory.isDirectory || directory.mkdirs())
-        val screenshot = instrumentation.uiAutomation.takeScreenshot()
-        assertNotNull("The emulator must capture the live readings fixture", screenshot)
-        val captured = requireNotNull(screenshot)
+        // Capture the rendered Compose root, not a transient system-window buffer.
+        var rendered: Bitmap? = null
+        compose.waitUntil(5_000L) {
+            val candidate = compose.onRoot().captureToImage().asAndroidBitmap()
+            if (hasRenderedContent(candidate)) {
+                rendered = candidate
+                true
+            } else {
+                candidate.recycle()
+                false
+            }
+        }
+        val captured = requireNotNull(rendered)
         try {
             val source = File(directory, "live.png")
             source.outputStream().use { output ->
@@ -198,5 +213,22 @@ class LiveObdReadingsTest {
         } finally {
             captured.recycle()
         }
+    }
+
+    private fun hasRenderedContent(bitmap: Bitmap): Boolean {
+        var dark = 0
+        var light = 0
+        var samples = 0
+        for (y in 0 until bitmap.height step (bitmap.height / 96).coerceAtLeast(1)) {
+            for (x in 0 until bitmap.width step (bitmap.width / 96).coerceAtLeast(1)) {
+                val pixel = bitmap.getPixel(x, y)
+                val brightness = ((pixel ushr 16 and 255) + (pixel ushr 8 and 255) + (pixel and 255)) / 3
+                samples++
+                if ((pixel ushr 24 and 255) > 127 && brightness < 96) dark++
+                if ((pixel ushr 24 and 255) > 127 && brightness > 160) light++
+            }
+        }
+        // A dark fixture with light text must not pass as a blank white or black frame.
+        return samples > 0 && dark > samples / 10 && light >= 8
     }
 }

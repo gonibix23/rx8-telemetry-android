@@ -50,6 +50,8 @@ class BluetoothSessionController(
     private val scope: CoroutineScope,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
     private val obdSessionFactory: ObdSessionFactory = ObdSessionFactory { Elm327Session(it) },
+    private val onObdSnapshot: (ObdSessionSnapshot) -> Unit = {},
+    private val onSessionEnded: (completed: Boolean) -> Unit = {},
 ) {
     private val closed = AtomicBoolean(false)
     private val mutableState = MutableStateFlow(BluetoothConnectionUiState())
@@ -276,7 +278,7 @@ class BluetoothSessionController(
 
     fun disconnect() {
         if (closed.get()) return
-        endSession()
+        endSession(completed = true)
         mutableState.value = mutableState.value.copy(
             phase = BluetoothConnectionPhase.DISCONNECTED,
             message = null,
@@ -299,6 +301,7 @@ class BluetoothSessionController(
                 obdSession = session
                 session.run { snapshot ->
                     if (sessionGeneration == generation && connection === ownedConnection) {
+                        onObdSnapshot(snapshot)
                         mutableState.value = mutableState.value.copy(obd = snapshot)
                     }
                 }
@@ -427,7 +430,8 @@ class BluetoothSessionController(
         )
     }
 
-    private fun endSession() {
+    private fun endSession(completed: Boolean = false) {
+        onSessionEnded(completed)
         generation++
         obdJob?.cancel()
         obdJob = null

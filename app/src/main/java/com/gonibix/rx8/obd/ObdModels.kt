@@ -37,6 +37,7 @@ data class ObdReading(
     val ecuId: String,
     val observedAtEpochMillis: Long,
     val elapsedMillis: Long,
+    val monotonicMillis: Long? = null,
 )
 
 data class ObdEcuCapabilities(val ecuId: String, val supportedPids: Set<Int>)

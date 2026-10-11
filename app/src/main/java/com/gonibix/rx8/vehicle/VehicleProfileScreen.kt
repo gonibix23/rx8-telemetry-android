@@ -151,7 +151,7 @@ fun VehicleProfileScreen(
                     )
                 }
                 Text(
-                    "Profiles are saved on this device. Trips and cloud backup are not available yet. Clearing app data or reinstalling removes these IDs; restoring them will require a compatible backup.",
+                    "Profiles and recorded trips are saved on this device. Cloud backup is disabled. Clearing app data or reinstalling removes these IDs and trips. You can export trips for review, but importing them to restore the app is not available.",
                     color = MutedColor,
                     style = MaterialTheme.typography.bodySmall,
                 )
