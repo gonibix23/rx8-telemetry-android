@@ -15,6 +15,11 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Update
 import androidx.room.Upsert
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
+import com.gonibix.rx8.trips.TripDao
+import com.gonibix.rx8.trips.TripSampleEntity
+import com.gonibix.rx8.trips.TripSessionEntity
 
 @Entity(tableName = "vehicle_profiles", indices = [Index(value = ["vin"], unique = true)])
 data class VehicleEntity(
@@ -62,11 +67,57 @@ interface VehicleDao {
     suspend fun setActive(active: ActiveVehicleEntity)
 }
 
-@Database(entities = [VehicleEntity::class, ActiveVehicleEntity::class], version = 1, exportSchema = true)
+@Database(
+    entities = [VehicleEntity::class, ActiveVehicleEntity::class, TripSessionEntity::class, TripSampleEntity::class],
+    version = 2,
+    exportSchema = true,
+)
 abstract class VehicleDatabase : RoomDatabase() {
     abstract fun vehicles(): VehicleDao
+    abstract fun trips(): TripDao
 
     companion object {
+        /** Add trip storage without rebuilding, replacing or reselecting any existing vehicle. */
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `trip_sessions` (
+                        `id` TEXT NOT NULL,
+                        `vehicleId` TEXT NOT NULL,
+                        `vehicleAlias` TEXT NOT NULL,
+                        `startedAtEpochMillis` INTEGER NOT NULL,
+                        `endedAtEpochMillis` INTEGER,
+                        `durationMillis` INTEGER NOT NULL,
+                        `status` TEXT NOT NULL,
+                        `endReason` TEXT,
+                        `protocolLabel` TEXT,
+                        `origin` TEXT NOT NULL,
+                        PRIMARY KEY(`id`),
+                        FOREIGN KEY(`vehicleId`) REFERENCES `vehicle_profiles`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_trip_sessions_vehicleId` ON `trip_sessions` (`vehicleId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_trip_sessions_startedAtEpochMillis` ON `trip_sessions` (`startedAtEpochMillis`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_trip_sessions_status` ON `trip_sessions` (`status`)")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `trip_samples` (
+                        `id` TEXT NOT NULL,
+                        `tripId` TEXT NOT NULL,
+                        `sequence` INTEGER NOT NULL,
+                        `observedAtEpochMillis` INTEGER NOT NULL,
+                        `elapsedMillis` INTEGER NOT NULL,
+                        `metric` TEXT NOT NULL,
+                        `value` REAL,
+                        `unit` TEXT NOT NULL,
+                        `ecuId` TEXT NOT NULL,
+                        `quality` TEXT NOT NULL,
+                        PRIMARY KEY(`id`),
+                        FOREIGN KEY(`tripId`) REFERENCES `trip_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_trip_samples_tripId_sequence` ON `trip_samples` (`tripId`, `sequence`)")
+            }
+        }
         @Volatile private var instance: VehicleDatabase? = null
 
         /** Application-scoped database. The process owns its lifetime, not an Activity or ViewModel. */
@@ -75,7 +126,7 @@ abstract class VehicleDatabase : RoomDatabase() {
                 context.applicationContext,
                 VehicleDatabase::class.java,
                 "rx8-vehicles.db",
-            ).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2).build().also { instance = it }
             // No destructive fallback: future schema changes require explicit migrations.
         }
     }

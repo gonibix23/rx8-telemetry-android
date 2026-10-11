@@ -12,7 +12,7 @@ The user subsequently confirmed that the Bluetooth connection now works, followi
 Detailed scan/pairing steps, interruptions, reconnection behavior, and physical adapter revision were not supplied. RX8-001 and remaining RX8-003 checks stay open.
 On October 11, 2026, the user reported that live readings worked; PR #14 is merged. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed that 0.5.0-dev reads data correctly. Individual sensors, ECU identifiers, measured response rates, and sustained lifecycle results remain unverified. RX8-004 stays open for those detailed checks. No VIN or saved-profile result has been reported.
 The user also reported screen sleep while idle and loss of connection/readings after backgrounding in 0.5.0-dev, describing this as unpairing. The old policy deliberately disconnected outside Adapter; actual removal of the Android bond is unconfirmed, and the code has no removeBond call.
-The user subsequently confirmed 0.5.1-dev worked, providing broad success evidence for the background/screen fix in merged PR #17. The detailed issue #16 checks below remain unreported: measured background/lock intervals, battery use, notification scenarios, and actual bond-entry observations. RX8-006 / 0.6.0-dev adds the dashboard and saved favorites; no dashboard hardware result has been reported.
+The user subsequently confirmed 0.5.1-dev worked, providing broad success evidence for the background/screen fix in merged PR #17. The detailed issue #16 checks below remain unreported: measured background/lock intervals, battery use, notification scenarios, and actual bond-entry observations. The user then confirmed that the 0.6.0-dev dashboard build works perfectly; PR #18 is merged. This broad result does not establish the individual favorite/ECU scenarios below. All new 0.7.0-dev trip checks remain pending.
 A simulator test and a Bluetooth socket connection are separate from ECU validation.
 
 ## Test record
@@ -50,7 +50,7 @@ Use the actual adapter with the vehicle stationary. Disconnect Car Scanner befor
 
 The Connect action only opens Bluetooth. Selecting Read live data additionally initializes the ELM interface and starts read-only Mode 01 requests.
 Bounded byte read/write and cancellation behavior require real I/O checks; do not claim these were physically tested by opening a socket alone.
-The Classic/SPP connection and general live readings have successful user reports. Optional VIN retrieval was introduced in 0.5.0-dev but remains unverified on the car. BLE transport and recorded-trip continuity are not implemented.
+The Classic/SPP connection and general live readings have successful user reports. Optional VIN retrieval remains unverified on the car. BLE is not implemented. Explicit recorded-trip continuity is implemented in 0.7.0-dev and awaits the separate checks below.
 
 ## ECU validation sequence (RX8-001 and RX8-004)
 
@@ -66,8 +66,8 @@ Record the exact app version and operating conditions. No real-car readings are 
 7. Repeat without an Internet connection. The Simulator tab must remain clearly separate from these real readings.
 8. Follow the optional VIN/profile checklist below. Do not publish the full VIN or treat a valid-looking response as proof of vehicle ownership.
 
-Screen-locked live acquisition is part of issue #16. Saved recording continuity remains a separate RX8-007 check after telemetry persistence and recording controls are implemented.
-For moving-vehicle speed checks, have a passenger observe the live data. Saved-trip review remains planned.
+Screen-locked live acquisition is part of issue #16. Saved recording continuity is a separate RX8-007 check in 0.7.0-dev.
+For moving-vehicle speed checks, have a passenger operate the app or review a saved trip afterward.
 
 ## Background session and screen-awake checklist (issue #16)
 
@@ -91,11 +91,11 @@ Record duration, battery change, engine conditions, actual timestamps/rates, and
 - [ ] Measure battery use during an active session and after stopping. Confirm the app does not request a battery-optimization exemption.
 - [ ] If unpairing is suspected, separately inspect Android's paired-device entry before and after the interruption. Record socket disconnection and actual bond removal as different outcomes.
 
-No trip or telemetry history is saved by these checks. The service is non-sticky and cannot promise survival after process termination or all device power policies. The simulator remains foreground-only.
+These live-only checks do not save telemetry unless Start recording is explicitly chosen in Trips. The service is non-sticky and cannot promise survival after process termination or all device power policies. The simulator remains foreground-only.
 
 ## Dashboard and favorites checklist (RX8-006)
 
-Use 0.6.0-dev on the A53. These dashboard-specific checks are pending; the earlier live-data and lifecycle confirmations do not validate the new layout or preference storage.
+The 0.6.0-dev build has broad user confirmation. These individual dashboard checks remain unreported; use the current build, whose dashboard tab is labeled Live.
 
 - [ ] Open Dashboard before connecting. Confirm it shows the actual connection/acquisition state without fabricated values or an automatic connection.
 - [ ] Connect and start live acquisition in Adapter, then open Dashboard. Confirm the same session continues, with no duplicate connection or polling loop.
@@ -129,7 +129,27 @@ These checks are pending; a general live-reading success does not establish them
 - [ ] Confirm no-VIN/no-data operation remains usable and profiles can be managed without Internet access.
 
 A structurally valid VIN is not proof of the car's identity. The implemented parser accepts the specific CAN 20-byte VIN message and five numbered legacy packets; this does not establish compatibility with every adapter or response layout.
-Profiles, active selection, and dashboard preferences are stored. No trip history exists to test for continuity yet. Backups/device transfer are disabled and there is no export/restore feature; clearing app data or reinstalling loses saved IDs. Do not clear a user's data as a routine validation step.
+Profiles, active selection, dashboard preferences, and explicitly recorded trips are stored. Backups/device transfer are disabled; trip exports do not provide an import/restore workflow. Clearing app data or reinstalling loses saved IDs. Do not clear a user's data as a routine validation step.
+
+## Trip recording checklist (RX8-007)
+
+Use 0.7.0-dev on the A53. Automated tests use synthetic data and do not replace these phone/car checks.
+
+- [ ] Install over the existing app and confirm saved profiles, UUIDs, selection, and favorites remain available.
+- [ ] Select a profile in Vehicles, connect and start real data in Adapter, then choose Start recording in Trips. Confirm the displayed name and increasing saved-sample count. Do not claim unsupported sensors were recorded.
+- [ ] Change the selected profile during recording; confirm the existing trip still belongs to the original UUID/name.
+- [ ] Record while another tab/app is visible and while the screen is locked for a measured interval. Stop recording and verify advancing timestamps in the export across that interval.
+- [ ] Stop recording in Trips. Confirm history becomes available and live readings continue. Disconnect separately when finished.
+- [ ] Record a separate trip and use notification Stop while backgrounded. Confirm the trip completes, its samples remain saved, and acquisition/notification end.
+- [ ] Interrupt Bluetooth or adapter power during recording. Confirm the trip becomes Interrupted, existing samples remain, and no values are invented during the gap. Reconnect manually and start a new trip explicitly.
+- [ ] On a dedicated test session, force-stop the process and relaunch. Confirm an unfinished trip becomes Interrupted at the last saved reading, without automatic connection or continuation. Uncommitted tail readings can be lost.
+- [ ] Open finished history without Internet or an adapter. Check duration, valid/sample counts, peak values, speed source, coverage gaps, and the speed chart. Estimated distance must remain clearly different from the odometer.
+- [ ] Export JSON and CSV through a chosen document provider and inspect both files. Check null/error samples, source/unit, per-trip sequences, UTC timestamps, vehicle/trip/sample UUIDs, and monotonic elapsed times. No VIN or adapter address fields should be exported.
+- [ ] Cancel an export picker and return. Separately exercise a provider failure on a test destination and confirm no false success message. Remove any partial export manually.
+- [ ] Confirm trip deletion removes its saved samples after confirmation and leaves profiles and previously exported copies intact. Active trips must not be deletable/exportable.
+- [ ] Measure database usage during a realistic trip. Test insufficient-storage behavior only on a controlled test device/fixture; it must visibly stop recording rather than claim all readings were saved.
+
+No new trip hardware outcome is claimed until reported. Retain existing issue #16 battery and lifecycle checks where they have not been measured.
 
 ## Evidence matrix
 

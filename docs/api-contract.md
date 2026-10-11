@@ -6,6 +6,46 @@ Design for preparing the app. No API, live URL, configured authentication, or re
 RX8-008 will implement models, an interface, and isolated tests; the backend belongs to a later phase.
 All examples are synthetic. Fault diagnostics and remote deletion are outside this initial contract.
 
+The 0.7.0-dev app records trips locally and exports files. Those implemented files have the separate contract below; they are not uploads or an implementation of these proposed API routes.
+
+## Implemented local trip export
+
+RX8-007 exports completed or interrupted trips through Android's document picker. Stop an active recording first. Export is an explicit local action with no API, authentication, outbox, or synchronization attempt.
+Exports preserve the vehicle UUID and alias captured when recording began, the trip/sample UUIDs, sample order, UTC timestamps, monotonic elapsed time, units, ECU sources, and quality. They contain no VIN or Bluetooth address. Selecting another vehicle does not relabel a saved trip.
+The current origin is `REAL_OBD`; simulator preview data is not recorded as a trip. Units are the stored canonical app units: `rpm`, `km/h`, `°C`, and `%`. An eventual API adapter must explicitly map these units and enum names to the proposed wire contract below.
+
+### JSON version 1
+
+The root has `schemaVersion: 1`, a `trip` object, and a sequence-ordered `samples` array. An empty trip has an empty array and retains all its metadata.
+
+| Object | Fields |
+| --- | --- |
+| trip | id, vehicleId, vehicleAlias, startedAtUtc, startedAtEpochMillis, endedAtUtc, endedAtEpochMillis, durationMillis, status, endReason, protocolLabel, origin |
+| sample | id, tripId, sequence, observedAtUtc, observedAtEpochMillis, elapsedMillis, metric, value, unit, ecuId, quality |
+
+The UTC strings use ISO 8601 and end in `Z`. Epoch fields are milliseconds since the Unix epoch; elapsed/duration fields are monotonic milliseconds. Nullable end timestamps, end reason, protocol, and sample values remain JSON nulls. Missing values are never replaced by zero.
+`metric` uses stable enum names: `ENGINE_RPM`, `SPEED`, `COOLANT_TEMPERATURE`, `INTAKE_TEMPERATURE`, `THROTTLE_POSITION`, and `ENGINE_LOAD`.
+`status` is `COMPLETED` or `INTERRUPTED` for exported trips. `quality` preserves the recorded enum name; normal recording stores `VALID`, `NO_DATA`, `TIMEOUT`, `PARSE_ERROR`, or `ADAPTER_ERROR`, while STALE/UNSUPPORTED display states are not appended as fresh samples.
+JSON escapes quotes, backslashes, and control characters without modifying normal field values. A non-finite numeric value aborts export rather than producing invalid JSON or a fabricated number.
+
+### CSV version 1
+
+CSV is one flat table with a header, CRLF record separators, quoted text, doubled embedded quotes, and support for multiline text cells. Numeric values use a locale-independent decimal point; nulls are empty cells.
+
+| Group | Columns in order |
+| --- | --- |
+| Version/type | schema_version, record_type |
+| Trip | trip_id, vehicle_id, vehicle_alias, trip_started_at_utc, trip_started_at_epoch_ms, trip_ended_at_utc, trip_ended_at_epoch_ms, trip_duration_ms, trip_status, trip_end_reason, protocol_label, origin |
+| Sample | sample_id, sequence, observed_at_utc, observed_at_epoch_ms, elapsed_ms, metric, value, unit, ecu_id, quality |
+
+`schema_version` is `1`. Every sample row has `record_type` equal to `SAMPLE` and repeats the trip metadata, including its terminal status and reason. An empty trip has one `METADATA` row with blank sample fields.
+Text that could be interpreted as a spreadsheet formula receives a leading apostrophe, including formula triggers hidden behind leading whitespace or control characters. This is deliberate text protection; the JSON export preserves the exact original text. Numeric sample cells are not converted into formulas or protected text.
+
+### Local export lifecycle
+
+Both formats read pages of at most 500 samples, honor cancellation, and reject repeated/out-of-order sequences or foreign-trip samples. They do not load the entire history into memory. Success appears only after the destination has been written, flushed, and closed; cancellation, storage failure, or destination failure can leave a partial file and is not reported as success.
+The file contains private vehicle/trip information and is shared only through the user's selected destination. Deleting a saved trip does not delete previously exported files. Android backup/device transfer remain disabled, and importing or restoring these exports is not implemented.
+
 ## Conventions
 
 HTTPS/JSON; /v1 routes; schemaVersion equal to 1; UTC ISO 8601 timestamps ending in Z.

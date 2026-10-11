@@ -30,11 +30,25 @@ import com.gonibix.rx8.obd.ObdPhase
 import com.gonibix.rx8.obd.ObdSession
 import com.gonibix.rx8.obd.ObdSessionFactory
 import com.gonibix.rx8.obd.ObdSessionSnapshot
+import com.gonibix.rx8.obd.ObdMetric
+import com.gonibix.rx8.obd.ObdReading
+import com.gonibix.rx8.obd.ObdReadingStatus
+import com.gonibix.rx8.obd.SystemObdClock
+import com.gonibix.rx8.trips.TripRecorder
+import com.gonibix.rx8.trips.TripRepository
+import com.gonibix.rx8.trips.TripSession
+import com.gonibix.rx8.trips.TripSample
+import com.gonibix.rx8.trips.TripStatus
+import com.gonibix.rx8.vehicle.VehicleProfile
 import java.io.IOException
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -67,6 +81,10 @@ class BluetoothSessionServiceTest {
     private var failAcquisition = false
     private val failSignal = CompletableDeferred<Unit>()
     @Volatile private var acquisitionCancelled = false
+    private val tripRepository = LifecycleTripRepository()
+    private val tripScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val tripRecorder = TripRecorder(tripRepository, tripScope)
+    private val tripVehicle = VehicleProfile("00000000-0000-4000-8000-000000000007", "Synthetic trip vehicle", null, null, null, 0)
 
     @Before
     fun setUp() {
@@ -90,14 +108,17 @@ class BluetoothSessionServiceTest {
                             while (true) {
                                 delay(100L)
                                 elapsed += 100L
-                                onSnapshot(ObdSessionSnapshot(phase = ObdPhase.LIVE, elapsedMillis = elapsed))
+                                onSnapshot(ObdSessionSnapshot(phase = ObdPhase.LIVE, elapsedMillis = elapsed, readings = listOf(
+                                    ObdReading(ObdMetric.SPEED, 36.0, ObdReadingStatus.VALID, "7E8",
+                                        SystemObdClock.epochMillis(), elapsed, SystemObdClock.monotonicMillis()),
+                                )))
                             }
                         } finally {
                             acquisitionCancelled = true
                         }
                     }
                 }
-            })
+            }, recorder = tripRecorder)
         }
         scenario = ActivityScenario.launch(MainActivity::class.java)
     }
@@ -115,8 +136,120 @@ class BluetoothSessionServiceTest {
             instrumentation.waitForIdleSync()
         } finally {
             BluetoothSessionService.dependenciesFactory = originalFactory
+            tripScope.cancel()
             instrumentation.uiAutomation.dropShellPermissionIdentity()
         }
+    }
+
+    @Test
+    fun tripRecordingContinuesWithoutAnActivityAndNotificationStopCommits() {
+        val binding = bind()
+        connect(binding)
+        main { binding.binder.controller.startObd() }
+        awaitMain { binding.binder.controller.uiState.value.obd.phase == ObdPhase.LIVE }
+        main { binding.binder.startTrip(tripVehicle) }
+        awaitMain { tripRecorder.state.value.savedSamples >= 2 }
+        val stop = stopAction(binding)
+        scenario!!.close()
+        scenario = null
+        binding.unbind()
+        val previous = tripRecorder.state.value.savedSamples
+        awaitMain { tripRecorder.state.value.savedSamples > previous + 2 }
+        stop.send()
+        awaitMain { tripRepository.session?.status == TripStatus.COMPLETED && tripRecorder.state.value.session == null }
+        assertEquals(tripVehicle.id, tripRepository.session!!.vehicleId)
+        assertTrue(tripRepository.saved.size >= 5)
+        assertTrue(gateway.connections.single().closed)
+        assertEquals(tripRepository.saved.indices.map { it.toLong() }, tripRepository.saved.map { it.sequence })
+    }
+
+    @Test
+    fun repeatedNotificationStopKeepsAnUnboundServiceUntilTripFinalizationCommits() {
+        val finishGate = CompletableDeferred<Unit>()
+        tripRepository.finishGate = finishGate
+        try {
+            val binding = bind()
+            connect(binding)
+            main { binding.binder.controller.startObd() }
+            awaitMain { binding.binder.controller.uiState.value.obd.phase == ObdPhase.LIVE }
+            main { binding.binder.startTrip(tripVehicle) }
+            awaitMain { tripRecorder.state.value.savedSamples >= 2 }
+            val stop = stopAction(binding)
+            scenario!!.close()
+            scenario = null
+            binding.unbind()
+
+            stop.send()
+            awaitMain {
+                tripRepository.finishEntered.isCompleted && tripRecorder.state.value.isStopping
+            }
+            main {
+                assertTrue(binding.binder.hasForegroundSession)
+                assertFalse(binding.binder.hasAcquisitionWakeLock)
+            }
+            assertTrue(gateway.connections.single().closed)
+            val savedCount = tripRepository.saved.size
+
+            // The first Stop clears the connection token. A repeated intent must not stop
+            // started ownership while the ordered writer is still committing its final marker.
+            stop.send()
+            val observationDeadline = SystemClock.elapsedRealtime() + 500L
+            do {
+                main {
+                    assertTrue("Saving must retain foreground ownership without bound clients", binding.binder.hasForegroundSession)
+                    assertNotNull(binding.binder.sessionNotification)
+                    assertEquals(TripStatus.RECORDING, tripRepository.session!!.status)
+                    assertTrue(tripRecorder.state.value.isStopping)
+                }
+                Thread.sleep(20L)
+            } while (SystemClock.elapsedRealtime() < observationDeadline)
+
+            finishGate.complete(Unit)
+            awaitMain {
+                tripRepository.session?.status == TripStatus.COMPLETED &&
+                    tripRecorder.state.value.session == null && !binding.binder.hasForegroundSession
+            }
+            assertEquals(savedCount, tripRepository.saved.size)
+            assertEquals(tripRepository.saved.indices.map { it.toLong() }, tripRepository.saved.map { it.sequence })
+            main { assertNull(binding.binder.sessionNotification) }
+        } finally {
+            // Also release the fake writer when an assertion fails, before normal test cleanup.
+            finishGate.complete(Unit)
+        }
+    }
+
+    @Test
+    fun stoppingOnlyTheTripLeavesLiveAcquisitionRunning() {
+        val binding = bind()
+        connect(binding)
+        main { binding.binder.controller.startObd() }
+        awaitMain { binding.binder.controller.uiState.value.obd.phase == ObdPhase.LIVE }
+        main { binding.binder.startTrip(tripVehicle) }
+        awaitMain { tripRecorder.state.value.savedSamples > 0 }
+        main { binding.binder.stopTrip() }
+        awaitMain { tripRepository.session?.status == TripStatus.COMPLETED && tripRecorder.state.value.session == null }
+        val count = tripRepository.saved.size
+        val elapsed = binding.binder.controller.uiState.value.obd.elapsedMillis
+        awaitMain { binding.binder.controller.uiState.value.obd.elapsedMillis > elapsed + 200 }
+        assertEquals(count, tripRepository.saved.size)
+        assertTrue(binding.binder.hasForegroundSession)
+        assertTrue(binding.binder.hasAcquisitionWakeLock)
+        assertFalse(gateway.connections.single().closed)
+    }
+
+    @Test
+    fun bluetoothLossMarksTheTripInterruptedAndReleasesTheService() {
+        val binding = bind()
+        connect(binding)
+        main { binding.binder.controller.startObd() }
+        awaitMain { binding.binder.controller.uiState.value.obd.phase == ObdPhase.LIVE }
+        main { binding.binder.startTrip(tripVehicle) }
+        awaitMain { tripRecorder.state.value.savedSamples > 0 }
+        main { binding.binder.controller.onDeviceDisconnected(device.address) }
+        awaitMain { tripRepository.session?.status == TripStatus.INTERRUPTED && !binding.binder.hasForegroundSession }
+        assertTrue(tripRepository.saved.isNotEmpty())
+        assertFalse(binding.binder.hasAcquisitionWakeLock)
+        assertNotNull(tripRepository.session!!.endReason)
     }
 
     @Test
@@ -401,6 +534,26 @@ class BluetoothSessionServiceTest {
                 bound = false
             }
         }
+    }
+
+    private class LifecycleTripRepository : TripRepository {
+        @Volatile var session: TripSession? = null
+        val saved = CopyOnWriteArrayList<TripSample>()
+        @Volatile var finishGate: CompletableDeferred<Unit>? = null
+        val finishEntered = CompletableDeferred<Unit>()
+        override suspend fun recoverInterrupted() = Unit
+        override suspend fun create(session: TripSession) { this.session = session }
+        override suspend fun append(tripId: String, samples: List<TripSample>) { saved.addAll(samples) }
+        override suspend fun finish(tripId: String, endedAtEpochMillis: Long, durationMillis: Long, status: TripStatus, reason: String) {
+            finishEntered.complete(Unit)
+            finishGate?.await()
+            session = requireNotNull(session).copy(endedAtEpochMillis = endedAtEpochMillis, durationMillis = durationMillis, status = status, endReason = reason)
+        }
+        override suspend fun list(limit: Int) = listOfNotNull(session)
+        override suspend fun find(tripId: String) = session
+        override suspend fun samples(tripId: String, afterSequence: Long, limit: Int) = saved.filter { it.sequence > afterSequence }.take(limit)
+        override suspend fun delete(tripId: String) = Unit
+        override suspend fun storageBytes() = 0L
     }
 
     private inner class LifecycleGateway : BluetoothGateway {

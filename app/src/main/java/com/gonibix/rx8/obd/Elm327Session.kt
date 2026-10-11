@@ -18,7 +18,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-/** One explicitly started, foreground-only session. It never reconnects or writes to the ECU. */
+/** One explicitly started, service-owned session. It never reconnects or writes to the ECU. */
 class Elm327Session(
     connection: AdapterConnection,
     private val clock: ObdClock,
@@ -76,6 +76,7 @@ class Elm327Session(
                         ecuId = ecu.ecuId,
                         observedAtEpochMillis = timestamp,
                         elapsedMillis = now,
+                        monotonicMillis = startedAt + now,
                     )
                 }
             }
@@ -115,7 +116,8 @@ class Elm327Session(
                     vin = ObdVinSnapshot(),
                     readings = it.readings.map { reading ->
                         if (reading.metric == activeMetric && reading.status != ObdReadingStatus.UNSUPPORTED) {
-                            reading.copy(value = null, status = status, observedAtEpochMillis = clock.epochMillis(), elapsedMillis = elapsed())
+                            val now = elapsed()
+                            reading.copy(value = null, status = status, observedAtEpochMillis = clock.epochMillis(), elapsedMillis = now, monotonicMillis = startedAt + now)
                         } else markStale(reading)
                     },
                 )
@@ -207,6 +209,7 @@ class Elm327Session(
                                     status = if (reading.ecuId in received) ObdReadingStatus.VALID else ObdReadingStatus.NO_DATA,
                                     observedAtEpochMillis = timestamp,
                                     elapsedMillis = now,
+                                    monotonicMillis = startedAt + now,
                                 )
                             },
                         )
@@ -222,6 +225,7 @@ class Elm327Session(
                             readings = it.readings.map { reading ->
                                 if (reading.metric != metric || reading.status == ObdReadingStatus.UNSUPPORTED) reading else reading.copy(
                                     value = null, status = status, observedAtEpochMillis = timestamp, elapsedMillis = now,
+                                    monotonicMillis = startedAt + now,
                                 )
                             },
                         )

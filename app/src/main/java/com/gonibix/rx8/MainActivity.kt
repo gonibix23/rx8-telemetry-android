@@ -55,6 +55,10 @@ import com.gonibix.rx8.vehicle.RoomVehicleRepository
 import com.gonibix.rx8.vehicle.VehicleDatabase
 import com.gonibix.rx8.vehicle.VehicleProfileScreen
 import com.gonibix.rx8.vehicle.VehicleProfileViewModel
+import com.gonibix.rx8.trips.TripRuntime
+import com.gonibix.rx8.trips.TripsViewModel
+import com.gonibix.rx8.trips.TripsScreen
+import com.gonibix.rx8.trips.rememberTripExportActions
 import com.gonibix.rx8.ui.theme.AccentColor
 import com.gonibix.rx8.ui.theme.MutedColor
 import com.gonibix.rx8.ui.theme.Rx8Theme
@@ -74,6 +78,16 @@ class MainActivity : ComponentActivity() {
     }
     private val dashboardPreferences by lazy {
         ViewModelProvider(this)[DashboardPreferencesViewModel::class.java]
+    }
+    private val tripRuntime by lazy { TripRuntime.get(applicationContext) }
+    private val tripsViewModel by lazy {
+        ViewModelProvider(this, object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                require(modelClass == TripsViewModel::class.java)
+                return TripsViewModel(tripRuntime.repository) as T
+            }
+        })[TripsViewModel::class.java]
     }
     private var sessionBinder by mutableStateOf<BluetoothSessionService.LocalBinder?>(null)
     private var serviceBound = false
@@ -132,6 +146,9 @@ class MainActivity : ComponentActivity() {
                 val binder = sessionBinder
                 val controller = binder?.controller
                 val sessionState = controller?.uiState?.collectAsStateWithLifecycle()?.value
+                val recording by tripRuntime.recorder.state.collectAsStateWithLifecycle()
+                // Document results must survive navigation to Adapter from the session notification.
+                val tripExportActions = rememberTripExportActions(tripsViewModel)
                 // One owner for the shared View flag avoids competing effects when tabs change.
                 KeepScreenAwake(
                     selectedTab in setOf("adapter", "dashboard") && sessionState?.obd?.phase in setOf(
@@ -164,8 +181,16 @@ class MainActivity : ComponentActivity() {
                                 selectedContentColor = AccentColor,
                                 unselectedContentColor = MutedColor,
                                 onClick = { selectedTab = "dashboard" },
-                                text = { Text("Dashboard", style = MaterialTheme.typography.labelMedium) },
+                                text = { Text("Live", style = MaterialTheme.typography.labelMedium) },
                                 modifier = Modifier.weight(1f).testTag("dashboard_tab"),
+                            )
+                            Tab(
+                                selected = selectedTab == "trips",
+                                selectedContentColor = AccentColor,
+                                unselectedContentColor = MutedColor,
+                                onClick = { selectedTab = "trips" },
+                                text = { Text("Trips", style = MaterialTheme.typography.labelMedium) },
+                                modifier = Modifier.weight(1f).testTag("trips_tab"),
                             )
                             Tab(
                                 selected = selectedTab == "vehicles",
@@ -265,6 +290,20 @@ class MainActivity : ComponentActivity() {
                                         BluetoothConnectionPhase.DISCONNECTED -> "Bluetooth disconnected"
                                         null -> "Preparing Bluetooth controls"
                                     },
+                                )
+                            } else if (selectedTab == "trips") {
+                                TripsScreen(
+                                    viewModel = tripsViewModel,
+                                    exportActions = tripExportActions,
+                                    selectedVehicle = vehicles.vehicles.profiles.firstOrNull { it.id == vehicles.vehicles.activeVehicleId },
+                                    recording = recording,
+                                    canStart = !vehicles.isLoading && !vehicles.isSaving && sessionState?.phase == BluetoothConnectionPhase.CONNECTED && sessionState.obd.phase == ObdPhase.LIVE,
+                                    onStart = { vehicle ->
+                                        if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) binder?.startTrip(vehicle)
+                                    },
+                                    onStop = { tripRuntime.recorder.stop() },
+                                    onOpenAdapter = { selectedTab = "adapter" },
+                                    onOpenVehicles = { selectedTab = "vehicles" },
                                 )
                             } else if (selectedTab == "vehicles") {
                                 LaunchedEffect(Unit) { vehicleViewModel.reload() }

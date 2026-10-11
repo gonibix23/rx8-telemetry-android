@@ -32,14 +32,19 @@ import com.gonibix.rx8.bluetooth.BluetoothGateway
 import com.gonibix.rx8.obd.Elm327Session
 import com.gonibix.rx8.obd.ObdPhase
 import com.gonibix.rx8.obd.ObdSessionFactory
+import com.gonibix.rx8.trips.TripRecorder
+import com.gonibix.rx8.trips.TripRuntime
+import com.gonibix.rx8.vehicle.VehicleProfile
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -48,6 +53,8 @@ class BluetoothSessionService : Service() {
     private val ownerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var gateway: BluetoothGateway
     private lateinit var controller: BluetoothSessionController
+    private lateinit var recorder: TripRecorder
+    private var finishingJob: Job? = null
     private lateinit var powerLock: PowerManager.WakeLock
     private lateinit var acquisitionLock: AcquisitionWakeLock
     private val binder = LocalBinder()
@@ -62,6 +69,18 @@ class BluetoothSessionService : Service() {
 
         /** Invoke only from the visible Connect action, after Nearby devices permission is granted. */
         fun connect() = startConnection()
+
+        val tripRecorder: TripRecorder get() = recorder
+
+        /** Called only by the visible Trips action; connecting/starting OBD stays in Adapter. */
+        fun startTrip(vehicle: VehicleProfile) {
+            val state = controller.uiState.value
+            if (!destroyed && foregroundRunning && state.phase == BluetoothConnectionPhase.CONNECTED && state.obd.phase == ObdPhase.LIVE) {
+                recorder.start(vehicle, state.obd)
+            }
+        }
+
+        fun stopTrip() = recorder.stop()
 
         internal val hasForegroundSession: Boolean get() = foregroundRunning
         internal val sessionNotification: Notification? get() = foregroundNotification
@@ -89,7 +108,12 @@ class BluetoothSessionService : Service() {
         super.onCreate()
         val dependencies = dependenciesFactory(applicationContext)
         gateway = dependencies.gateway
-        controller = BluetoothSessionController(gateway, ownerScope, obdSessionFactory = dependencies.obdSessionFactory)
+        recorder = dependencies.recorder ?: TripRuntime.get(applicationContext).recorder
+        controller = BluetoothSessionController(
+            gateway, ownerScope, obdSessionFactory = dependencies.obdSessionFactory,
+            onObdSnapshot = recorder::onSnapshot,
+            onSessionEnded = { completed -> recorder.stop(completed) },
+        )
         powerLock = getSystemService(PowerManager::class.java).newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK, "$packageName:ObdAcquisition",
         ).apply { setReferenceCounted(false) }
@@ -118,6 +142,11 @@ class BluetoothSessionService : Service() {
             }
         }
         ownerScope.launch {
+            recorder.state.map { Triple(it.session != null, it.isStarting, it.isStopping) }.distinctUntilChanged().collect {
+                if (sessionToken != null) synchronizeResources(controller.uiState.value)
+            }
+        }
+        ownerScope.launch {
             // Permission checks remain with the connection owner while no Activity is observing it.
             while (isActive) {
                 delay(1_000L)
@@ -139,7 +168,7 @@ class BluetoothSessionService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START_SESSION -> {
-                if (sessionToken == null) stopSelfResult(startId)
+                if (sessionToken == null && finishingJob?.isActive != true) stopSelfResult(startId)
                 // No saved command or Intent can initiate a connection after process recreation.
             }
             ACTION_STOP_SESSION -> {
@@ -147,11 +176,11 @@ class BluetoothSessionService : Service() {
                 if (token != null && token == sessionToken) {
                     controller.disconnect()
                     finishSession()
-                } else if (sessionToken == null) {
+                } else if (sessionToken == null && finishingJob?.isActive != true) {
                     stopSelfResult(startId)
                 }
             }
-            else -> if (sessionToken == null) stopSelfResult(startId)
+            else -> if (sessionToken == null && finishingJob?.isActive != true) stopSelfResult(startId)
         }
         return START_NOT_STICKY
     }
@@ -169,6 +198,7 @@ class BluetoothSessionService : Service() {
             return
         }
         val token = UUID.randomUUID().toString()
+        finishingJob?.cancel()
         sessionToken = token
         try {
             ContextCompat.startForegroundService(this, Intent(this, BluetoothSessionService::class.java).setAction(ACTION_START_SESSION))
@@ -216,7 +246,13 @@ class BluetoothSessionService : Service() {
         val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_session_notification)
             .setContentTitle(getString(R.string.session_title))
-            .setContentText(getString(text))
+            .setContentText(when {
+                recorder.state.value.isStopping -> "Saving trip…"
+                recorder.state.value.isStarting -> "Starting trip recording…"
+                recorder.state.value.session != null -> "Recording trip · reading vehicle data"
+                recorder.state.value.error != null -> "Trip recording stopped · check Trips"
+                else -> getString(text)
+            })
             .setContentIntent(openIntent)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, getString(R.string.session_stop), stopIntent)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
@@ -233,8 +269,17 @@ class BluetoothSessionService : Service() {
 
     private fun finishSession() {
         sessionToken = null
-        foregroundNotification = null
         acquisitionLock.stop()
+        if (finishingJob?.isActive == true) return
+        finishingJob = ownerScope.launch {
+            // Keep started ownership until ordered pending writes and the terminal marker commit.
+            recorder.state.first { it.session == null && !it.isStarting && !it.isStopping }
+            if (sessionToken == null) removeForegroundSession()
+        }
+    }
+
+    private fun removeForegroundSession() {
+        foregroundNotification = null
         if (foregroundRunning) {
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
             foregroundRunning = false
@@ -281,6 +326,7 @@ class BluetoothSessionService : Service() {
 internal data class BluetoothServiceDependencies(
     val gateway: BluetoothGateway,
     val obdSessionFactory: ObdSessionFactory = ObdSessionFactory { Elm327Session(it) },
+    val recorder: TripRecorder? = null,
 )
 
 

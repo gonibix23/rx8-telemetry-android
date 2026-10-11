@@ -2,15 +2,15 @@
 
 ## Current implementation
 
-The 0.6.0-dev iteration (version code 7) adds a live dashboard and saved favorites to the service-owned Bluetooth/OBD session, optional VIN, saved-profile, and simulator foundation:
+The 0.7.0-dev iteration (version code 8) adds explicit trip recording, offline history, summaries, speed charts, JSON/CSV export, and confirmed deletion. Its five tabs are Adapter, Live, Trips, Vehicles, and Simulator:
 
 | Module | Responsibility |
 | --- | --- |
-| `:app` | Compose dashboard/simulator, SharedPreferences favorites, service-owned Bluetooth/OBD sessions, notification/power lifecycle, and Room profiles |
+| `:app` | Compose screens, favorites, service-owned Bluetooth/OBD and recording, Room profiles/trips, summaries, and document exports |
 | `:core:telemetry` | Pure Kotlin Mode 01/VIN parsing, VIN validation, telemetry types, and deterministic simulation |
 
 The simulator is identified in the interface and supplies synthetic engine speed, vehicle speed, coolant temperature, intake air temperature, throttle position, and engine load readings.
-The simulator stays separate from real acquisition and saved profiles. Vehicles stores explicit profiles and active selection; no screen saves trips or uploads data.
+The simulator stays separate from real acquisition and is never recorded as a trip. Vehicles stores explicit profiles and active selection; Trips stores only explicitly started real sessions. No screen uploads data.
 Bluetooth connection alone opens a socket. Read live data explicitly starts ELM initialization and read-only Mode 01 queries.
 The architecture and API documents describe later implementation work unless explicitly marked as implemented.
 
@@ -33,7 +33,7 @@ Use the checked-in Gradle wrapper rather than a separately installed Gradle vers
 | Kotlin Symbol Processing (KSP) | 2.3.10 |
 
 A first build needs Internet access to download dependencies.
-The app does not request Internet access; acquisition and local vehicle profiles work without it.
+The app does not request Internet access; acquisition, profiles, saved-trip history, and local document export work without it.
 
 ## Android Studio and SDK setup
 
@@ -101,6 +101,8 @@ The user confirmed that the Samsung A53 runs Android 16, completing RX8-002. The
 Car Scanner reportedly finds it through in-app search with plain Bluetooth selected, showing OBDII and its MAC address.
 The user confirmed Bluetooth and reported live readings worked on October 11, 2026; PR #14 is merged. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed correct readings in 0.5.0-dev. Individual sensor support, ECU identifiers, measured rates, and sustained lifecycle checks remain unverified; the report does not validate profiles or VIN retrieval.
 
+The user broadly confirmed 0.6.0-dev worked on October 11, 2026, and PR #18 is merged. This does not establish detailed favorite persistence, individual sensor results, or any trip-recording/export outcome. Record new 0.7.0-dev results separately; current unit/CI counts are not asserted here.
+
 ## Finding and connecting the Bluetooth adapter
 
 1. Power the adapter, enable phone Bluetooth, and disconnect other apps such as Car Scanner from the adapter.
@@ -118,7 +120,7 @@ On API 31+, scan and connection permissions are separate; a paired adapter can b
 Android's [permissions](https://developer.android.com/develop/connectivity/bluetooth/bt-permissions) and [device discovery guidance](https://developer.android.com/develop/connectivity/bluetooth/find-bluetooth-devices) describe these requirements.
 
 The connection action sends no application bytes. Read live data uses the transport's bounded byte read/write operations for OBD commands.
-There is no automatic reconnection or saved trip recording. An explicitly started live session can continue in the background. The user-reported successful Bluetooth connection does not establish sensor support.
+There is no automatic reconnection. An explicitly started live session can continue in the background; it is saved only after Start recording is chosen in Trips. The user-reported successful Bluetooth connection does not establish sensor support.
 Use the [hardware checklist](hardware-validation.md#bluetooth-transport-checklist-rx8-003) to record actual behavior.
 
 ## Reading live OBD data
@@ -139,13 +141,13 @@ The engine serializes all exchanges, assembles Bluetooth fragments through the E
 Losing prompt framing closes the connection and requires a manual reconnect, preventing delayed responses from being mistaken for new readings.
 RPM and speed receive priority; measured latency and errors slow requests instead of allowing a backlog. Actual rates still require a real-car test.
 
-This build sends read-only Mode 01 diagnostics and, only when requested, Mode 09 PID 02 for VIN. It does not clear faults, control actuators, or save a trip.
+This build sends read-only Mode 01 diagnostics and, only when requested, Mode 09 PID 02 for VIN. It does not clear faults or control actuators. Trip recording is a separate explicit action in Trips.
 Mode 01 replies fit a single CAN frame. VIN support is limited to its 20-byte CAN message or five numbered legacy packets; general ISO-TP support is not implemented.
 Read [Architecture](architecture.md#current-read-only-obd-engine) for the separation between transport, parser, session, and UI.
 
 ## Using the dashboard and favorites
 
-1. Connect and start Read live data in Adapter, then open Dashboard. Navigation reuses the same service-owned session; opening Dashboard alone does not connect or start acquisition.
+1. Connect and start Read live data in Adapter, then open Live. Navigation reuses the same service-owned session; opening Live alone does not connect or start acquisition.
 2. Inspect RPM, speed, and coolant where the responding ECU reports support. Each ECU stays separate, and every value shows its unit, quality, and age.
 3. Open Choose sensors to add intake temperature, throttle position, or engine load when available. Primary metrics stay fixed; the extra favorites are optional and initially empty.
 4. Change the favorites, restart the app, and verify they remain selected. They are app-wide preferences, independent of vehicle and ECU selection. A saved favorite unavailable in a later session stays listed as unavailable and can be removed.
@@ -153,16 +155,16 @@ Read [Architecture](architecture.md#current-read-only-obd-engine) for the separa
 6. In Simulator, open the dashboard preview to use the same cards with clearly labeled synthetic data. Normal, timeout, and missing-data scenarios remain available. This preview does not replace or stop a real background session.
 
 Favorites change presentation only; they do not change supported sensors or polling priority. The private SharedPreferences store contains stable metric IDs, not vehicle identifiers or readings. Saving failures must remain visible instead of claiming the choice was saved.
-Dashboard layout and favorite persistence still need A53 validation. No history, trip controls, sensor estimates, or upload feature is added.
+The user broadly confirmed the 0.6.0-dev dashboard build worked; detailed layout and favorite-persistence checks remain open. Live does not start recording or estimate sensor values. Saved-trip summaries and recording controls are in Trips; uploads remain unimplemented.
 
 ## Keeping a session active
 
 Connect from the visible app starts the connected-device foreground service. On Android 13+, the first Connect action requests notification permission; allow it to see the session notification and its Stop/open-Adapter controls. Denial does not block connection. Follow the in-app guidance to enable notifications, or stop from Adapter.
-Read live data is still a separate explicit action. During initialization, protocol/capability discovery, and live acquisition, the visible Adapter or real Dashboard screen stays awake. Switching to Vehicles or Simulator, using another app, or locking the screen releases that screen-on flag but leaves acquisition running.
+Read live data is still a separate explicit action. During initialization, protocol/capability discovery, and live acquisition, the visible Adapter or real Live screen stays awake. Switching to Trips, Vehicles, or Simulator, using another app, or locking the screen releases that screen-on flag but leaves acquisition running.
 A bounded, renewed partial wake lock supports acquisition while the screen is off. Active acquisition consumes battery; use Disconnect or notification Stop when finished. The app does not request a battery-optimization exemption.
 Discovery stops when Adapter is hidden. The simulator remains foreground-only and does not share the real session's background behavior.
 
-Stop/disconnect and terminal failures release session resources even while the UI stays bound. The service does not restart automatically (`START_NOT_STICKY`), reconnect, or restore a session after process death. Profiles, selected vehicle, and dashboard favorites persist; live readings do not become trip history.
+Stop/disconnect and terminal failures release session resources even while the UI stays bound. The service does not restart automatically (`START_NOT_STICKY`), reconnect, or restore a session after process death. Profiles, selected vehicle, dashboard favorites, and committed trip samples persist. In-memory live readings become trip history only after explicit recording; startup recovery marks an unfinished saved trip interrupted without reconnecting or restarting it.
 The user's 0.5.0-dev screen-sleep/background-disconnection report matched the old lifecycle policy. The reported protocol remains `ISO 15765-CAN (11 bit, 500 kbaud)`; actual removal of the Android Bluetooth bond is not confirmed and the code has no `removeBond` call.
 The user subsequently confirmed 0.5.1-dev worked and PR #17 is merged, providing broad success evidence for the fix. The [issue #16 hardware checklist](hardware-validation.md#background-session-and-screen-awake-checklist-issue-16) retains detailed scenarios: measured durations, battery use, notification behavior, and bond-entry checks were not supplied. Automated tests alone do not establish these hardware results.
 
@@ -178,11 +180,30 @@ The user subsequently confirmed 0.5.1-dev worked and PR #17 is merged, providing
 
 VIN support on the actual car remains unverified. NO DATA, unsupported, or malformed complete replies allow sensor polling to continue; a timeout or missing prompt closes the link and requires manual reconnection.
 VIN validation checks format, not ownership, check digit, or vehicle specifications. A Bluetooth MAC is never a vehicle ID.
-Only profiles, their active selection, and dashboard favorites are saved. No telemetry history, trip recording, profile deletion, upload, export, or restore feature is implemented.
+Profiles, their active selection, dashboard favorites, and explicitly recorded trips/samples are saved. Finished-trip export and deletion are available in Trips. Profile deletion, uploads, and app import/restore remain unimplemented.
 Backups/device transfer are disabled. Clearing app data or reinstalling removes the saved UUIDs, with no current recovery workflow.
 
-Room version 1 exports its schema under `app/schemas`. Future database changes need explicit migrations; destructive migration fallback is prohibited.
+Room schema version 2 adds trips and samples through an explicit migration from version 1, preserving existing profiles and selection. Exported schemas remain under `app/schemas`. Future database changes need explicit migrations; destructive migration fallback is prohibited.
 Instrumented checks include database close/reopen and Compose identity flows. With an emulator or authorized test device, use `./gradlew :app:connectedDebugAndroidTest` (or `./gradlew.bat` on Windows). The workflow also captures labeled, synthetic UI fixtures; these are not evidence from the RX-8.
+
+## Recording, reviewing, and exporting a trip
+
+Use the 0.7.0-dev update with existing app data intact; do not clear the user's database as a routine test. The Room 1-to-2 migration must retain saved vehicle UUIDs and selected profile.
+
+1. In Vehicles, create or explicitly select the intended profile. A VIN is optional. In Adapter, connect and choose Read live data; wait for real ECU acquisition to reach LIVE.
+2. Open Trips and choose Start recording. Check that the recorded vehicle name matches the selected profile and the saved-sample count begins advancing. Opening a tab, connecting Bluetooth, or opening Live never starts a trip automatically.
+3. Change tabs, background the app, and lock the A53 for a measured interval. The same explicit recording should continue through the service. Changing the selected profile must not change the active trip's frozen UUID/name. Record actual duration, saved count, and failures without publishing identifiers.
+4. Choose Stop recording in Trips. Wait until the terminal write is confirmed and the trip appears in history. Live acquisition remains running. Separately test notification Stop: it closes live acquisition and completes the active trip after queued writes are saved.
+5. Open a finished trip without Internet access. Review sample/valid counts, duration, peak recorded RPM, peak speed, identified speed ECU, and the bounded speed chart. Missing/failed data and gaps must not become zero measurements or connecting chart lines.
+6. Treat estimated distance as covered valid speed intervals only, never as the odometer. Speed analysis uses one deterministic ECU and integrates only adjacent valid intervals of at most five seconds. Check the displayed covered/uncovered duration; RPM peak can come from any valid RPM source.
+7. Choose Export JSON or Export CSV, then select the destination in Android's document picker. The screen retains the intended trip/format across Activity recreation. Canceling the picker creates no success message. Success must appear only after the output is written, flushed, and closed; provider/write failures remain visible and may leave an incomplete document.
+8. Inspect an anonymized export: JSON uses schemaVersion 1 with trip metadata and samples; CSV uses schema_version 1, one sample per row and a metadata row for an empty trip. IDs, sequence, timestamps, units, ECU sources, quality, and null/error values remain available. Spreadsheet-sensitive text in CSV is escaped for safe display. No VIN, Bluetooth MAC, GPS, or upload is included.
+9. Choose Delete on a finished trip, cancel once, then confirm on a disposable test fixture. Confirm only that trip and its samples disappear. Existing exported files remain; active recording cannot be deleted or exported. The app-database byte count covers shared storage, and deletion can make space reusable without immediately shrinking the file.
+10. In a controlled hardware check, interrupt the connection or acquisition, and separately end the app process. Committed samples must remain; the trip becomes interrupted, and a fresh connection and new recording require explicit actions. Do not infer physical A53 process/lock behavior from synthetic tests.
+
+History shows the latest 100 sessions. Detailed analysis/export requires a completed or interrupted trip, so paged reads operate on a finished dataset. Recording uses ordered bounded sample buffering; the displayed saved count advances only after database commits. Insufficient space or failed writes stops recording and reports that some samples may not have been saved. A failed history query does not replace stored data with an empty database.
+Exports reveal the vehicle UUID and recorded alias, times, and readings even though they exclude VIN/MAC values. Choose destinations and recipients deliberately. Android backups/device transfer remain disabled; trip export is not an app backup, and import/restore is not implemented. No GPS, simulator recording, backend, Internet permission, or API upload is added.
+The A53 recording/export/storage checks remain pending. Unit and Android 16 CI results belong in the PR; this guide makes no new pass-count claim.
 
 ## Using the simulator
 
@@ -195,9 +216,9 @@ Instrumented checks include database close/reopen and Compose identity flows. Wi
 Missing or failed readings must remain visibly distinct from numerical zero.
 All readings in Simulator and its dashboard preview are synthetic; they are not measurements from the RX-8.
 
-Sampling runs only while the Simulator tab is visible in the foreground. Switching to Adapter, Dashboard, or Vehicles, or moving the app to the background, pauses sampling; returning to Simulator allows a connected simulation to resume.
+Sampling runs only while the Simulator tab is visible in the foreground. Switching to Adapter, Live, Trips, or Vehicles, or moving the app to the background, pauses sampling; returning to Simulator allows a connected simulation to resume.
 The pause does not represent a saved trip, background service, or continuous recording.
-Screen-locked trip recording belongs to RX8-007 and needs separate implementation and device validation.
+Only real acquisition can be recorded in Trips. Screen-locked recording and interruption recovery still need RX8-007 hardware validation.
 
 ## Documentation checks
 
@@ -220,7 +241,8 @@ The user has confirmed the simulator, Bluetooth connection, and general live rea
 - [RX8-005](https://github.com/gonibix23/rx8-telemetry-android/issues/5): validate profile persistence, selected UUID, optional VIN retrieval, provenance, and explicit conflict decisions.
 - [Issue #16](https://github.com/gonibix23/rx8-telemetry-android/issues/16): validate background/lock continuity, Activity recreation, visible screen-awake behavior, notification denial/Stop, and battery/resource cleanup on the A53.
 - [RX8-006](https://github.com/gonibix23/rx8-telemetry-android/issues/6): validate the dashboard layout, favorite persistence/unavailability, ECU separation, simulator preview, and navigation on the A53.
-- Later issues: implement and validate telemetry persistence, trip recording, and API preparation.
+- [RX8-007](https://github.com/gonibix23/rx8-telemetry-android/issues/7): validate explicit recording, screen lock/background, committed-data recovery, gaps, summaries, document exports, deletion, and storage errors on the A53.
+- Later issues: implement API preparation and synchronization without enabling uploads prematurely.
 
 Keep issues open while required evidence is missing. PR #14 is merged, but RX8-004 remains open for detailed hardware checks. RX8-005 software does not close RX8-001 or prove VIN compatibility.
 There are no published APK releases.
