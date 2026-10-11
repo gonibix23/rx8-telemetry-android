@@ -2,7 +2,7 @@
 
 Android app in development for viewing live vehicle data and recording trips without an Internet connection.
 
-**Current implementation (0.8.0-dev): a durable local queue and versioned models for the future API, alongside offline trip recording/history/exports, live data, Bluetooth discovery, background acquisition, saved vehicles, and a separate simulator. Uploads remain disabled.**
+**Current implementation (0.9.0-dev): a vehicle-capabilities preview and JSON snapshot report, alongside offline trip recording/history/exports, live data, Bluetooth discovery, background acquisition, saved vehicles, API preparation, and a separate simulator. Uploads remain disabled.**
 
 The simulator uses deterministic synthetic readings and supports normal operation, timeouts, and missing data.
 Connect, disconnect, and reset controls make demonstrations repeatable.
@@ -13,6 +13,7 @@ It attempts a secure RFCOMM/SPP connection; Android can request pairing during c
 After connecting, choose **Read live data** to initialize the adapter, detect its protocol, and discover supported parameters.
 The first six decoded parameters are engine speed, vehicle speed, coolant and intake air temperatures, throttle position, and engine load, when reported as supported.
 Readings retain their ECU source and timestamp. Missing, malformed, unsupported, and stale readings are distinct from valid zero values.
+After discovery, open **Vehicle capabilities** in Adapter to capture a report of the advertised PIDs per ECU and the latest displayed state of the six implemented sensors. The report distinguishes advertised support from a successfully decoded reading. Preview it, capture a newer snapshot if needed, and explicitly export JSON to a document destination. This adds no vehicle requests. Reports exclude VINs, Bluetooth names/addresses, profile and trip identifiers, and raw logs; they still contain the capture time and latest sensor values. See [Capability reports](docs/capability-report.md).
 A connection started with **Connect** continues across tabs, backgrounding, screen lock, and Activity recreation. **Read live data** still starts acquisition explicitly; discovery stops when leaving Adapter.
 The visible Adapter and Dashboard screens stay awake during real initialization and live acquisition. Use **Disconnect** in the app or **Stop** in the ongoing session notification to end the session. Opening the notification returns to Adapter.
 On Android 13+, notification access is requested on the first Connect action. Denial does not block connecting; the app explains how to enable the notification or stop from Adapter.
@@ -37,7 +38,7 @@ The user subsequently confirmed Bluetooth works. On October 11, 2026, the user r
 The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed that 0.5.0-dev reads data correctly. These reports do not confirm all six sensors, ECU identifiers, measured rates, or sustained lifecycle behavior. RX8-001, RX8-004, and the remaining hardware checks stay open; VIN retrieval and profile persistence still need device validation.
 The user also reported the screen sleeping when idle and readings disconnecting after backgrounding in 0.5.0-dev. That matched the previous foreground-only connection policy; actual Bluetooth bond removal was not confirmed.
 The user subsequently confirmed that 0.5.1-dev worked, providing broad confirmation of the background/screen fix in merged [PR #17](https://github.com/gonibix23/rx8-telemetry-android/pull/17). [Issue #16](https://github.com/gonibix23/rx8-telemetry-android/issues/16) retains detailed A53 checks; measured durations, battery use, notification scenarios, and actual bond removal are not established by that report. There are no published APK releases or deployed APIs.
-The user also confirmed that 0.6.0-dev works perfectly; [PR #18](https://github.com/gonibix23/rx8-telemetry-android/pull/18) is merged. This is broad dashboard-build confirmation, not a report of each favorite/ECU scenario. The user subsequently confirmed that 0.7.0-dev works perfectly, and [PR #19](https://github.com/gonibix23/rx8-telemetry-android/pull/19) is merged. Measured recording durations, individual export providers, interruption/storage scenarios, and battery use remain unreported. The new 0.8.0-dev upgrade and queue display need a phone test.
+The user also confirmed that 0.6.0-dev works perfectly; [PR #18](https://github.com/gonibix23/rx8-telemetry-android/pull/18) is merged. This is broad dashboard-build confirmation, not a report of each favorite/ECU scenario. The user subsequently confirmed that 0.7.0-dev works perfectly, and [PR #19](https://github.com/gonibix23/rx8-telemetry-android/pull/19) is merged. The user also confirmed that 0.8.0-dev worked correctly, and [PR #20](https://github.com/gonibix23/rx8-telemetry-android/pull/20) is merged. Measured durations, individual upgrade/export/storage scenarios, and battery use remain unreported. The new 0.9.0-dev capabilities/report workflow needs a phone test.
 
 ## Reference vehicle and equipment
 
@@ -78,6 +79,7 @@ Build and test results belong in the relevant PR; setup instructions alone are n
 | [Product](docs/product.md) | Target scope, screens, and acceptance criteria |
 | [Architecture](docs/architecture.md) | Transport, OBD, local profiles/trips, pending work, and future upload boundaries |
 | [API contract](docs/api-contract.md) | Future integration design; not an existing service |
+| [Capability reports](docs/capability-report.md) | Snapshot semantics, privacy exclusions, and explicit JSON export |
 | [Roadmap](docs/roadmap.md) | Phases, current status, priorities, and dependencies |
 | [Hardware validation](docs/hardware-validation.md) | Evidence needed to confirm compatibility |
 | [Contributing](CONTRIBUTING.md) | Issues, branches, PRs, reviews, and releases |
@@ -99,6 +101,7 @@ Each issue has a scope and acceptance criteria. Implementation changes go throug
 [RX8-006](https://github.com/gonibix23/rx8-telemetry-android/issues/6) tracks the dashboard, saved favorites, and pending A53 layout checks.
 [RX8-007](https://github.com/gonibix23/rx8-telemetry-android/issues/7) tracks trip recording, offline history, exports, and pending device validation.
 [RX8-008](https://github.com/gonibix23/rx8-telemetry-android/issues/8) tracks versioned API models, the persistent queue, and isolated retry/ACK tests. No backend is deployed or contacted.
+[RX8-010](https://github.com/gonibix23/rx8-telemetry-android/issues/21) adds the capabilities view and report to help collect evidence for future sensor work.
 [RX8-001](https://github.com/gonibix23/rx8-telemetry-android/issues/1) tracks separate validation with the real car and adapter.
 
 ## Documentation checks
