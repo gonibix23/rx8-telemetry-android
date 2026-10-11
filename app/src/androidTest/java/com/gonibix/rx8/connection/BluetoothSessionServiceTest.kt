@@ -12,6 +12,7 @@ import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -123,30 +124,34 @@ class BluetoothSessionServiceTest {
         val binding = bind()
         connect(binding)
         main { binding.binder.controller.startObd() }
-        awaitMain { binding.binder.hasAcquisitionWakeLock && screenRequestsAwake() }
+        awaitUi("Adapter should stay awake during acquisition") { binding.binder.hasAcquisitionWakeLock && screenRequestsAwake() }
 
         compose.onNodeWithTag("dashboard_tab").performClick()
         compose.onNodeWithTag("dashboard_tab").assertIsSelected()
-        awaitMain { screenRequestsAwake() && !binding.binder.controller.uiState.value.isForeground }
+        awaitUi("Dashboard should retain screen awake after Adapter disposal") {
+            screenRequestsAwake() && !binding.binder.controller.uiState.value.isForeground
+        }
         val elapsed = binding.binder.controller.uiState.value.obd.elapsedMillis
         awaitMain { binding.binder.controller.uiState.value.obd.elapsedMillis > elapsed }
         scenario!!.recreate()
         compose.onNodeWithTag("dashboard_tab").assertIsSelected()
-        awaitMain { screenRequestsAwake() }
+        awaitUi("Recreated Dashboard should stay awake") { screenRequestsAwake() }
         assertEquals(1, gateway.connections.size)
 
         compose.onNodeWithTag("vehicles_tab").performClick()
-        awaitMain { !screenRequestsAwake() }
+        awaitUi("Vehicles should release screen awake") { !screenRequestsAwake() }
         assertFalse(gateway.connections.single().closed)
         compose.onNodeWithTag("dashboard_tab").performClick()
-        awaitMain { screenRequestsAwake() }
+        awaitUi("Returning to Dashboard should stay awake") { screenRequestsAwake() }
         scenario!!.moveToState(Lifecycle.State.CREATED)
-        awaitMain { !screenRequestsAwake() }
+        awaitUi("Background Dashboard should release screen awake") { !screenRequestsAwake() }
         assertFalse(gateway.connections.single().closed)
         scenario!!.moveToState(Lifecycle.State.RESUMED)
-        awaitMain { screenRequestsAwake() }
+        awaitUi("Resumed Dashboard should stay awake") { screenRequestsAwake() }
         main { binding.binder.controller.disconnect() }
-        awaitMain { !screenRequestsAwake() && !binding.binder.hasAcquisitionWakeLock }
+        awaitUi("Stopping acquisition should release both wake requests") {
+            !screenRequestsAwake() && !binding.binder.hasAcquisitionWakeLock
+        }
         assertTrue(gateway.connections.single().closed)
     }
 
@@ -352,7 +357,20 @@ class BluetoothSessionServiceTest {
     private fun View.requestsAwake(): Boolean = keepScreenOn ||
         (this is ViewGroup && (0 until childCount).any { getChildAt(it).requestsAwake() })
 
-    private fun awaitMain(condition: () -> Boolean) {
+    private fun awaitUi(message: String, condition: () -> Boolean) {
+        try {
+            // Advance Compose's test clock as well as Android main so recomposition can apply the flag.
+            compose.waitUntil(timeoutMillis = 5_000L) {
+                var satisfied = false
+                main { satisfied = condition() }
+                satisfied
+            }
+        } catch (timeout: ComposeTimeoutException) {
+            throw AssertionError(message, timeout)
+        }
+    }
+
+    private fun awaitMain(message: String = "Timed out waiting for service lifecycle state", condition: () -> Boolean) {
         val deadline = SystemClock.elapsedRealtime() + 5_000L
         while (SystemClock.elapsedRealtime() < deadline) {
             var satisfied = false
@@ -360,7 +378,7 @@ class BluetoothSessionServiceTest {
             if (satisfied) return
             Thread.sleep(20L)
         }
-        main { assertTrue("Timed out waiting for service lifecycle state", condition()) }
+        main { assertTrue(message, condition()) }
     }
 
     private inner class Binding : ServiceConnection {

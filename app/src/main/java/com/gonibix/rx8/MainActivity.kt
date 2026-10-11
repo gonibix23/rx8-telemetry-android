@@ -129,6 +129,15 @@ class MainActivity : ComponentActivity() {
                 val favoritesError by dashboardPreferences.error.collectAsStateWithLifecycle()
                 val favoritesLoading by dashboardPreferences.isLoading.collectAsStateWithLifecycle()
                 val favoritesSaving by dashboardPreferences.isSaving.collectAsStateWithLifecycle()
+                val binder = sessionBinder
+                val controller = binder?.controller
+                val sessionState = controller?.uiState?.collectAsStateWithLifecycle()?.value
+                // One owner for the shared View flag avoids competing effects when tabs change.
+                KeepScreenAwake(
+                    selectedTab in setOf("adapter", "dashboard") && sessionState?.obd?.phase in setOf(
+                        ObdPhase.INITIALIZING, ObdPhase.DISCOVERING, ObdPhase.LIVE,
+                    ),
+                )
                 LaunchedEffect(showBluetooth, scanAfterPermission, connectAfterPermission) {
                     if (!showBluetooth) {
                         scanAfterPermission = false
@@ -188,15 +197,10 @@ class MainActivity : ComponentActivity() {
                         }
                         Box(Modifier.weight(1f)) {
                             if (showBluetooth) {
-                                val binder = sessionBinder
-                                val controller = binder?.controller
-                                if (controller == null) {
+                                if (controller == null || sessionState == null) {
                                     Text("Preparing Bluetooth controls…")
                                 } else {
-                                    val state by controller.uiState.collectAsStateWithLifecycle()
-                                    KeepScreenAwake(state.obd.phase in setOf(
-                                        ObdPhase.INITIALIZING, ObdPhase.DISCOVERING, ObdPhase.LIVE,
-                                    ))
+                                    val state = sessionState
                                     LifecycleStartEffect(controller) {
                                         controller.setForeground(true)
                                         onStopOrDispose { controller.setForeground(false) }
@@ -246,14 +250,10 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
                             } else if (selectedTab == "dashboard") {
-                                val controller = sessionBinder?.controller
-                                val state = controller?.uiState?.collectAsStateWithLifecycle()?.value
+                                val state = sessionState
                                 val snapshot = state?.obd ?: ObdSessionSnapshot(
                                     statusMessage = "Open Adapter to connect and start live data.",
                                 )
-                                KeepScreenAwake(snapshot.phase in setOf(
-                                    ObdPhase.INITIALIZING, ObdPhase.DISCOVERING, ObdPhase.LIVE,
-                                ))
                                 LiveDashboard(
                                     snapshot = snapshot,
                                     favorites = favorites,
