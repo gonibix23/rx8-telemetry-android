@@ -11,6 +11,9 @@ import com.gonibix.rx8.obd.ObdReadingStatus
 import com.gonibix.rx8.obd.ObdSession
 import com.gonibix.rx8.obd.ObdSessionFactory
 import com.gonibix.rx8.obd.ObdSessionSnapshot
+import com.gonibix.rx8.obd.ObdVinStatus
+import com.gonibix.rx8.obd.ObdVinSnapshot
+import com.gonibix.rx8.telemetry.obd.VinResponse
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -34,6 +37,7 @@ class BluetoothObdViewModelTest {
     private val device = AdapterDevice("02:00:00:00:00:01", "Test OBDII")
     private val gateway = TestGateway()
     private var starts = 0
+    private var vinRequests = 0
     private var cancelled = false
     private var emit: ((ObdSessionSnapshot) -> Unit)? = null
     private var failure: Exception? = null
@@ -44,6 +48,7 @@ class BluetoothObdViewModelTest {
         Dispatchers.setMain(dispatcher)
         viewModel = BluetoothConnectionViewModel(gateway, dispatcher, ObdSessionFactory {
             object : ObdSession {
+                override fun requestVin(): Boolean { vinRequests++; return true }
                 override suspend fun run(onSnapshot: (ObdSessionSnapshot) -> Unit) {
                     starts++
                     emit = onSnapshot
@@ -52,6 +57,33 @@ class BluetoothObdViewModelTest {
                 }
             }
         })
+    }
+
+    @Test
+    fun vinRequestRequiresLiveSessionAndCannotQueueTwice() = sessionTest {
+        viewModel.readVin()
+        connectAndRead()
+        viewModel.readVin()
+        assertEquals(0, vinRequests)
+        emit!!(liveSnapshot())
+        viewModel.readVin()
+        viewModel.readVin()
+        assertEquals(1, vinRequests)
+        assertEquals(ObdVinStatus.READING, viewModel.uiState.value.obd.vin.status)
+    }
+
+    @Test
+    fun disconnectDiscardsVinCandidatesAndRejectsOldCallbacks() = sessionTest {
+        connectAndRead()
+        val late = emit!!
+        val result = liveSnapshot().copy(vin = ObdVinSnapshot(ObdVinStatus.AVAILABLE,
+            candidates = listOf(VinResponse("7E8", "TEST0000000000001"))))
+        late(result)
+        viewModel.disconnect()
+        late(result)
+        viewModel.readVin()
+        assertTrue(viewModel.uiState.value.obd.vin.candidates.isEmpty())
+        assertEquals(0, vinRequests)
     }
 
     @After

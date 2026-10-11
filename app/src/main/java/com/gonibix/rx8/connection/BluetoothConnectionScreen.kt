@@ -34,6 +34,8 @@ import androidx.compose.ui.unit.sp
 import com.gonibix.rx8.bluetooth.AdapterDevice
 import com.gonibix.rx8.bluetooth.BluetoothAvailability
 import com.gonibix.rx8.obd.ObdPhase
+import com.gonibix.rx8.telemetry.obd.VinResponse
+import com.gonibix.rx8.vehicle.VinDetectionPanel
 import com.gonibix.rx8.ui.LiveObdReadings
 import com.gonibix.rx8.ui.theme.AccentColor
 import com.gonibix.rx8.ui.theme.BorderColor
@@ -59,6 +61,9 @@ fun BluetoothConnectionScreen(
     onOpenLocationSettings: () -> Unit,
     modifier: Modifier = Modifier,
     onStartObd: () -> Unit = {},
+    onReadVin: () -> Unit = {},
+    onReviewVin: (VinResponse) -> Unit = {},
+    canReviewVin: Boolean = true,
 ) {
     Column(
         modifier = modifier
@@ -111,6 +116,9 @@ fun BluetoothConnectionScreen(
             }
             if (state.obd.phase != ObdPhase.IDLE || state.obd.readings.isNotEmpty()) {
                 LiveObdReadings(state.obd, Modifier.fillMaxWidth())
+            }
+            if (state.obd.phase == ObdPhase.LIVE) {
+                VinDetectionPanel(state.obd.vin, onReadVin, onReviewVin, canReview = canReviewVin)
             }
             when (state.availability) {
                 BluetoothAvailability.PERMISSION_REQUIRED -> {

@@ -5,7 +5,7 @@
 Read README.md, docs/product.md, docs/architecture.md, and the issue before changing code.
 Initial project: European 2004 Mazda RX-8, 231 metric horsepower (CV); Samsung A53 running Android 16; iLC B0BDRHRR22.
 Priority: live data and local trip recording. Prepare for an API without deploying a backend.
-The repository contains a simulator, Bluetooth Classic/SPP transport with in-app discovery, and a read-only ELM327/Mode 01 acquisition engine. Vehicle identity, persistence, trip recording, and API integration remain planned.
+The repository contains a simulator, Bluetooth Classic/SPP discovery, a read-only ELM327 acquisition engine, and Room vehicle profiles with optional manual/OBD VINs. Trip recording, telemetry persistence, and API integration remain planned.
 Read docs/development.md for the pinned toolchain and current build commands. Never claim that a check passed or that hardware was validated without evidence.
 
 ## Language
@@ -32,9 +32,12 @@ Use English for documentation, source comments, UI text, issues, pull requests, 
 - Run relevant checks. For documentation: `npm ci` and `npm run lint:docs`.
 - For Android or telemetry changes on Windows: `.\gradlew.bat :core:telemetry:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug`. On macOS/Linux, use `./gradlew` with the same tasks.
 - Keep meaningful unit tests, Android lint, and debug assembly in the validation workflow. Add parser, persistence, and synchronization tests as those features are implemented.
-- The user confirmed a successful Bluetooth connection on October 10, 2026 after the discovery APK was delivered; PR #13 is merged. This establishes the reported phone-to-adapter connection, not ECU responses, detailed lifecycle tests, or all RX8-003 criteria. RX8-001 and the remaining hardware checks stay open.
+- The user confirmed Bluetooth on October 10, 2026 and live readings on October 11, 2026; PRs #13 and #14 are merged. The latter report does not specify the protocol, individual sensors, rates, or sustained lifecycle behavior. RX8-001, RX8-004, and remaining hardware checks stay open.
 - RX8-004 adds explicit user-started, read-only Mode 01 requests and supported-PID discovery. Use automatic protocol detection, preserve ECU source identities, and never manufacture sensor support or values. BLE transport, GPS tracking, Internet access, fault clearing, and actuator commands remain outside scope.
-- Current OBD queries fit single CAN frames; Bluetooth byte fragmentation is reassembled separately. Do not claim VIN or general ISO-TP multi-frame support before implementing and testing it.
+- RX8-005 stores explicit profiles and active selection in Room. Keep the UUID unchanged when renaming or adding a VIN; reject duplicate/different VIN reassignment and require explicit selection or creation. Alias length is 1-60 characters after trimming. VIN validation is structural only.
+- Read VIN is optional and explicitly requested during a live session. Supported reconstruction is limited to CAN's 20-byte Mode 09 PID 02 response and five numbered legacy packets. Do not claim general ISO-TP, headerless, extended-address, or all-adapter support.
+- Mask VINs by default, retain manual/OBD provenance, and never save a detected candidate without an explicit user decision. Only profiles are persisted; no history exists yet. Backups/device transfer are excluded, and export/restore is not implemented.
+- Preserve the Room schema export and require explicit migrations for future schema versions. Do not add a destructive database fallback.
 - Copy every APK ready for user testing with `scripts/export-test-apk.ps1`, using the ignored `apk-delivery.local.json` destination or the user's requested directory. Keep that machine-specific path outside committed files; document the version delivered.
 - A connected RFCOMM socket is not proof of ECU communication. Preserve the UI distinction, foreground-only connection policy, and manual reconnection. RX8-001 tracks physical adapter and car evidence.
 - The current simulator samples only in the foreground. Do not describe it as background trip recording.
