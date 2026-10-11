@@ -182,7 +182,7 @@ class MainActivity : ComponentActivity() {
                                 unselectedContentColor = MutedColor,
                                 onClick = { selectedTab = "dashboard" },
                                 text = { Text("Live", style = MaterialTheme.typography.labelMedium) },
-                                modifier = Modifier.weight(1f).testTag("dashboard_tab"),
+                                modifier = Modifier.weight(0.75f).testTag("dashboard_tab"),
                             )
                             Tab(
                                 selected = selectedTab == "trips",
@@ -206,7 +206,7 @@ class MainActivity : ComponentActivity() {
                                 unselectedContentColor = MutedColor,
                                 onClick = { selectedTab = "simulator" },
                                 text = { Text("Simulator", style = MaterialTheme.typography.labelMedium) },
-                                modifier = Modifier.weight(1f).testTag("simulator_tab"),
+                                modifier = Modifier.weight(1.25f).testTag("simulator_tab"),
                             )
                         }
                         if (selectedTab == "dashboard" || selectedTab == "simulator" && previewDashboard) {

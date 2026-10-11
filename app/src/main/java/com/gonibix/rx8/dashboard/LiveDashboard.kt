@@ -195,7 +195,7 @@ fun LiveDashboard(
         if (model.ecus.any { it.readings.isNotEmpty() }) item {
             Text(
                 if (isSimulated) "Ages use the simulator clock. Simulation pauses when it is not visible." else
-                    "Measurements arrive one at a time. Ages use elapsed session time, independent of the phone's clock. No trip history is saved.",
+                    "Measurements arrive one at a time. Ages use elapsed session time, independent of the phone's clock. Saving a trip requires Start recording in Trips.",
                 color = MutedColor,
                 style = MaterialTheme.typography.bodySmall,
             )

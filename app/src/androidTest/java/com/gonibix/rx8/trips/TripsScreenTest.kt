@@ -13,14 +13,17 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.gonibix.rx8.ui.theme.Rx8Theme
@@ -61,7 +64,7 @@ class TripsScreenTest {
     @Test fun activeRecordingKeepsItsOriginalVehicleAndHasExplicitStop() {
         var stops = 0
         show(selected = vehicle.copy(id = "other-fake-vehicle", alias = "Other selection"), recording = TripRecordingState(session = trip.copy(status = TripStatus.RECORDING), savedSamples = 12), onStop = { stops++ })
-        compose.onNodeWithTag("recording_vehicle").assertTextContains("Fixture RX-8")
+        compose.onNodeWithTag("recording_vehicle").assertTextEquals("Recording for Fixture RX-8")
         compose.onNodeWithText("Changing the selected vehicle does not change this trip.").assertIsDisplayed()
         compose.onNodeWithTag("start_recording").assertDoesNotExist()
         assertEquals(0, stops)
@@ -71,14 +74,14 @@ class TripsScreenTest {
 
     @Test fun activeHistoryCannotBeAnalyzedOrDeleted() {
         show(state = TripsUiState(trips = listOf(trip.copy(status = TripStatus.RECORDING)), isLoading = false))
-        compose.onNodeWithTag("trip_details_${trip.id}").performScrollTo().assertIsNotEnabled()
+        scrollToTag("trip_details_${trip.id}").assertIsNotEnabled()
         compose.onNodeWithTag("trip_delete_${trip.id}").assertIsNotEnabled()
     }
 
     @Test fun deletionRequiresConfirmationAndCanBeCancelled() {
         val deletions = mutableListOf<String>()
         show(state = history(), onDelete = { deletions += it })
-        compose.onNodeWithTag("trip_delete_${trip.id}").performScrollTo().performClick()
+        scrollToTag("trip_delete_${trip.id}").performClick()
         assertTrue(deletions.isEmpty())
         compose.onNodeWithText("Keep trip").performClick()
         assertTrue(deletions.isEmpty())
@@ -89,24 +92,24 @@ class TripsScreenTest {
 
     @Test fun detailsPreserveARealZeroEstimateAndExposeTheSpeedSource() {
         show(state = history().copy(selectedTripId = trip.id, detail = analysis()))
-        compose.onNodeWithTag("trip_estimated_distance").performScrollTo().assertTextContains("0.000 km")
+        scrollToTag("trip_estimated_distance").assertTextEquals("Estimated distance: 0.000 km")
         compose.onNodeWithText("Calculated from valid speed intervals; this is not the odometer.").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Speed summary source: ECU TEST_ECU").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithTag("trip_speed_chart").performScrollTo().assertIsDisplayed()
+        scrollToTag("trip_speed_chart").assertIsDisplayed()
     }
 
     @Test fun exportsUseTheSelectedTripAndExplicitFormat() {
         val requests = mutableListOf<Pair<String, TripExportFormat>>()
         show(state = history().copy(selectedTripId = trip.id, detail = analysis()), onExport = { session, format -> requests += session.id to format })
         assertTrue(requests.isEmpty())
-        compose.onNodeWithTag("export_trip_json").performScrollTo().performClick()
+        scrollToTag("export_trip_json").performClick()
         compose.onNodeWithTag("export_trip_csv").performClick()
         assertEquals(listOf(trip.id to TripExportFormat.JSON, trip.id to TripExportFormat.CSV), requests)
     }
 
     @Test fun writingAnExportDisablesConflictingActionsAndDoesNotClaimSuccess() {
         show(state = history().copy(selectedTripId = trip.id, detail = analysis(), isExporting = true))
-        compose.onNodeWithTag("export_trip_json").performScrollTo().assertIsNotEnabled()
+        scrollToTag("export_trip_json").assertIsNotEnabled()
         compose.onNodeWithTag("export_trip_csv").assertIsNotEnabled()
         compose.onNodeWithTag("delete_trip_details").assertIsNotEnabled()
         compose.onNodeWithTag("trips_message").assertDoesNotExist()
@@ -114,20 +117,21 @@ class TripsScreenTest {
 
     @Test fun recordingAndStorageErrorsAreVisible() {
         show(state = history().copy(error = "The history could not be loaded."), recording = TripRecordingState(error = "Recording stopped because storage failed."))
-        compose.onNodeWithTag("recording_error").assertTextContains("storage failed")
-        compose.onNodeWithTag("trips_error").performScrollTo().assertTextContains("could not be loaded")
+        compose.onNodeWithTag("recording_error").assertTextEquals("Recording stopped because storage failed.")
+        scrollToTag("trips_error").assertTextEquals("The history could not be loaded.")
     }
 
     @Test fun initialHistoryFailureDoesNotClaimTheDatabaseIsEmpty() {
         show(state = TripsUiState(isLoading = false, error = "Saved trips could not be loaded."))
-        compose.onNodeWithTag("trips_error").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithTag("refresh_trips").performScrollTo().assertIsDisplayed()
+        scrollToTag("trips_error").assertIsDisplayed()
+        scrollToTag("refresh_trips").assertIsDisplayed()
         compose.onNodeWithTag("empty_trips").assertDoesNotExist()
     }
 
     @Test fun fakeTripSummaryScreenshotContainsRenderedContent() {
         show(state = history().copy(selectedTripId = trip.id, detail = analysis()), fixtureBanner = true)
-        compose.onNodeWithTag("trip_estimated_distance").performScrollTo().assertIsDisplayed()
+        scrollToTag("trip_estimated_distance").assertIsDisplayed()
+        scrollToTag("trip_speed_chart").assertIsDisplayed()
         compose.onNodeWithText("UI TEST FIXTURE · FAKE TRIP").assertIsDisplayed()
         compose.waitForIdle()
         var rendered: Bitmap? = null
@@ -146,6 +150,12 @@ class TripsScreenTest {
             val preserved = ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand("cat /data/local/tmp/rx8-trips.png")).use { it.readBytes() }
             assertArrayEquals(source.readBytes(), preserved)
         } finally { bitmap.recycle() }
+    }
+
+    private fun scrollToTag(tag: String): SemanticsNodeInteraction {
+        // Lazy items outside the viewport may not have a semantics node yet. Let the list find them first.
+        compose.onNodeWithTag("trips_screen").performScrollToNode(hasTestTag(tag))
+        return compose.onNodeWithTag(tag).performScrollTo()
     }
 
     private fun show(
