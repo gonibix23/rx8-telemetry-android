@@ -8,7 +8,16 @@ Selected priority: live data and trip recording. Prepare for a future API withou
 The user reported a successful simulator app test on October 10, 2026. The paired-only Bluetooth build failed to list the adapter.
 Car Scanner reportedly finds OBDII and its MAC address through in-app search with plain Bluetooth selected.
 The user confirmed Bluetooth works and reported successful live readings on October 11, 2026; PR #14 is merged. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed correct readings in 0.5.0-dev. Individual sensors, ECU identifiers, measured rates, sustained lifecycle behavior, VIN retrieval, and profile persistence remain unverified.
-The current 0.5.1-dev increment keeps an explicitly started connection and acquisition active across tabs, backgrounding, screen lock, and Activity recreation. Saved vehicle profiles and optional manual/OBD VINs remain available alongside the six Mode 01 decoders. RX8-004 stays open for detailed hardware checks.
+The current 0.6.0-dev increment adds a dedicated live dashboard and saved favorites. The service-owned session continues across tabs, backgrounding, screen lock, and Activity recreation. Saved vehicle profiles and optional manual/OBD VINs remain available alongside the six Mode 01 decoders. RX8-004 stays open for detailed hardware checks.
+
+## Current live dashboard
+
+Dashboard presents RPM, speed, and coolant temperature in fixed primary positions when reported as supported. Intake temperature, throttle position, and engine load can be selected as extra favorites from the session's known capabilities.
+Each ECU has its own values; the app does not average different ECU responses or identify an engine controller by assumption. Cards show units, age, and quality, preserving valid zero readings and distinguishing missing, unsupported, failed, and stale readings.
+Favorite selections persist across app restarts as app-wide preferences, independent of the selected vehicle or ECU. A saved favorite unavailable in another session remains visibly unavailable. Selecting a favorite changes presentation, not sensor support or polling priority.
+The Dashboard shows real ECU data and connection/acquisition status. Opening it does not connect or start polling; use Adapter for the explicit connection and acquisition actions. It does not display simulator values as car readings, calculate estimates, or save history.
+The Simulator tab previews the same cards with a prominent synthetic-data label and its normal, timeout, and missing-data controls. Simulator sampling remains limited to that visible foreground tab.
+Dashboard layout, favorite persistence, and navigation still need the A53 checks in RX8-006.
 
 ## Current vehicle profiles
 
@@ -17,18 +26,18 @@ Names contain 1-60 characters after trimming. The optional VIN contains 17 lette
 Read VIN is available only after live acquisition starts. The user chooses a candidate in Adapter, then reviews it in Vehicles before attaching it to a VIN-less profile or creating a separate profile.
 A matching VIN offers explicit selection of its existing profile. A different VIN cannot overwrite the selected profile. Adding a VIN or changing the name never changes the UUID.
 VINs are masked by default and record manual entry or OBD/ECU provenance. A car can be used without a VIN; its Bluetooth adapter does not identify it.
-Switching to Vehicles leaves an active Bluetooth/acquisition session running. Only profiles are saved: trips, telemetry history, and API synchronization remain planned.
+Switching to Vehicles leaves an active Bluetooth/acquisition session running. Profiles, selected vehicle, and dashboard favorites are saved; trips, telemetry history, and API synchronization remain planned.
 Backups/device transfer are disabled, and export/restore is not implemented. Clearing app data or reinstalling loses the saved IDs.
 
 ## Current session behavior
 
 Connect is an explicit action from the visible app. Read live data starts acquisition separately; a connection alone does not query the ECU.
 The active session continues when changing tabs, using another app, locking the screen, or recreating the Activity. Discovery stops when leaving Adapter, and simulation still samples only while Simulator is visible.
-Adapter stays awake only during visible initialization, protocol/capability discovery, and live acquisition. Other screens and an idle connected adapter do not hold the screen on.
+Adapter and Dashboard stay awake only during visible real initialization, protocol/capability discovery, and live acquisition. Vehicles, Simulator, and an idle connected adapter do not hold the screen on.
 Disconnect in Adapter or Stop in the ongoing notification ends the session. Opening the notification returns to Adapter. Notification denial does not block connection; in-app guidance explains how to enable notifications and disconnect.
 Active acquisition consumes battery while running, including with the screen locked. No battery-optimization exemption is requested. There is no automatic reconnect or process-death recovery.
 
-The user reported screen sleep and background disconnection in 0.5.0-dev. These were consequences of the old lifecycle policy, not confirmed Bluetooth bond removal. [Issue #16](https://github.com/gonibix23/rx8-telemetry-android/issues/16) tracks the fix; real A53 lifecycle and battery checks remain pending.
+The user reported screen sleep and background disconnection in 0.5.0-dev. These were consequences of the old lifecycle policy, not confirmed Bluetooth bond removal. The user subsequently confirmed 0.5.1-dev worked, broadly confirming the fix in merged PR #17. [Issue #16](https://github.com/gonibix23/rx8-telemetry-android/issues/16) retains detailed checks; duration, battery use, notification scenarios, and actual bond removal remain unverified.
 This is continued live acquisition, not saved trip recording.
 
 ## Expected MVP outcome
@@ -42,7 +51,8 @@ They can lock the screen during recording, stop recording from a notification, a
 | --- | --- |
 | Adapter (implemented) | Discovery, permissions, Bluetooth/ECU status, live readings, optional VIN request |
 | Vehicles (implemented) | Saved profiles, selection, permanent UUID, alias, optional VIN and source |
-| Live data | RPM, coolant temperature, speed, and favorites from supported sensors |
+| Simulator (implemented) | Clearly synthetic dashboard preview and failure scenarios |
+| Dashboard (implemented) | Supported RPM, speed, coolant, extra favorites, per-ECU status and reading age |
 | Trips | Sessions, duration, charts, connection gaps, and summary |
 | Trip details | Samples, valid minimum/maximum values, export, and deletion |
 | Settings | Units, sampling rate/priorities, storage, and synchronization status |

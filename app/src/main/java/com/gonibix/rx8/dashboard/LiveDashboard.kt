@@ -1,0 +1,310 @@
+package com.gonibix.rx8.dashboard
+
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.gonibix.rx8.obd.ObdMetric
+import com.gonibix.rx8.obd.ObdPhase
+import com.gonibix.rx8.obd.ObdReadingStatus
+import com.gonibix.rx8.obd.ObdSessionSnapshot
+import com.gonibix.rx8.ui.theme.AccentColor
+import com.gonibix.rx8.ui.theme.BorderColor
+import com.gonibix.rx8.ui.theme.CardColor
+import com.gonibix.rx8.ui.theme.MintColor
+import com.gonibix.rx8.ui.theme.MutedColor
+import com.gonibix.rx8.ui.theme.WarmWhite
+import java.util.Locale
+import kotlin.math.roundToInt
+
+/** A presentation-only screen; session ownership and preference persistence stay with its caller. */
+@Composable
+fun LiveDashboard(
+    snapshot: ObdSessionSnapshot,
+    favorites: Set<ObdMetric>,
+    onToggleFavorite: (ObdMetric) -> Unit,
+    onOpenAdapter: () -> Unit,
+    modifier: Modifier = Modifier,
+    isSimulated: Boolean = false,
+    connectionStatus: String? = null,
+) {
+    val model = dashboardModel(snapshot, favorites)
+    var showPicker by rememberSaveable { mutableStateOf(false) }
+    var showDetails by rememberSaveable { mutableStateOf(false) }
+    LazyColumn(
+        modifier.fillMaxSize().testTag("live_dashboard"),
+        contentPadding = PaddingValues(20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    if (isSimulated) "SIMULATOR · SYNTHETIC DATA" else "VEHICLE · OBD",
+                    color = if (isSimulated) AccentColor else MintColor,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.testTag("dashboard_origin"),
+                )
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (model.stopped) "Last readings" else "Live dashboard",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = onOpenAdapter, modifier = Modifier.testTag("dashboard_open_adapter")) {
+                        Text(if (isSimulated) "Simulator" else "Adapter")
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        sessionLabel(snapshot.phase, isSimulated),
+                        color = if (model.stopped) AccentColor else MintColor,
+                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f).testTag("dashboard_session_status"),
+                    )
+                    TextButton(onClick = { showDetails = !showDetails }, modifier = Modifier.testTag("dashboard_session_details")) {
+                        Text(if (showDetails) "Hide details" else "Details")
+                    }
+                }
+                if (!isSimulated && connectionStatus != null) Text(
+                    connectionStatus,
+                    color = MutedColor,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.testTag("dashboard_bluetooth_status"),
+                )
+                if (snapshot.phase != ObdPhase.LIVE || showDetails) {
+                    Text(snapshot.statusMessage, color = MutedColor, style = MaterialTheme.typography.bodySmall)
+                }
+                if (showDetails && !isSimulated) {
+                    Text(
+                        "Protocol reported by adapter: ${snapshot.protocolLabel ?: "Not identified"}",
+                        color = MutedColor,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.testTag("dashboard_protocol"),
+                    )
+                    snapshot.adapterIdentity?.let {
+                        Text("Adapter identification: $it", color = MutedColor, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                if (model.stopped) Text(
+                    if (model.ecus.any { ecu -> ecu.readings.any { it.value != null } })
+                        "Retained values are stale. Ages are frozen at stop." else "Updates have stopped. No current measurements are shown.",
+                    color = AccentColor,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                if (!model.hasCapabilities) Text(
+                    "Sensor capabilities are not available yet. Open Adapter and start live data to discover them.",
+                    color = MutedColor,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.testTag("dashboard_no_capabilities"),
+                )
+            }
+        }
+        model.ecus.forEach { ecu ->
+            item(key = "ecu_${ecu.ecuId}") {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        if (isSimulated) "Synthetic source · ${ecu.ecuId}" else "Vehicle ECU · ${ecu.ecuId}",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.testTag("dashboard_ecu_${ecu.ecuId}"),
+                    )
+                    if (ecu.readings.isEmpty()) Text(
+                        "No selected dashboard sensor is reported as supported by this source.",
+                        color = MutedColor,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    ecu.readings.firstOrNull { it.metric == ObdMetric.ENGINE_RPM }?.let { rpm ->
+                        DashboardCard(rpm, model.stopped, Modifier.fillMaxWidth(), wide = true)
+                    }
+                    val otherReadings = ecu.readings.filter { it.metric != ObdMetric.ENGINE_RPM }
+                    BoxWithConstraints {
+                        val columns = when {
+                            maxWidth >= 700.dp -> 3
+                            maxWidth >= 340.dp -> 2
+                            else -> 1
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            otherReadings.chunked(columns).forEach { readings ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    readings.forEach { reading ->
+                                        DashboardCard(reading, model.stopped, Modifier.weight(1f))
+                                    }
+                                    repeat(columns - readings.size) { Spacer(Modifier.weight(1f)) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Favorite sensors", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    TextButton(onClick = { showPicker = !showPicker }, modifier = Modifier.testTag("dashboard_choose_sensors")) {
+                        Text(if (showPicker) "Done" else "Choose sensors")
+                    }
+                }
+                if (model.unavailableFavorites.isNotEmpty()) Text(
+                    if (model.unavailableFavorites.size == 1)
+                        "A saved favorite is unavailable in this session. Choose sensors to review or remove it." else
+                        "${model.unavailableFavorites.size} saved favorites are unavailable in this session. Choose sensors to review or remove them.",
+                    color = AccentColor,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.testTag("dashboard_unavailable_favorites"),
+                )
+                if (showPicker) SensorPicker(model, favorites, onToggleFavorite)
+                if (model.hasCapabilities && model.unavailablePrimary.isNotEmpty()) Text(
+                    "Not reported as supported: ${model.unavailablePrimary.joinToString { it.label }}.",
+                    color = MutedColor,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+        if (model.ecus.any { it.readings.isNotEmpty() }) item {
+            Text(
+                if (isSimulated) "Ages use the simulator clock. Simulation pauses when it is not visible." else
+                    "Measurements arrive one at a time. Ages use elapsed session time, independent of the phone's clock. No trip history is saved.",
+                color = MutedColor,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SensorPicker(model: DashboardModel, favorites: Set<ObdMetric>, onToggle: (ObdMetric) -> Unit) {
+    Surface(color = CardColor, shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, BorderColor)) {
+        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Essentials stay visible when supported. Favorites apply to every supporting ECU.", color = MutedColor, style = MaterialTheme.typography.bodySmall)
+            if (model.availableExtras.isEmpty()) Text("No additional supported sensors are available.", style = MaterialTheme.typography.bodySmall)
+            extraDashboardMetrics.filter { it in model.availableExtras || it in model.unavailableFavorites }.forEach { metric ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = metric in favorites,
+                        onCheckedChange = { onToggle(metric) },
+                        modifier = Modifier.testTag("dashboard_favorite_${metric.name.lowercase(Locale.ROOT)}")
+                            .semantics { contentDescription = "Favorite: ${metric.label}" },
+                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(metric.label, style = MaterialTheme.typography.bodyMedium)
+                        if (metric in model.unavailableFavorites) Text(
+                            if (model.hasCapabilities) "Not supported in this session. Uncheck to remove." else
+                                "Support is unknown until live data starts. Uncheck to remove.",
+                            color = AccentColor,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DashboardCard(reading: DashboardReading, stopped: Boolean, modifier: Modifier = Modifier, wide: Boolean = false) {
+    val suffix = "${reading.ecuId}_${reading.metric.name.lowercase(Locale.ROOT)}"
+    val warning = reading.status != ObdReadingStatus.VALID
+    Surface(modifier.heightIn(min = if (wide) 96.dp else 140.dp), shape = RoundedCornerShape(16.dp), color = CardColor) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(reading.metric.label, color = MutedColor, style = MaterialTheme.typography.labelLarge)
+            if (reading.isFavorite) Text("FAVORITE", color = MintColor, fontSize = 9.sp, letterSpacing = 1.sp)
+            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    reading.value?.let { formatValue(reading.metric, it) } ?: "—",
+                    color = if (warning) AccentColor else WarmWhite,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 34.sp,
+                    lineHeight = 40.sp,
+                    modifier = Modifier.testTag("dashboard_value_$suffix"),
+                )
+                Text(reading.metric.unit, color = MutedColor, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 5.dp))
+            }
+            if (wide) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                ReadingStatus(reading, warning, suffix)
+                ReadingAge(reading, stopped, suffix)
+            } else {
+                ReadingStatus(reading, warning, suffix)
+                ReadingAge(reading, stopped, suffix)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReadingStatus(reading: DashboardReading, warning: Boolean, suffix: String) {
+    Text(
+        reading.status.label(),
+        color = if (warning) AccentColor else MintColor,
+        style = MaterialTheme.typography.labelSmall,
+        modifier = Modifier.testTag("dashboard_status_$suffix"),
+    )
+}
+
+@Composable
+private fun ReadingAge(reading: DashboardReading, stopped: Boolean, suffix: String) {
+    Text(
+        reading.ageMillis?.let {
+            String.format(Locale.ROOT, if (stopped) "Age at stop: %.1f s" else "Age: %.1f s", it / 1_000.0)
+        } ?: "No reading received",
+        color = MutedColor,
+        fontSize = 11.sp,
+        modifier = Modifier.testTag("dashboard_age_$suffix"),
+    )
+}
+
+private fun formatValue(metric: ObdMetric, value: Double): String = when (metric) {
+    ObdMetric.THROTTLE_POSITION, ObdMetric.ENGINE_LOAD -> String.format(Locale.ROOT, "%.1f", value)
+    else -> value.roundToInt().toString()
+}
+
+private fun ObdReadingStatus?.label(): String = when (this) {
+    ObdReadingStatus.VALID -> "Current"
+    ObdReadingStatus.STALE -> "Stale · last value"
+    ObdReadingStatus.NO_DATA -> "No data"
+    ObdReadingStatus.TIMEOUT -> "Timed out"
+    ObdReadingStatus.PARSE_ERROR -> "Unreadable response"
+    ObdReadingStatus.ADAPTER_ERROR -> "Adapter error"
+    ObdReadingStatus.UNSUPPORTED -> "Unsupported"
+    null -> "Awaiting reading"
+}
+
+private fun sessionLabel(phase: ObdPhase, simulated: Boolean): String = when (phase) {
+    ObdPhase.IDLE -> "Readings not started · ECU not checked"
+    ObdPhase.INITIALIZING -> "Preparing adapter · ECU not checked"
+    ObdPhase.DISCOVERING -> "Checking vehicle capabilities"
+    ObdPhase.LIVE -> if (simulated) "Simulation running" else "Vehicle communication active"
+    ObdPhase.STOPPED -> if (simulated) "Simulation stopped" else "Readings stopped"
+    ObdPhase.ERROR -> "Reading failed"
+}

@@ -7,11 +7,13 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -34,6 +36,31 @@ class SimulatorDashboardTest {
     @Before
     fun openSimulator() {
         compose.onNodeWithTag("simulator_tab").performClick()
+    }
+
+    @Test
+    fun newDashboardPreviewKeepsSyntheticDataSeparateAcrossRecreationAndTabs() {
+        compose.onNodeWithTag("preview_dashboard").performClick()
+        compose.onNodeWithTag("dashboard_origin").assertTextEquals("SIMULATOR · SYNTHETIC DATA")
+        compose.onNodeWithTag("preview_toggle_simulator").performClick()
+        compose.onNodeWithTag("dashboard_session_status").assertTextEquals("Simulation running")
+        compose.activityRule.scenario.recreate()
+        compose.onNodeWithTag("dashboard_origin").assertTextEquals("SIMULATOR · SYNTHETIC DATA")
+        compose.onNodeWithTag("dashboard_session_status").assertTextEquals("Simulation running")
+        compose.onNodeWithTag("preview_scenario_timeout").performClick()
+        compose.onNodeWithTag("live_dashboard").performScrollToNode(hasTestTag("dashboard_value_SIMULATOR_engine_rpm"))
+        compose.onNodeWithTag("dashboard_value_SIMULATOR_engine_rpm").assertTextEquals("—")
+        compose.onNodeWithTag("dashboard_status_SIMULATOR_engine_rpm").assertTextEquals("Timed out")
+
+        compose.onNodeWithTag("dashboard_tab").performClick()
+        compose.onNodeWithTag("dashboard_origin").assertTextEquals("VEHICLE · OBD")
+        compose.onNodeWithTag("dashboard_value_SIMULATOR_engine_rpm").assertDoesNotExist()
+        compose.onNodeWithTag("simulator_tab").performClick()
+        compose.onNodeWithTag("dashboard_origin").assertTextEquals("SIMULATOR · SYNTHETIC DATA")
+        compose.onNodeWithTag("preview_toggle_simulator").performClick()
+        compose.onNodeWithTag("dashboard_session_status").assertTextEquals("Simulation stopped")
+        compose.onNodeWithTag("close_dashboard_preview").performClick()
+        compose.onNodeWithTag("simulation_status").assertTextEquals("Simulator stopped")
     }
 
     @Test
