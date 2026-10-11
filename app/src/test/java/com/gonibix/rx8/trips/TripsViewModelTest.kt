@@ -32,7 +32,7 @@ class TripsViewModelTest {
         repository.current = trip.copy(status = TripStatus.RECORDING)
         val model = TripsViewModel(repository, dispatcher)
         runCurrent()
-        assertEquals(100, repository.lastLimit)
+        assertEquals(50, repository.lastLimit)
         assertEquals(listOf(repository.current), model.uiState.value.trips)
         assertEquals(4_096L, model.uiState.value.storageBytes)
         assertNull(model.uiState.value.syncStatus)
@@ -47,12 +47,12 @@ class TripsViewModelTest {
         model.refresh()
         runCurrent()
         assertEquals(listOf(trip), model.uiState.value.trips)
-        assertTrue(model.uiState.value.error!!.contains("could not be loaded"))
+        assertTrue(model.uiState.value.historyError!!.contains("could not be loaded"))
         assertFalse(model.uiState.value.isLoading)
         repository.failList = false
         model.refresh()
         runCurrent()
-        assertNull(model.uiState.value.error)
+        assertNull(model.uiState.value.historyError)
     }
 
     @Test fun activeTripCannotBeDeletedOrExportedEvenThroughDirectCallbacks() = runTest(dispatcher) {
@@ -206,7 +206,7 @@ class TripsViewModelTest {
         val summary = SyncQueueSummary(pending = 8)
         val model = TripsViewModel(repository, dispatcher) { summary }
         runCurrent()
-        assertTrue(model.uiState.value.error!!.contains("could not be loaded"))
+        assertTrue(model.uiState.value.historyError!!.contains("could not be loaded"))
         assertEquals(summary, model.uiState.value.syncStatus!!.summary)
         assertNull(model.uiState.value.syncStatus!!.error)
     }
@@ -263,6 +263,11 @@ class TripsViewModelTest {
             lastLimit = limit
             if (failList) throw IOException("Synthetic history failure")
             return listOfNotNull(current)
+        }
+        override suspend fun historyPage(request: TripHistoryRequest): TripHistoryPage {
+            lastLimit = request.limit
+            if (failList) throw IOException("Synthetic history failure")
+            return TripHistoryPage(listOfNotNull(current).filter { request.vehicleId == null || it.vehicleId == request.vehicleId })
         }
         override suspend fun find(tripId: String) = current?.takeIf { it.id == tripId }
         override suspend fun samples(tripId: String, afterSequence: Long, limit: Int): List<TripSample> { sampleReads++; return emptyList() }

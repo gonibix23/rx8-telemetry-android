@@ -33,6 +33,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -165,6 +166,7 @@ class MainActivity : ComponentActivity() {
                 val recording by tripRuntime.recorder.state.collectAsStateWithLifecycle()
                 // Document results must survive navigation to Adapter from the session notification.
                 val tripExportActions = rememberTripExportActions(tripsViewModel)
+                val tripPresentation = rememberSaveableStateHolder()
                 val capabilityState by capabilityReportViewModel.uiState.collectAsStateWithLifecycle()
                 // Keep document registration stable while tabs change or the Activity is recreated.
                 val capabilityExport = rememberCapabilityReportExportAction(capabilityReportViewModel)
@@ -325,19 +327,22 @@ class MainActivity : ComponentActivity() {
                                     },
                                 )
                             } else if (selectedTab == "trips") {
-                                TripsScreen(
-                                    viewModel = tripsViewModel,
-                                    exportActions = tripExportActions,
-                                    selectedVehicle = vehicles.vehicles.profiles.firstOrNull { it.id == vehicles.vehicles.activeVehicleId },
-                                    recording = recording,
-                                    canStart = !vehicles.isLoading && !vehicles.isSaving && sessionState?.phase == BluetoothConnectionPhase.CONNECTED && sessionState.obd.phase == ObdPhase.LIVE,
-                                    onStart = { vehicle ->
-                                        if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) binder?.startTrip(vehicle)
-                                    },
-                                    onStop = { tripRuntime.recorder.stop() },
-                                    onOpenAdapter = { selectedTab = "adapter"; showCapabilityReport = false },
-                                    onOpenVehicles = { selectedTab = "vehicles" },
-                                )
+                                tripPresentation.SaveableStateProvider("trips") {
+                                    TripsScreen(
+                                        viewModel = tripsViewModel,
+                                        exportActions = tripExportActions,
+                                        selectedVehicle = vehicles.vehicles.profiles.firstOrNull { it.id == vehicles.vehicles.activeVehicleId },
+                                        recording = recording,
+                                        canStart = !vehicles.isLoading && !vehicles.isSaving && sessionState?.phase == BluetoothConnectionPhase.CONNECTED && sessionState.obd.phase == ObdPhase.LIVE,
+                                        onStart = { vehicle ->
+                                            if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) binder?.startTrip(vehicle)
+                                        },
+                                        onStop = { tripRuntime.recorder.stop() },
+                                        onOpenAdapter = { selectedTab = "adapter"; showCapabilityReport = false },
+                                        onOpenVehicles = { selectedTab = "vehicles" },
+                                        historyVehicles = vehicles.vehicles.profiles,
+                                    )
+                                }
                             } else if (selectedTab == "vehicles") {
                                 LaunchedEffect(Unit) { vehicleViewModel.reload() }
                                 VehicleProfileScreen(

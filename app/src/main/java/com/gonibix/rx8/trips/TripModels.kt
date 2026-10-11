@@ -33,6 +33,25 @@ data class TripSample(
     val quality: ObdReadingStatus,
 )
 
+/** Immutable ordering key; navigation does not require the referenced row to still exist. */
+data class TripHistoryCursor(val startedAtEpochMillis: Long, val tripId: String)
+
+enum class TripHistoryDirection { NEWEST, OLDER, NEWER, AT_OR_OLDER }
+
+data class TripHistoryRequest(
+    val vehicleId: String? = null,
+    val cursor: TripHistoryCursor? = null,
+    val direction: TripHistoryDirection = TripHistoryDirection.NEWEST,
+    val limit: Int = 50,
+)
+
+/** Every page uses descending start-time/ID order. Empty pages have no navigation flags. */
+data class TripHistoryPage(
+    val trips: List<TripSession>,
+    val hasNewer: Boolean = false,
+    val hasOlder: Boolean = false,
+)
+
 /** Implementations commit each mutation atomically. Sample pages are ordered by sequence. */
 interface TripRepository {
     suspend fun recoverInterrupted()
@@ -40,6 +59,7 @@ interface TripRepository {
     suspend fun append(tripId: String, samples: List<TripSample>)
     suspend fun finish(tripId: String, endedAtEpochMillis: Long, durationMillis: Long, status: TripStatus, reason: String)
     suspend fun list(limit: Int = 100): List<TripSession>
+    suspend fun historyPage(request: TripHistoryRequest): TripHistoryPage
     suspend fun find(tripId: String): TripSession?
     suspend fun samples(tripId: String, afterSequence: Long = -1, limit: Int = 500): List<TripSample>
     suspend fun delete(tripId: String)

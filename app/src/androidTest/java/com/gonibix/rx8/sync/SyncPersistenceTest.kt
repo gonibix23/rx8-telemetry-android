@@ -391,7 +391,7 @@ class SyncPersistenceTest {
     private fun vehicles() = RoomVehicleRepository(database)
     private fun trips() = RoomTripRepository(database)
     private fun open() = Room.databaseBuilder(context, VehicleDatabase::class.java, name)
-        .addMigrations(VehicleDatabase.MIGRATION_1_2, VehicleDatabase.MIGRATION_2_3).build()
+        .addMigrations(VehicleDatabase.MIGRATION_1_2, VehicleDatabase.MIGRATION_2_3, VehicleDatabase.MIGRATION_3_4).build()
     private fun reopen() { database.close(); database = open() }
     private suspend fun claim(now: Long = NOW, custom: BatchLimits = limits) = store().claimNext(now, 1_000L, custom)
     private suspend fun acknowledgeMetadata(lease: SyncLease) {

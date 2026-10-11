@@ -233,6 +233,7 @@ internal class AnalyticsExportRepository(private val history: List<TripSample> =
     override suspend fun append(tripId: String, samples: List<TripSample>) = error("Read-only test")
     override suspend fun finish(tripId: String, endedAtEpochMillis: Long, durationMillis: Long, status: TripStatus, reason: String) = error("Read-only test")
     override suspend fun list(limit: Int): List<TripSession> = emptyList()
+    override suspend fun historyPage(request: TripHistoryRequest) = TripHistoryPage(emptyList())
     override suspend fun find(tripId: String): TripSession? = null
     override suspend fun delete(tripId: String) = error("Read-only test")
     override suspend fun storageBytes(): Long = 0L

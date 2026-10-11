@@ -190,6 +190,18 @@ Use 0.10.0-dev or newer with existing app data intact. On October 11, 2026, the 
 
 Only eligible adjacent intervals of at most five seconds contribute coverage. Chart point reduction may omit visual detail; displayed selected-series counts and extrema use the complete recorded stream.
 
+## History browsing checklist (RX8-014)
+
+Use 0.11.0-dev as an update with existing app data intact. These phone checks are deferred while software development continues; automated migration and synthetic browsing tests do not establish phone results.
+
+- [ ] Confirm the upgrade retains profiles, selected vehicle, existing trips/samples, and disabled-upload counts. Do not clear app data as a routine test.
+- [ ] Browse Older and Newer where enough saved trips exist. Refresh an older page, open details and return, change tabs, and rotate; confirm the same filter and browsing context remain. Newest should return to the latest matching trips.
+- [ ] Filter another vehicle's history without changing the selected recording profile. Where names repeat or a profile was renamed, distinguish identities and verify older trip cards retain their recorded names.
+- [ ] While recording for one vehicle, view another vehicle's history and confirm the original recording card and Stop control remain available. Filtering must not start, stop, or relabel a recording.
+- [ ] Export a finished trip from an older page. Cancel deletion once, then optionally delete a disposable trip; confirm only that trip disappears and the page refills or returns to newest if empty.
+
+If there are fewer than 51 actual saved trips or only one vehicle, report that limitation instead of inventing a larger hardware dataset. Fixtures cover more than 100 trips, timestamp ties, failures, and races separately.
+
 ## Evidence matrix
 
 | Data | Documented | Reported as supported | Reading validated | Unit | Notes |

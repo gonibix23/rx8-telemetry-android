@@ -177,6 +177,7 @@ An acknowledged or partially resolved batch is retired without rewriting its att
 ## Local queue
 
 Room schema version 3 migrates version 2 explicitly, preserving profiles, selection, and trips. Existing samples receive pending references and existing vehicle/session metadata receives revision-1 snapshots; migration never fabricates historical app versions.
+The subsequent schema version 4 migration adds history indexes only. It does not change wire models, export v1, metadata revisions, sample identities, pending work, or acknowledgment state.
 Sample states are pending, sending, acknowledged, and blocked. The four UI counters count samples only, not vehicle/session metadata or retired batches.
 Save a sample and its pending reference in the same transaction. Vehicle/session mutations also save their immutable revision snapshots atomically. Unbatched pending data uses sample references; payloads are prepared in bounded batches when claimed.
 The store records attempts, a safe error code, the next attempt time, and a temporary lease. Default coordinator timing is a 30-second lease and a 10-second remote-call timeout. The store validates token, expiry, request identity, membership, and exact body inside the ACK transaction. Stale, expired, replaced, or deleted leases cannot acknowledge data.

@@ -4,10 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gonibix.rx8.sync.SyncQueueSummary
 import java.io.OutputStream
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -25,7 +27,14 @@ data class TripSyncStatus(
 data class TripsUiState(
     val trips: List<TripSession> = emptyList(),
     val storageBytes: Long? = null,
+    val isLoadingStorage: Boolean = true,
+    val storageError: String? = null,
     val isLoading: Boolean = true,
+    val historyVehicleId: String? = null,
+    val hasNewerTrips: Boolean = false,
+    val hasOlderTrips: Boolean = false,
+    val historyError: String? = null,
+    val historyRevision: Long = 0,
     val selectedTripId: String? = null,
     val detail: TripAnalysis? = null,
     val isLoadingDetail: Boolean = false,
@@ -49,47 +58,163 @@ class TripsViewModel(
     private val mutableState = MutableStateFlow(TripsUiState(syncStatus = queueSummaryLoader?.let { TripSyncStatus() }))
     val uiState = mutableState.asStateFlow()
     private var historyJob: Job? = null
+    private var historyGeneration = 0L
+    private var historyAnchor: TripHistoryCursor? = null
+    private var historyAtNewest = true
+    private var lastHistoryRequest = TripHistoryRequest()
+    private var lastHistoryRepositions = false
+    private var storageJob: Job? = null
+    private var storageGeneration = 0L
     private var detailJob: Job? = null
     private var seriesJob: Job? = null
     private var detailGeneration = 0L
     private var seriesGeneration = 0L
     private var queueJob: Job? = null
+    private var queueGeneration = 0L
 
     init { refresh() }
 
+    /** Refresh the visible browsing context, never reset an older page on lifecycle entry. */
     fun refresh() {
         refreshQueueSummary()
+        refreshStorage()
+        if (mutableState.value.isDeleting) return
+        if (mutableState.value.isLoading) {
+            loadHistory(lastHistoryRequest, lastHistoryRepositions)
+        } else {
+            loadHistory(currentHistoryRequest())
+        }
+    }
+
+    fun selectHistoryVehicle(id: String?) {
+        val state = mutableState.value
+        if (state.isDeleting || state.historyVehicleId == id) return
+        historyAnchor = null
+        historyAtNewest = true
+        mutableState.value = state.copy(
+            historyVehicleId = id, trips = emptyList(), hasNewerTrips = false, hasOlderTrips = false,
+            historyError = null, historyRevision = state.historyRevision + 1,
+        )
+        loadHistory(TripHistoryRequest(vehicleId = id, limit = HISTORY_PAGE_SIZE))
+    }
+
+    fun olderTrips() {
+        val state = mutableState.value
+        if (state.isLoading || state.isDeleting || !state.hasOlderTrips) return
+        val last = state.trips.lastOrNull() ?: return
+        loadHistory(TripHistoryRequest(state.historyVehicleId, last.historyCursor(), TripHistoryDirection.OLDER, HISTORY_PAGE_SIZE), reposition = true)
+    }
+
+    fun newerTrips() {
+        val state = mutableState.value
+        if (state.isLoading || state.isDeleting || !state.hasNewerTrips) return
+        val first = state.trips.firstOrNull() ?: return
+        loadHistory(TripHistoryRequest(state.historyVehicleId, first.historyCursor(), TripHistoryDirection.NEWER, HISTORY_PAGE_SIZE), reposition = true)
+    }
+
+    fun newestTrips() {
+        val state = mutableState.value
+        if (state.isLoading || state.isDeleting) return
+        loadHistory(TripHistoryRequest(vehicleId = state.historyVehicleId, limit = HISTORY_PAGE_SIZE), reposition = true)
+    }
+
+    fun retryHistory() {
+        val state = mutableState.value
+        if (state.isLoading || state.isDeleting || state.historyError == null) return
+        loadHistory(lastHistoryRequest, lastHistoryRepositions)
+    }
+
+    private fun currentHistoryRequest(): TripHistoryRequest {
+        val vehicleId = mutableState.value.historyVehicleId
+        val anchor = historyAnchor
+        return if (historyAtNewest || anchor == null) {
+            TripHistoryRequest(vehicleId = vehicleId, limit = HISTORY_PAGE_SIZE)
+        } else {
+            TripHistoryRequest(vehicleId, anchor, TripHistoryDirection.AT_OR_OLDER, HISTORY_PAGE_SIZE)
+        }
+    }
+
+    private fun loadHistory(request: TripHistoryRequest, reposition: Boolean = false) {
+        val generation = ++historyGeneration
         historyJob?.cancel()
+        lastHistoryRequest = request
+        lastHistoryRepositions = reposition
+        mutableState.value = mutableState.value.copy(isLoading = true, historyError = null)
         historyJob = viewModelScope.launch {
-            mutableState.value = mutableState.value.copy(isLoading = true)
             try {
-                val (trips, bytes) = withContext(ioDispatcher) {
-                    repository.list(100) to repository.storageBytes()
+                val (page, returnedToNewest) = withContext(ioDispatcher) {
+                    val requested = repository.historyPage(request)
+                    coroutineContext.ensureActive()
+                    // A deletion can empty a cursor range. Recover once, preserving its vehicle filter.
+                    if (requested.trips.isEmpty() && request.direction != TripHistoryDirection.NEWEST) {
+                        repository.historyPage(TripHistoryRequest(vehicleId = request.vehicleId, limit = HISTORY_PAGE_SIZE)) to true
+                    } else requested to false
                 }
-                mutableState.value = mutableState.value.copy(trips = trips, storageBytes = bytes, isLoading = false, error = mutableState.value.error.takeUnless { it == LOAD_ERROR })
+                if (generation != historyGeneration || request.vehicleId != mutableState.value.historyVehicleId) return@launch
+                check(page.trips.size <= HISTORY_PAGE_SIZE) { "History page exceeds its bound" }
+                check(request.vehicleId == null || page.trips.all { it.vehicleId == request.vehicleId }) { "History page belongs to another vehicle" }
+                historyAnchor = page.trips.firstOrNull()?.historyCursor()
+                historyAtNewest = returnedToNewest || request.direction == TripHistoryDirection.NEWEST || !page.hasNewer
+                mutableState.value = mutableState.value.copy(
+                    trips = page.trips.toList(), hasNewerTrips = page.hasNewer, hasOlderTrips = page.hasOlder,
+                    isLoading = false, historyError = null,
+                    historyRevision = mutableState.value.historyRevision + if (reposition || returnedToNewest) 1 else 0,
+                )
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                mutableState.value = mutableState.value.copy(isLoading = false, error = LOAD_ERROR)
+                if (generation == historyGeneration && request.vehicleId == mutableState.value.historyVehicleId) {
+                    mutableState.value = mutableState.value.copy(isLoading = false, historyError = LOAD_ERROR)
+                }
+            }
+        }
+    }
+
+    private fun refreshStorage() {
+        val generation = ++storageGeneration
+        storageJob?.cancel()
+        mutableState.value = mutableState.value.copy(isLoadingStorage = true, storageError = null)
+        storageJob = viewModelScope.launch {
+            try {
+                val bytes = withContext(ioDispatcher) { repository.storageBytes() }
+                if (generation == storageGeneration) {
+                    mutableState.value = mutableState.value.copy(storageBytes = bytes, isLoadingStorage = false)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (generation == storageGeneration) {
+                    mutableState.value = mutableState.value.copy(
+                        storageBytes = null, isLoadingStorage = false,
+                        storageError = "Database size could not be read. Refresh Trips to try again.",
+                    )
+                }
             }
         }
     }
 
     private fun refreshQueueSummary() {
         val loader = queueSummaryLoader ?: return
+        val generation = ++queueGeneration
         queueJob?.cancel()
         mutableState.value = mutableState.value.copy(syncStatus = TripSyncStatus())
         queueJob = viewModelScope.launch {
             try {
                 val summary = withContext(ioDispatcher) { loader() }
-                mutableState.value = mutableState.value.copy(syncStatus = TripSyncStatus(summary = summary, isLoading = false))
+                if (generation == queueGeneration) {
+                    mutableState.value = mutableState.value.copy(syncStatus = TripSyncStatus(summary = summary, isLoading = false))
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                mutableState.value = mutableState.value.copy(syncStatus = TripSyncStatus(isLoading = false, error = "Upload status could not be read. Refresh Trips to try again."))
+                if (generation == queueGeneration) {
+                    mutableState.value = mutableState.value.copy(syncStatus = TripSyncStatus(isLoading = false, error = "Upload status could not be read. Refresh Trips to try again."))
+                }
             }
         }
     }
+
+    private fun TripSession.historyCursor() = TripHistoryCursor(startedAtEpochMillis, id)
 
     fun selectTrip(id: String) {
         val generation = ++detailGeneration
@@ -181,7 +306,9 @@ class TripsViewModel(
 
     fun deleteTrip(id: String) {
         if (mutableState.value.isDeleting || mutableState.value.isExporting) return
-        mutableState.value = mutableState.value.copy(isDeleting = true, error = null, message = null)
+        historyGeneration++
+        historyJob?.cancel()
+        mutableState.value = mutableState.value.copy(isDeleting = true, isLoading = false, error = null, message = null)
         viewModelScope.launch {
             try {
                 withContext(ioDispatcher) {
@@ -190,7 +317,10 @@ class TripsViewModel(
                     repository.delete(id)
                 }
                 if (mutableState.value.selectedTripId == id) closeDetails()
-                mutableState.value = mutableState.value.copy(isDeleting = false, message = "Trip and its saved samples deleted.")
+                mutableState.value = mutableState.value.copy(
+                    trips = mutableState.value.trips.filterNot { it.id == id },
+                    isDeleting = false, message = "Trip and its saved samples deleted.",
+                )
                 refresh()
             } catch (cancelled: CancellationException) {
                 mutableState.value = mutableState.value.copy(isDeleting = false)
@@ -236,7 +366,8 @@ class TripsViewModel(
     private class TripUiException(message: String) : IllegalStateException(message)
 
     private companion object {
+        const val HISTORY_PAGE_SIZE = 50
         const val SERIES_ERROR = "This sensor chart could not be loaded. Retry the chart or choose another sensor."
-        const val LOAD_ERROR = "Saved trips could not be loaded. Try Refresh. Your stored data has not been replaced."
+        const val LOAD_ERROR = "Saved trips could not be loaded. Retry or refresh the history. Your stored data has not been replaced."
     }
 }
