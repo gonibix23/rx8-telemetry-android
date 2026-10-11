@@ -2,7 +2,7 @@
 
 ## Current implementation
 
-The 0.10.0-dev iteration (version code 11) adds saved-trip charts selectable by recorded metric and ECU. PR #22 / 0.9.0-dev is merged on software verification; the user explicitly deferred phone validation and requested continued development. Local API preparation stays disabled; recording, history, summaries, charts, and exports remain offline. Its five tabs are Adapter, Live, Trips, Vehicles, and Simulator:
+The 0.10.0-dev iteration (version code 11) adds saved-trip charts selectable by recorded metric and ECU. The user reports it works well, and PR #25 is merged. Individual scenarios remain tracked separately; the user permits continued development with remaining phone validation deferred. Local API preparation stays disabled; recording, history, summaries, charts, and exports remain offline. Its five tabs are Adapter, Live, Trips, Vehicles, and Simulator:
 
 | Module | Responsibility |
 | --- | --- |
@@ -34,6 +34,30 @@ Use the checked-in Gradle wrapper rather than a separately installed Gradle vers
 
 A first build needs Internet access to download dependencies.
 The app does not request Internet access; acquisition, profiles, saved-trip history, and local document export work without it.
+
+## Continuous integration environment
+
+All three repository-check jobs use the explicit `ubuntu-24.04` x64 GitHub-hosted runner. This avoids automatic OS migrations through `ubuntu-latest`; runner software and installed image packages still receive updates. Linux runners support Android hardware acceleration. The emulator job retains the KVM permission rule and API 36 Google APIs x86_64 image, with the documented `swiftshader` software renderer instead of deprecated `swiftshader_indirect`. Its explicit `-no-metrics` option disables emulator metrics collection and avoids a future interactive consent prompt in unattended CI.
+
+The workflow pins actions to full commit SHAs from these stable releases, verified on October 11, 2026:
+
+| Action | Release | Embedded runtime |
+| --- | --- | --- |
+| `actions/checkout` | [v7.0.1](https://github.com/actions/checkout/releases/tag/v7.0.1) | Node 24 |
+| `actions/setup-node` | [v7.1.0](https://github.com/actions/setup-node/releases/tag/v7.1.0) | Node 24 |
+| `actions/setup-java` | [v6.0.1](https://github.com/actions/setup-java/releases/tag/v6.0.1) | Node 24 |
+| `gradle/actions/setup-gradle` | [v6.4.0](https://github.com/gradle/actions/releases/tag/v6.4.0) | Node 24 |
+| `android-actions/setup-android` | [v4.0.4](https://github.com/android-actions/setup-android/releases/tag/v4.0.4) | Node 24 |
+| `reactivecircus/android-emulator-runner` | [v2.38.0](https://github.com/ReactiveCircus/android-emulator-runner/releases/tag/v2.38.0) | Node 24 |
+| `actions/upload-artifact` | [v7.0.2](https://github.com/actions/upload-artifact/releases/tag/v7.0.2) | Node 24 |
+
+Node 24 actions require Actions Runner 2.327.1 or newer, provided by GitHub-hosted runners. Their embedded runtime is independent of the installed project tools: documentation still uses Node 22 with `npm ci`, and Android uses Temurin 17 and the Gradle 8.13 wrapper. Command-line tools remain pinned to `13114758` (19.0) in an isolated SDK directory, with SDK 36 and Build-Tools 35.0.0. The emulator action additionally installs Build-Tools 37; that does not change the app's AGP-selected Build-Tools version.
+
+Gradle explicitly uses `cache-provider: basic` to retain Actions cache behavior instead of opting into the newer enhanced cache. Artifact uploads explicitly retain ZIP archives, existing names, and 14-day APK / seven-day report retention. Build and UI reports are collected even on failure. All ten screenshots remain required; neither passing screenshot capture nor report upload can hide a failing test run. Workflow permissions remain `contents: read`, and checkout does not persist credentials.
+
+When updating this baseline, run documentation checks, all JVM tests, lint, both debug APK assemblies, and the complete Android 16 suite. Inspect every screenshot and the final run's annotations. Record remaining upstream notices in the PR: an older Gradle wrapper notice or package advisory is separate from action-runtime deprecation. Do not describe a run as warning-free without checking it. A CI-only update does not require a new application version or phone test.
+
+References: [GitHub-hosted runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners), [runner image update policy](https://github.com/actions/runner-images#image-definitions), [Android emulator acceleration](https://developer.android.com/studio/run/emulator-acceleration), and [Gradle cache configuration](https://github.com/gradle/actions/blob/3f5f9adaf7d9fecd50b5935e54106014257a94e6/docs/setup-gradle.md).
 
 ## Android Studio and SDK setup
 
@@ -258,12 +282,12 @@ The user has confirmed the simulator, Bluetooth connection, and general live rea
 - [RX8-003](https://github.com/gonibix23/rx8-telemetry-android/issues/3): validate scan and connection permissions, nearby discovery, pairing, connection, cancellation, disconnection, and manual reconnection with the actual adapter.
 - [RX8-004](https://github.com/gonibix23/rx8-telemetry-android/issues/4): validate ELM initialization, detected protocol, capabilities, actual values, observed rate, and failure recovery.
 - [RX8-005](https://github.com/gonibix23/rx8-telemetry-android/issues/5): validate profile persistence, selected UUID, optional VIN retrieval, provenance, and explicit conflict decisions.
-- [Issue #16](https://github.com/gonibix23/rx8-telemetry-android/issues/16): validate background/lock continuity, Activity recreation, visible screen-awake behavior, notification denial/Stop, and battery/resource cleanup on the A53.
+- [Issue #16](https://github.com/gonibix23/rx8-telemetry-android/issues/16) is closed at the user's request with all issue checks complete. The broader hardware checklist still has no measured duration or battery log; this does not reopen the completed fix.
 - [RX8-006](https://github.com/gonibix23/rx8-telemetry-android/issues/6): validate the dashboard layout, favorite persistence/unavailability, ECU separation, simulator preview, and navigation on the A53.
 - [RX8-007](https://github.com/gonibix23/rx8-telemetry-android/issues/7): validate explicit recording, screen lock/background, committed-data recovery, gaps, summaries, document exports, deletion, and storage errors on the A53.
 - [RX8-008](https://github.com/gonibix23/rx8-telemetry-android/issues/8): verify the 0.8.0-dev upgrade, preserved history, local queue counts, exports/deletion, and uploads-disabled behavior on the A53. Real API integration remains a later task.
 - [RX8-010](https://github.com/gonibix23/rx8-telemetry-android/issues/21): validate capability preview, frozen JSON export, retained stopped state, and continued live/trip operation on the A53.
-- [RX8-012](https://github.com/gonibix23/rx8-telemetry-android/issues/24): review saved sensor/ECU charts offline, selection retention, gaps, and unaffected overview/export behavior on the A53. The user has deferred these phone checks; they remain open while verified software development continues.
+- [RX8-012](https://github.com/gonibix23/rx8-telemetry-android/issues/24): the user broadly confirmed 0.10.0-dev works well. Detailed recorded metric/ECU, selection retention, gaps, and overview/export scenarios remain unreported while verified software development continues.
 
 Keep issues open while required evidence is missing. PR #14 is merged, but RX8-004 remains open for detailed hardware checks. RX8-005 software does not close RX8-001 or prove VIN compatibility.
 There are no published APK releases.
