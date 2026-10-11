@@ -249,7 +249,7 @@ fun BluetoothConnectionScreen(
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Text(
-                        "To save readings, select a vehicle in Vehicles and choose Start recording in Trips. Data stays on this device unless you export it.",
+                        "Select a vehicle once in Vehicles to record journeys automatically. Manage recording in Trips, including resuming after Stop recording. Data stays on this device unless you export it.",
                         color = MutedColor,
                         style = MaterialTheme.typography.bodySmall,
                     )

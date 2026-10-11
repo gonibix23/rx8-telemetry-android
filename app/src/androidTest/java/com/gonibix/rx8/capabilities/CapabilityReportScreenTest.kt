@@ -94,9 +94,9 @@ class CapabilityReportScreenTest {
     @Test fun expandedVoltageAndSignedTrimUseTheirCanonicalPrecision() {
         val voltage = ObdMetric.OXYGEN_SENSOR_1_VOLTAGE
         val trim = ObdMetric.SHORT_TERM_FUEL_TRIM_BANK_1
-        val ecu = CapabilityEcu("7E8", listOf(trim.pid, voltage.pid), listOf(
-            CapabilityMetric(voltage, true, CapabilityReading(0.125, ObdReadingStatus.VALID, 100)),
-            CapabilityMetric(trim, true, CapabilityReading(-12.5, ObdReadingStatus.VALID, 100)),
+        val ecu = ecu(pids = listOf(trim.pid, voltage.pid), overrides = mapOf(
+            voltage to CapabilityReading(0.125, ObdReadingStatus.VALID, 100),
+            trim to CapabilityReading(-12.5, ObdReadingStatus.VALID, 100),
         ))
         show(state = CapabilityReportUiState(report = report(ecus = listOf(ecu))))
         scrollToTag("capability_value_7E8_oxygen_sensor_1_voltage").assertTextEquals("0.125 V")
@@ -289,7 +289,11 @@ class CapabilityReportScreenTest {
             }
             val advertised = metric.pid in pids
             val reading = if (!advertised) null else if (metric in overrides) overrides[metric]
-                else CapabilityReading(value, if (stale) ObdReadingStatus.STALE else ObdReadingStatus.VALID, 200)
+                else CapabilityReading(value, when {
+                    value == null -> ObdReadingStatus.NO_DATA
+                    stale -> ObdReadingStatus.STALE
+                    else -> ObdReadingStatus.VALID
+                }, 200)
             CapabilityMetric(metric, advertised, reading)
         }
         return CapabilityEcu(address, pids.sorted(), metrics)

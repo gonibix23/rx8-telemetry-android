@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -456,9 +458,18 @@ internal fun MainNavigationTabs(selected: String, onSelect: (String) -> Unit, mo
                 selectedContentColor = AccentColor,
                 unselectedContentColor = MutedColor,
                 onClick = { onSelect(id) },
-                text = { Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false) },
-                modifier = Modifier.testTag("${id}_tab"),
-            )
+                modifier = Modifier.heightIn(min = 48.dp).testTag("${id}_tab"),
+            ) {
+                // The generic Tab content reports its padded text height to the scrollable row.
+                // The text-slot baseline layout can constrain scaled text to its intrinsic slot.
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                )
+            }
         }
     }
 }

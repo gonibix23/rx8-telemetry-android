@@ -43,8 +43,13 @@ class MainNavigationLayoutTest {
             compose.onNodeWithTag("${id}_tab").performScrollTo().assertIsDisplayed().performClick()
             val results = mutableListOf<TextLayoutResult>()
             compose.onNodeWithText(label, useUnmergedTree = true).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
-            assertEquals(1, results.single().lineCount)
-            assertFalse(results.single().hasVisualOverflow)
+            val layout = results.single()
+            val diagnostic = "Tab '$label': size=${layout.size}, lineHeight=${layout.getLineBottom(0) - layout.getLineTop(0)}, " +
+                "lineWidth=${layout.getLineRight(0) - layout.getLineLeft(0)}, constraints=${layout.layoutInput.constraints}"
+            assertEquals("$diagnostic must remain one line", 1, layout.lineCount)
+            assertFalse("$diagnostic overflowed horizontally", layout.didOverflowWidth)
+            assertFalse("$diagnostic overflowed vertically", layout.didOverflowHeight)
+            assertFalse("$diagnostic must not clip or ellipsize", layout.hasVisualOverflow)
             compose.runOnIdle { assertEquals(id, selected) }
         }
     }
