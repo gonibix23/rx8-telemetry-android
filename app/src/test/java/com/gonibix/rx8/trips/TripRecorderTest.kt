@@ -190,6 +190,7 @@ class TripRecorderTest {
             session = session!!.copy(endedAtEpochMillis = endedAtEpochMillis, durationMillis = durationMillis, status = status, endReason = reason)
         }
         override suspend fun list(limit: Int) = listOfNotNull(session)
+        override suspend fun historyPage(request: TripHistoryRequest) = TripHistoryPage(list(request.limit))
         override suspend fun find(tripId: String) = session
         override suspend fun samples(tripId: String, afterSequence: Long, limit: Int) = saved.filter { it.sequence > afterSequence }.take(limit)
         override suspend fun delete(tripId: String) = Unit

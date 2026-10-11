@@ -125,8 +125,8 @@ class TripsScreenTest {
     }
 
     @Test fun initialHistoryFailureDoesNotClaimTheDatabaseIsEmpty() {
-        show(state = TripsUiState(isLoading = false, error = "Saved trips could not be loaded."))
-        scrollToTag("trips_error").assertIsDisplayed()
+        show(state = TripsUiState(isLoading = false, historyError = "Saved trips could not be loaded."))
+        scrollToTag("history_error").assertIsDisplayed()
         scrollToTag("refresh_trips").assertIsDisplayed()
         compose.onNodeWithTag("empty_trips").assertDoesNotExist()
     }
@@ -233,7 +233,7 @@ class TripsScreenTest {
         }
     }
 
-    private fun history() = TripsUiState(trips = listOf(trip), storageBytes = 262_144L, isLoading = false)
+    private fun history() = TripsUiState(trips = listOf(trip), storageBytes = 262_144L, isLoading = false, isLoadingStorage = false)
     private fun detailState(): TripsUiState {
         val detail = analysis()
         val key = TripSeriesKey(ObdMetric.SPEED, "TEST_ECU")

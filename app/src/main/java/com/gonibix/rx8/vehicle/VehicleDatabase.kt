@@ -74,7 +74,7 @@ interface VehicleDao {
 
 @Database(
     entities = [VehicleEntity::class, ActiveVehicleEntity::class, TripSessionEntity::class, TripSampleEntity::class, SyncWorkEntity::class, SyncSampleEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class VehicleDatabase : RoomDatabase() {
@@ -125,6 +125,13 @@ abstract class VehicleDatabase : RoomDatabase() {
             }
         }
         val MIGRATION_2_3: Migration = SyncMigration
+        /** History-only indexes preserve all stored identities, samples, revisions and queue state. */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_trip_sessions_startedAtEpochMillis_id` ON `trip_sessions` (`startedAtEpochMillis`, `id`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_trip_sessions_vehicleId_startedAtEpochMillis_id` ON `trip_sessions` (`vehicleId`, `startedAtEpochMillis`, `id`)")
+            }
+        }
         @Volatile private var instance: VehicleDatabase? = null
 
         /** Application-scoped database. The process owns its lifetime, not an Activity or ViewModel. */
@@ -133,7 +140,7 @@ abstract class VehicleDatabase : RoomDatabase() {
                 context.applicationContext,
                 VehicleDatabase::class.java,
                 "rx8-vehicles.db",
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { instance = it }
             // No destructive fallback: future schema changes require explicit migrations.
         }
     }

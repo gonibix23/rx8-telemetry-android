@@ -20,7 +20,11 @@ import com.gonibix.rx8.vehicle.VehicleEntity
         childColumns = ["vehicleId"],
         onDelete = ForeignKey.RESTRICT,
     )],
-    indices = [Index("vehicleId"), Index("startedAtEpochMillis"), Index("status")],
+    indices = [
+        Index("vehicleId"), Index("startedAtEpochMillis"), Index("status"),
+        Index(value = ["startedAtEpochMillis", "id"]),
+        Index(value = ["vehicleId", "startedAtEpochMillis", "id"]),
+    ],
 )
 data class TripSessionEntity(
     @PrimaryKey val id: String,
@@ -64,6 +68,40 @@ data class TripSampleEntity(
 interface TripDao {
     @Query("SELECT * FROM trip_sessions ORDER BY startedAtEpochMillis DESC, id DESC LIMIT :limit")
     suspend fun list(limit: Int): List<TripSessionEntity>
+
+    @Query("SELECT * FROM trip_sessions WHERE vehicleId = :vehicleId ORDER BY startedAtEpochMillis DESC, id DESC LIMIT :limit")
+    suspend fun latestForVehicle(vehicleId: String, limit: Int): List<TripSessionEntity>
+
+    @Query("SELECT * FROM trip_sessions WHERE (startedAtEpochMillis, id) < (:startedAt, :id) ORDER BY startedAtEpochMillis DESC, id DESC LIMIT :limit")
+    suspend fun older(startedAt: Long, id: String, limit: Int): List<TripSessionEntity>
+
+    @Query("SELECT * FROM trip_sessions WHERE vehicleId = :vehicleId AND (startedAtEpochMillis, id) < (:startedAt, :id) ORDER BY startedAtEpochMillis DESC, id DESC LIMIT :limit")
+    suspend fun olderForVehicle(vehicleId: String, startedAt: Long, id: String, limit: Int): List<TripSessionEntity>
+
+    @Query("SELECT * FROM trip_sessions WHERE (startedAtEpochMillis, id) <= (:startedAt, :id) ORDER BY startedAtEpochMillis DESC, id DESC LIMIT :limit")
+    suspend fun atOrOlder(startedAt: Long, id: String, limit: Int): List<TripSessionEntity>
+
+    @Query("SELECT * FROM trip_sessions WHERE vehicleId = :vehicleId AND (startedAtEpochMillis, id) <= (:startedAt, :id) ORDER BY startedAtEpochMillis DESC, id DESC LIMIT :limit")
+    suspend fun atOrOlderForVehicle(vehicleId: String, startedAt: Long, id: String, limit: Int): List<TripSessionEntity>
+
+    // Ascending order obtains the nearest newer rows, not the newest rows in the whole history.
+    @Query("SELECT * FROM trip_sessions WHERE (startedAtEpochMillis, id) > (:startedAt, :id) ORDER BY startedAtEpochMillis, id LIMIT :limit")
+    suspend fun newer(startedAt: Long, id: String, limit: Int): List<TripSessionEntity>
+
+    @Query("SELECT * FROM trip_sessions WHERE vehicleId = :vehicleId AND (startedAtEpochMillis, id) > (:startedAt, :id) ORDER BY startedAtEpochMillis, id LIMIT :limit")
+    suspend fun newerForVehicle(vehicleId: String, startedAt: Long, id: String, limit: Int): List<TripSessionEntity>
+
+    @Query("SELECT EXISTS(SELECT 1 FROM trip_sessions WHERE (startedAtEpochMillis, id) > (:startedAt, :id))")
+    suspend fun hasNewer(startedAt: Long, id: String): Boolean
+
+    @Query("SELECT EXISTS(SELECT 1 FROM trip_sessions WHERE vehicleId = :vehicleId AND (startedAtEpochMillis, id) > (:startedAt, :id))")
+    suspend fun hasNewerForVehicle(vehicleId: String, startedAt: Long, id: String): Boolean
+
+    @Query("SELECT EXISTS(SELECT 1 FROM trip_sessions WHERE (startedAtEpochMillis, id) < (:startedAt, :id))")
+    suspend fun hasOlder(startedAt: Long, id: String): Boolean
+
+    @Query("SELECT EXISTS(SELECT 1 FROM trip_sessions WHERE vehicleId = :vehicleId AND (startedAtEpochMillis, id) < (:startedAt, :id))")
+    suspend fun hasOlderForVehicle(vehicleId: String, startedAt: Long, id: String): Boolean
 
     @Query("SELECT * FROM trip_sessions WHERE id = :tripId LIMIT 1")
     suspend fun find(tripId: String): TripSessionEntity?

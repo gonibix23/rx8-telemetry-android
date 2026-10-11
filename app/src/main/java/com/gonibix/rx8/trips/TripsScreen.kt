@@ -1,17 +1,19 @@
 package com.gonibix.rx8.trips
 
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -28,6 +30,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -129,6 +132,7 @@ fun TripsScreen(
     onOpenAdapter: () -> Unit,
     onOpenVehicles: () -> Unit,
     modifier: Modifier = Modifier,
+    historyVehicles: List<VehicleProfile> = emptyList(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     LifecycleStartEffect(viewModel) {
@@ -155,6 +159,12 @@ fun TripsScreen(
         pickerError = exportActions.error,
         onSelectSeries = viewModel::selectSeries,
         onRetrySeries = viewModel::retrySeries,
+        historyVehicles = historyVehicles,
+        onSelectHistoryVehicle = viewModel::selectHistoryVehicle,
+        onNewerTrips = viewModel::newerTrips,
+        onOlderTrips = viewModel::olderTrips,
+        onNewestTrips = viewModel::newestTrips,
+        onRetryHistory = viewModel::retryHistory,
     )
 }
 
@@ -180,8 +190,27 @@ internal fun TripsContent(
     pickerError: String? = null,
     onSelectSeries: (TripSeriesKey) -> Unit = {},
     onRetrySeries: () -> Unit = {},
+    historyVehicles: List<VehicleProfile> = emptyList(),
+    onSelectHistoryVehicle: (String?) -> Unit = {},
+    onNewerTrips: () -> Unit = {},
+    onOlderTrips: () -> Unit = {},
+    onNewestTrips: () -> Unit = {},
+    onRetryHistory: () -> Unit = {},
 ) {
-    var deleteId by rememberSaveable { mutableStateOf<String?>(null) }
+    var deleteId by rememberSaveable(state.historyVehicleId, state.historyRevision, state.selectedTripId) { mutableStateOf<String?>(null) }
+    val historyScroll = rememberLazyListState()
+    val detailScroll = rememberSaveable(state.selectedTripId, saver = LazyListState.Saver) { LazyListState() }
+    var shownRevision by rememberSaveable { mutableLongStateOf(state.historyRevision) }
+    var shownFilter by rememberSaveable { mutableStateOf(state.historyVehicleId) }
+    LaunchedEffect(state.historyRevision, state.historyVehicleId) {
+        if (shownRevision != state.historyRevision || shownFilter != state.historyVehicleId) {
+            shownRevision = state.historyRevision
+            shownFilter = state.historyVehicleId
+            // The history header follows recording, storage, and the optional upload status.
+            historyScroll.scrollToItem(if (state.syncStatus == null) 3 else 4)
+        }
+    }
+    BackHandler(enabled = state.selectedTripId != null && deleteId == null) { onCloseDetails() }
     val deletion = state.trips.firstOrNull { it.id == deleteId } ?: state.detail?.session?.takeIf { it.id == deleteId }
     val busy = state.isDeleting || state.isExporting || exportPending
     if (deletion != null) {
@@ -201,6 +230,7 @@ internal fun TripsContent(
         )
     }
     LazyColumn(
+        state = if (state.selectedTripId == null) historyScroll else detailScroll,
         modifier = modifier.fillMaxSize().testTag("trips_screen"),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -242,7 +272,8 @@ internal fun TripsContent(
         }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("App database: ${state.storageBytes?.let(::storageSize) ?: "Not available"}", color = MutedColor, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("trip_storage"))
+                Text("App database: ${if (state.isLoadingStorage) "Reading size…" else state.storageBytes?.let(::storageSize) ?: "Not available"}", color = MutedColor, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("trip_storage"))
+                state.storageError?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("trip_storage_error")) }
                 Text("Includes profiles and trips. Deleting rows may leave database space available for reuse.", color = MutedColor, style = MaterialTheme.typography.bodySmall)
                 (pickerError ?: state.error)?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("trips_error")) }
                 state.message?.let { Text(it, color = MintColor, modifier = Modifier.testTag("trips_message")) }
@@ -283,13 +314,18 @@ internal fun TripsContent(
                 }
             }
         } else {
-            item {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Latest 100 trips", style = MaterialTheme.typography.titleMedium)
-                    TextButton(onClick = onRefresh, modifier = Modifier.testTag("refresh_trips")) { Text("Refresh") }
-                }
-                if (state.isLoading) Text("Loading saved trips…", color = MutedColor)
-                else if (state.trips.isEmpty() && state.error == null) Text("No saved trips yet. Start recording explicitly when you are ready.", color = MutedColor, modifier = Modifier.testTag("empty_trips"))
+            item(key = "history_controls") {
+                TripHistoryControls(
+                    state = state,
+                    vehicles = historyVehicles,
+                    busy = busy,
+                    onSelectVehicle = onSelectHistoryVehicle,
+                    onNewer = onNewerTrips,
+                    onOlder = onOlderTrips,
+                    onNewest = onNewestTrips,
+                    onRefresh = onRefresh,
+                    onRetry = onRetryHistory,
+                )
             }
             items(state.trips, key = { it.id }) { session ->
                 val active = session.status == TripStatus.RECORDING || recording.session?.id == session.id
@@ -304,6 +340,11 @@ internal fun TripsContent(
                             TextButton(onClick = { deleteId = session.id }, enabled = !active && !busy, modifier = Modifier.testTag("trip_delete_${session.id}")) { Text("Delete") }
                         }
                     }
+                }
+            }
+            if (state.trips.isNotEmpty()) {
+                item(key = "history_footer") {
+                    TripHistoryNavigation(state, busy, onNewerTrips, onOlderTrips, onNewestTrips, tagSuffix = "_footer")
                 }
             }
         }

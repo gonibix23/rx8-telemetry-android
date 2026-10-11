@@ -325,6 +325,7 @@ class TripsSeriesViewModelTest {
         override suspend fun append(tripId: String, samples: List<TripSample>) = error("History must not append samples")
         override suspend fun finish(tripId: String, endedAtEpochMillis: Long, durationMillis: Long, status: TripStatus, reason: String) = error("History must not finish recordings")
         override suspend fun list(limit: Int) = sessions.values.sortedBy { it.id }.take(limit)
+        override suspend fun historyPage(request: TripHistoryRequest) = TripHistoryPage(list(request.limit))
         override suspend fun find(tripId: String): TripSession? {
             findReads.incrementAndGet()
             findGates.poll()?.await()

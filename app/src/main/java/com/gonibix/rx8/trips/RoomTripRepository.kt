@@ -97,6 +97,49 @@ class RoomTripRepository(private val database: VehicleDatabase) : TripRepository
         return dao.list(limit).map(TripSessionEntity::toModel)
     }
 
+    override suspend fun historyPage(request: TripHistoryRequest): TripHistoryPage {
+        require(request.limit in 1..MAX_HISTORY_PAGE_SIZE)
+        request.vehicleId?.let(::requireUuid)
+        if (request.direction == TripHistoryDirection.NEWEST) {
+            require(request.cursor == null) { "The newest page does not take a cursor" }
+        } else {
+            val cursor = requireNotNull(request.cursor) { "A history cursor is required" }
+            require(cursor.startedAtEpochMillis >= 0L)
+            requireUuid(cursor.tripId)
+        }
+        return database.withTransaction {
+            val vehicleId = request.vehicleId
+            val cursor = request.cursor
+            val limit = request.limit
+            val rows = when (request.direction) {
+                TripHistoryDirection.NEWEST -> if (vehicleId == null) dao.list(limit)
+                    else dao.latestForVehicle(vehicleId, limit)
+                TripHistoryDirection.OLDER -> requireNotNull(cursor).let {
+                    if (vehicleId == null) dao.older(it.startedAtEpochMillis, it.tripId, limit)
+                    else dao.olderForVehicle(vehicleId, it.startedAtEpochMillis, it.tripId, limit)
+                }
+                TripHistoryDirection.NEWER -> requireNotNull(cursor).let {
+                    if (vehicleId == null) dao.newer(it.startedAtEpochMillis, it.tripId, limit)
+                    else dao.newerForVehicle(vehicleId, it.startedAtEpochMillis, it.tripId, limit)
+                }.asReversed()
+                TripHistoryDirection.AT_OR_OLDER -> requireNotNull(cursor).let {
+                    if (vehicleId == null) dao.atOrOlder(it.startedAtEpochMillis, it.tripId, limit)
+                    else dao.atOrOlderForVehicle(vehicleId, it.startedAtEpochMillis, it.tripId, limit)
+                }
+            }
+            if (rows.isEmpty()) return@withTransaction TripHistoryPage(emptyList())
+            val first = rows.first()
+            val last = rows.last()
+            // These indexed existence probes share the page's read transaction. They do not
+            // count history, read telemetry samples, or infer flags from a possibly deleted cursor.
+            val hasNewer = if (vehicleId == null) dao.hasNewer(first.startedAtEpochMillis, first.id)
+                else dao.hasNewerForVehicle(vehicleId, first.startedAtEpochMillis, first.id)
+            val hasOlder = if (vehicleId == null) dao.hasOlder(last.startedAtEpochMillis, last.id)
+                else dao.hasOlderForVehicle(vehicleId, last.startedAtEpochMillis, last.id)
+            TripHistoryPage(rows.map(TripSessionEntity::toModel), hasNewer, hasOlder)
+        }
+    }
+
     override suspend fun find(tripId: String): TripSession? = dao.find(tripId)?.toModel()
 
     override suspend fun samples(tripId: String, afterSequence: Long, limit: Int): List<TripSample> {
@@ -118,6 +161,7 @@ class RoomTripRepository(private val database: VehicleDatabase) : TripRepository
     companion object {
         const val PROCESS_INTERRUPTION_REASON = "Process interrupted"
         private const val MAX_PAGE_SIZE = 1_000
+        private const val MAX_HISTORY_PAGE_SIZE = 50
     }
 }
 

@@ -86,6 +86,7 @@ class TripExportActionsTest {
             }
         }
         compose.runOnIdle { actions.launch(trip, TripExportFormat.JSON) }
+        compose.runOnIdle { model.selectHistoryVehicle("different-fixture-vehicle") }
         compose.onNodeWithTag("picker_state").assertTextEquals("Picker pending")
         restoration.emulateSavedInstanceStateRestore()
         compose.onNodeWithTag("picker_state").assertTextEquals("Picker pending")
@@ -128,6 +129,9 @@ class TripExportActionsTest {
         override suspend fun append(tripId: String, samples: List<TripSample>) = error("Not recording")
         override suspend fun finish(tripId: String, endedAtEpochMillis: Long, durationMillis: Long, status: TripStatus, reason: String) = error("Not recording")
         override suspend fun list(limit: Int) = listOf(trip)
+        override suspend fun historyPage(request: TripHistoryRequest) = TripHistoryPage(
+            listOf(trip).filter { request.vehicleId == null || it.vehicleId == request.vehicleId },
+        )
         override suspend fun find(tripId: String): TripSession? { findRequests += tripId; return trip.takeIf { it.id == tripId } }
         override suspend fun samples(tripId: String, afterSequence: Long, limit: Int) = emptyList<TripSample>()
         override suspend fun delete(tripId: String) = error("Not deleting")
