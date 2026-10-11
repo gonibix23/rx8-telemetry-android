@@ -12,7 +12,8 @@ The user reported screen sleep and background disconnection in 0.5.0-dev. Actual
 The user confirmed that 0.6.0-dev works perfectly, and [PR #18](https://github.com/gonibix23/rx8-telemetry-android/pull/18) is merged. Its dashboard/favorites have broad user confirmation; individual scenario results remain unreported.
 The user subsequently confirmed that 0.7.0-dev works perfectly, and [PR #19](https://github.com/gonibix23/rx8-telemetry-android/pull/19) is merged at `d855c99`. RX8-007 provides manual recording for a fixed vehicle UUID, local session/sample storage, interruption recovery, offline history, charts, estimates, exports, and deletion. Detailed measured recording, provider, storage/interruption, and battery checks remain open.
 The user confirmed 0.8.0-dev worked correctly, and [PR #20](https://github.com/gonibix23/rx8-telemetry-android/pull/20) is merged at `bba3e61`. RX8-008 API preparation is complete: versioned DTOs, a durable sample-reference queue with migration/backfill, metadata revisions, immutable requests, isolated ACK/retry handling, and a read-only Uploads disabled status. This does not validate a real server or every individual phone scenario.
-The current 0.9.0-dev increment (version code 10) implements RX8-010: a per-ECU capabilities view and explicit JSON snapshot report. It helps collect evidence for additional sensor work using existing discovery and display state only. No extra OBD request, backend, HTTP transport, production upload worker, or enabled upload configuration is added.
+PR #22 / 0.9.0-dev implements RX8-010: per-ECU capabilities and explicit JSON snapshot reports from existing discovery and display state. It is merged with phone validation explicitly deferred by the user. Issue #16 is closed at the user's request with all acceptance checkboxes complete; no additional measured logs were provided.
+The current 0.10.0-dev increment (version code 11) implements RX8-012: offline saved-trip charts selectable by recorded metric and ECU, with bounded loading, honest gaps, and full-stream statistics. No extra OBD request, database migration, backend, HTTP transport, production upload worker, or enabled upload configuration is added.
 
 ## Milestones and issues
 
@@ -28,6 +29,8 @@ The current 0.9.0-dev increment (version code 10) implements RX8-010: a per-ECU 
 | [RX8-008](https://github.com/gonibix23/rx8-telemetry-android/issues/8) | Contract and synchronization preparation (complete) | M3 - API preparation | RX8-007 |
 | [RX8-009](https://github.com/gonibix23/rx8-telemetry-android/issues/9) | Investigate Mazda sensors | Later - Mazda extensions | RX8-001, RX8-004 |
 | [RX8-010](https://github.com/gonibix23/rx8-telemetry-android/issues/21) | View capabilities and export a snapshot | Hardware evidence support | RX8-004 software |
+| [RX8-011](https://github.com/gonibix23/rx8-telemetry-android/issues/23) | Update CI action runtimes and runner pinning | Maintenance, ready separately | Existing verification workflow |
+| [RX8-012](https://github.com/gonibix23/rx8-telemetry-android/issues/24) | Explore recorded sensors by metric and ECU | M2 - Live data and trips | RX8-007 software |
 
 [Project issues](https://github.com/gonibix23/rx8-telemetry-android/issues) and [milestones](https://github.com/gonibix23/rx8-telemetry-android/milestones) are the operational tracker.
 RX8-xxx codes remain stable even if an issue number changes. The focused [lifecycle fix, issue #16](https://github.com/gonibix23/rx8-telemetry-android/issues/16), supports acquisition without completing RX8-007 trip recording.
@@ -59,11 +62,11 @@ The reported live-reading and 0.5.1-dev success allow dashboard development to p
 - Supported PIDs and sustained sampling rate with this adapter.
 - A53 trip recording across lock/background, notification Stop, Bluetooth loss, storage interruption, upgrade preservation, and JSON/CSV document-provider behavior. Retention is manual deletion; real storage growth remains to be measured.
 - Authentication, hosting, and database engine for the future server.
-- Individual A53 0.8.0-dev upgrade, count, export/deletion scenarios beyond the broad successful test; new 0.9.0-dev capability/report workflow.
+- Individual A53 0.8.0-dev upgrade, count, export/deletion scenarios beyond the broad successful test; 0.9.0-dev capability reports and 0.10.0-dev sensor charts. The user has deferred phone validation while development continues.
 - Distribution license.
 
 ## Next verifiable outcome
 
-Install 0.9.0-dev over the existing app on the A53. Connect and start live acquisition, open Vehicle capabilities in Adapter, and review the advertised PID lists and latest display states. Export JSON to a chosen destination, verify the frozen report, and confirm normal live/trip operation continues. After stopping, capture retained state and check that historical values are not shown as current.
-Follow the [hardware checklist](hardware-validation.md) for report validation and remaining trip, lifecycle/battery, VIN/profile, sensor, ECU identifier, rate, and reconnection evidence. The snapshot does not validate sustained behavior or undocumented Mazda commands. Enabling real uploads requires a separately configured and authenticated backend in a later increment.
+Verify 0.10.0-dev with unit and Android 16 tests, review its synthetic UI captures, and deliver the signed update APK. Keep issue #24's phone checks open for later; they do not block further verified software work at the user's request.
+When the user resumes validation, install the latest update with data intact and review existing finished trips offline. Switch recorded metrics and ECUs, check negative temperatures and gaps where recorded, rotate, switch trips, and confirm overview/export behavior. Also complete the deferred capability-report checks in issue #21. Follow the [hardware checklist](hardware-validation.md) for those checks and remaining trip, lifecycle/battery, VIN/profile, sensor, ECU identifier, rate, and reconnection evidence. A snapshot does not validate sustained behavior or undocumented Mazda commands. Enabling real uploads requires a separately configured and authenticated backend in a later increment.
 No backend is required.

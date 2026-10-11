@@ -26,6 +26,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.gonibix.rx8.obd.ObdMetric
 import com.gonibix.rx8.sync.SyncQueueSummary
 import com.gonibix.rx8.ui.theme.Rx8Theme
 import com.gonibix.rx8.vehicle.VehicleProfile
@@ -93,7 +94,7 @@ class TripsScreenTest {
     }
 
     @Test fun detailsPreserveARealZeroEstimateAndExposeTheSpeedSource() {
-        show(state = history().copy(selectedTripId = trip.id, detail = analysis()))
+        show(state = detailState())
         scrollToTag("trip_estimated_distance").assertTextEquals("Estimated distance: 0.000 km")
         compose.onNodeWithText("Calculated from valid speed intervals; this is not the odometer.").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Speed summary source: ECU TEST_ECU").performScrollTo().assertIsDisplayed()
@@ -102,7 +103,7 @@ class TripsScreenTest {
 
     @Test fun exportsUseTheSelectedTripAndExplicitFormat() {
         val requests = mutableListOf<Pair<String, TripExportFormat>>()
-        show(state = history().copy(selectedTripId = trip.id, detail = analysis()), onExport = { session, format -> requests += session.id to format })
+        show(state = detailState(), onExport = { session, format -> requests += session.id to format })
         assertTrue(requests.isEmpty())
         scrollToTag("export_trip_json").performClick()
         compose.onNodeWithTag("export_trip_csv").performClick()
@@ -110,7 +111,7 @@ class TripsScreenTest {
     }
 
     @Test fun writingAnExportDisablesConflictingActionsAndDoesNotClaimSuccess() {
-        show(state = history().copy(selectedTripId = trip.id, detail = analysis(), isExporting = true))
+        show(state = detailState().copy(isExporting = true))
         scrollToTag("export_trip_json").assertIsNotEnabled()
         compose.onNodeWithTag("export_trip_csv").assertIsNotEnabled()
         compose.onNodeWithTag("delete_trip_details").assertIsNotEnabled()
@@ -174,7 +175,7 @@ class TripsScreenTest {
     }
 
     @Test fun fakeTripSummaryScreenshotContainsRenderedContent() {
-        show(state = history().copy(selectedTripId = trip.id, detail = analysis()), fixtureBanner = true)
+        show(state = detailState(), fixtureBanner = true)
         scrollToTag("trip_estimated_distance").assertIsDisplayed()
         scrollToTag("trip_speed_chart").assertIsDisplayed()
         compose.onNodeWithText("UI TEST FIXTURE · FAKE TRIP").assertIsDisplayed()
@@ -233,9 +234,18 @@ class TripsScreenTest {
     }
 
     private fun history() = TripsUiState(trips = listOf(trip), storageBytes = 262_144L, isLoading = false)
+    private fun detailState(): TripsUiState {
+        val detail = analysis()
+        val key = TripSeriesKey(ObdMetric.SPEED, "TEST_ECU")
+        return history().copy(
+            selectedTripId = trip.id, detail = detail, selectedSeries = key,
+            series = TripSeriesAnalysis(key, 4, 3, 0.0, 0.0, 1_000, detail.chart),
+        )
+    }
     private fun analysis() = TripAnalysis(
         session = trip, sampleCount = 4, validSampleCount = 3, estimatedDistanceKm = 0.0,
         speedEcuId = "TEST_ECU", coveredMillis = 1_000, maxRpm = 850.0, maxSpeedKph = 0.0,
+        seriesOptions = listOf(TripSeriesKey(ObdMetric.SPEED, "TEST_ECU")),
         chart = listOf(TripChartPoint(0, 0.0, "TEST_ECU"), TripChartPoint(1_000, 0.0, "TEST_ECU"), TripChartPoint(2_000, null, "TEST_ECU"), TripChartPoint(5_000, 0.0, "TEST_ECU")),
     )
 

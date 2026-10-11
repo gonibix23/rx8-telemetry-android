@@ -2,7 +2,7 @@
 
 ## Status
 
-The 0.9.0-dev app adds an allowlisted capability snapshot/report to versioned API models, the local queue, offline trips, the live dashboard, simulator, service-owned OBD acquisition, optional VIN acquisition, and vehicle profiles. Real uploads remain disabled.
+The 0.10.0-dev app adds selectable saved-trip sensor charts to capability reports, versioned API models, the local queue, offline trips, the live dashboard, simulator, service-owned OBD acquisition, optional VIN acquisition, and vehicle profiles. Real uploads remain disabled.
 The Bluetooth screen combines paired devices and nearby discoveries, handles scan and connection permissions separately, and opens a secure RFCOMM socket.
 Device names and MAC addresses are shown locally so the user can identify the OBDII adapter reported in Car Scanner.
 The connection starts without OBD commands. An explicit Read live data action initializes the adapter and starts Mode 01 acquisition, keeping Bluetooth status separate from ECU communication.
@@ -203,7 +203,11 @@ Analysis reads sequence-ordered pages of at most 500 samples. It selects the lex
 
 Estimated distance uses trapezoidal integration between adjacent valid, nonnegative speed samples from the selected source only when the monotonic interval is positive and at most five seconds. Missing/invalid readings, wrong units, reversed timestamps, and longer intervals break coverage. There is no endpoint extrapolation. An estimate requires at least one covered interval; valid stationary intervals can produce a true zero. The UI labels the result as an estimate, identifies the source, and shows covered and uncovered duration; it is not an odometer reading.
 
-The speed chart holds at most 500 points. Streaming reduction preserves null gap barriers, and rendering breaks the line at those barriers. Reduction affects chart detail only; distance uses the original paged samples. Analysis and export support coroutine cancellation and reject broken page ordering or foreign-trip samples.
+RX8-012 collects recorded metric/ECU options during the first summary pass, including error-only sources. The index is bounded to 192 combinations and fails explicitly above that limit. Selection defaults to the overview's speed ECU, then stable metric/ECU order. It never depends on current live capabilities, selected profile, or favorites.
+
+Each selected series reads pages of at most 500 samples and retains at most 500 chart points. Counts, observed min/max, and coverage use the original selected stream before reduction. A usable value needs VALID quality, the canonical unit, a finite value within the existing decoder domain, and an in-range, strictly increasing elapsed timestamp. Zero is valid; Celsius spans -40 to 215. Failed/stale/wrong-unit/out-of-range samples, duplicate/reversed timestamps, and intervals longer than five seconds break the line and coverage. No endpoint extrapolation or joining across ECU sources is allowed. Streaming reduction preserves null gap barriers; it may omit chart detail but cannot change full-stream statistics. The existing overview speed chart model and distance calculation retain their semantics.
+
+The Activity-owned Trips ViewModel loads summaries and selected series separately. Selection cancels previous chart work and advances a generation token; trip changes, closing details, and successful deletion invalidate outstanding work. Both generation and selected identity must match before accepting a result, including A-to-B-to-A changes and reopening the same trip. Chart errors retain the trip overview and offer a chart-only retry. Activity recreation retains selection; process-death restoration is not promised. Analysis and export support coroutine cancellation and reject broken page ordering or foreign-trip samples. Room v3, export v1, acquisition, and API preparation are unchanged.
 
 ## Current API preparation
 

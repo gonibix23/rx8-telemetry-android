@@ -29,6 +29,10 @@ data class TripsUiState(
     val selectedTripId: String? = null,
     val detail: TripAnalysis? = null,
     val isLoadingDetail: Boolean = false,
+    val selectedSeries: TripSeriesKey? = null,
+    val series: TripSeriesAnalysis? = null,
+    val isLoadingSeries: Boolean = false,
+    val seriesError: String? = null,
     val isDeleting: Boolean = false,
     val isExporting: Boolean = false,
     val error: String? = null,
@@ -46,6 +50,9 @@ class TripsViewModel(
     val uiState = mutableState.asStateFlow()
     private var historyJob: Job? = null
     private var detailJob: Job? = null
+    private var seriesJob: Job? = null
+    private var detailGeneration = 0L
+    private var seriesGeneration = 0L
     private var queueJob: Job? = null
 
     init { refresh() }
@@ -85,8 +92,13 @@ class TripsViewModel(
     }
 
     fun selectTrip(id: String) {
+        val generation = ++detailGeneration
         detailJob?.cancel()
-        mutableState.value = mutableState.value.copy(selectedTripId = id, detail = null, isLoadingDetail = true, error = null, message = null)
+        cancelSeries()
+        mutableState.value = mutableState.value.copy(
+            selectedTripId = id, detail = null, isLoadingDetail = true, error = null, message = null,
+            selectedSeries = null, series = null, isLoadingSeries = false, seriesError = null,
+        )
         detailJob = viewModelScope.launch {
             try {
                 val analysis = withContext(ioDispatcher) {
@@ -94,22 +106,77 @@ class TripsViewModel(
                     requireFinished(session)
                     analyzeTrip(repository, session)
                 }
-                if (mutableState.value.selectedTripId == id) {
+                if (detailGeneration == generation && mutableState.value.selectedTripId == id) {
                     mutableState.value = mutableState.value.copy(detail = analysis, isLoadingDetail = false)
+                    analysis.defaultSeries()?.let(::selectSeries)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
-                if (mutableState.value.selectedTripId == id) {
+                if (detailGeneration == generation && mutableState.value.selectedTripId == id) {
                     mutableState.value = mutableState.value.copy(isLoadingDetail = false, error = failure.friendly("This trip summary could not be loaded. Return to history and try again."))
                 }
             }
         }
     }
 
+    fun selectSeries(key: TripSeriesKey) {
+        val state = mutableState.value
+        val analysis = state.detail ?: return
+        if (state.selectedTripId != analysis.session.id || analysis.session.status == TripStatus.RECORDING ||
+            key !in analysis.seriesOptions) return
+        if (state.selectedSeries == key && (state.isLoadingSeries || state.series != null)) return
+        loadSeries(analysis, key)
+    }
+
+    fun retrySeries() {
+        val state = mutableState.value
+        if (state.isLoadingSeries || state.seriesError == null) return
+        state.selectedSeries?.let(::selectSeries)
+    }
+
+    private fun loadSeries(analysis: TripAnalysis, key: TripSeriesKey) {
+        cancelSeries()
+        val generation = seriesGeneration
+        val detailVersion = detailGeneration
+        val tripId = analysis.session.id
+        mutableState.value = mutableState.value.copy(
+            selectedSeries = key, series = null, isLoadingSeries = true, seriesError = null,
+        )
+        seriesJob = viewModelScope.launch {
+            try {
+                val result = withContext(ioDispatcher) { analyzeTripSeries(repository, analysis.session, key) }
+                if (isCurrentSeries(detailVersion, generation, tripId, key)) {
+                    mutableState.value = mutableState.value.copy(series = result, isLoadingSeries = false)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (isCurrentSeries(detailVersion, generation, tripId, key)) {
+                    mutableState.value = mutableState.value.copy(isLoadingSeries = false, seriesError = SERIES_ERROR)
+                }
+            }
+        }
+    }
+
+    private fun isCurrentSeries(detailVersion: Long, generation: Long, tripId: String, key: TripSeriesKey): Boolean =
+        detailGeneration == detailVersion && seriesGeneration == generation &&
+            mutableState.value.selectedTripId == tripId && mutableState.value.selectedSeries == key
+
+    private fun cancelSeries() {
+        seriesGeneration++
+        seriesJob?.cancel()
+        seriesJob = null
+    }
+
     fun closeDetails() {
+        detailGeneration++
         detailJob?.cancel()
-        mutableState.value = mutableState.value.copy(selectedTripId = null, detail = null, isLoadingDetail = false, error = null, message = null)
+        cancelSeries()
+        mutableState.value = mutableState.value.copy(
+            selectedTripId = null, detail = null, isLoadingDetail = false, error = null, message = null,
+            selectedSeries = null, series = null, isLoadingSeries = false, seriesError = null,
+        )
     }
 
     fun deleteTrip(id: String) {
@@ -169,6 +236,7 @@ class TripsViewModel(
     private class TripUiException(message: String) : IllegalStateException(message)
 
     private companion object {
+        const val SERIES_ERROR = "This sensor chart could not be loaded. Retry the chart or choose another sensor."
         const val LOAD_ERROR = "Saved trips could not be loaded. Try Refresh. Your stored data has not been replaced."
     }
 }

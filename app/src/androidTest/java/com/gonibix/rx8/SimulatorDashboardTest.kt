@@ -3,14 +3,17 @@ package com.gonibix.rx8
 import android.graphics.Bitmap
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
@@ -21,7 +24,6 @@ import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -167,13 +169,23 @@ class SimulatorDashboardTest {
     private fun captureDashboard(name: String = "dashboard") {
         require(name == "dashboard" || name == "connection")
         compose.waitForIdle()
+        // Semantic readiness does not guarantee a presented emulator-window frame.
+        var rendered: Bitmap? = null
+        compose.waitUntil(5_000L) {
+            val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
+            if (hasRenderedScreenContent(bitmap)) {
+                rendered = bitmap
+                true
+            } else {
+                bitmap.recycle()
+                false
+            }
+        }
+        val captured = requireNotNull(rendered)
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val directory = File(instrumentation.targetContext.getExternalFilesDir(null), "screenshots")
-        assertTrue(directory.isDirectory || directory.mkdirs())
-        val screenshot = instrumentation.uiAutomation.takeScreenshot()
-        assertNotNull("The emulator must provide a dashboard screenshot", screenshot)
-        val captured = requireNotNull(screenshot)
         try {
+            assertTrue(directory.isDirectory || directory.mkdirs())
             File(directory, "$name.png").outputStream().use { output ->
                 assertTrue(captured.compress(Bitmap.CompressFormat.PNG, 100, output))
             }
@@ -198,5 +210,21 @@ class SimulatorDashboardTest {
         } finally {
             captured.recycle()
         }
+    }
+
+    private fun hasRenderedScreenContent(bitmap: Bitmap): Boolean {
+        var dark = 0
+        var light = 0
+        var samples = 0
+        for (y in 0 until bitmap.height step (bitmap.height / 96).coerceAtLeast(1)) {
+            for (x in 0 until bitmap.width step (bitmap.width / 96).coerceAtLeast(1)) {
+                val pixel = bitmap.getPixel(x, y)
+                val brightness = ((pixel ushr 16 and 255) + (pixel ushr 8 and 255) + (pixel and 255)) / 3
+                samples++
+                if ((pixel ushr 24 and 255) > 127 && brightness < 96) dark++
+                if ((pixel ushr 24 and 255) > 127 && brightness > 160) light++
+            }
+        }
+        return samples > 0 && dark > samples / 10 && light >= 8
     }
 }

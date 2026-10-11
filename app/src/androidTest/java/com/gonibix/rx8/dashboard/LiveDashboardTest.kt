@@ -10,6 +10,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertTextEquals
@@ -17,7 +20,9 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -33,7 +38,6 @@ import com.gonibix.rx8.ui.theme.Rx8Theme
 import java.io.File
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -137,14 +141,16 @@ class LiveDashboardTest {
     @Test fun syntheticFavoritesFixtureCapturesCompactDashboard() {
         val source = DemoTelemetrySource()
         source.connect()
-        show(simulatorDashboardSnapshot(source.advanceBy(2_000L)), setOf(ObdMetric.INTAKE_TEMPERATURE), simulated = true)
+        show(simulatorDashboardSnapshot(source.advanceBy(2_000L)), setOf(ObdMetric.INTAKE_TEMPERATURE), simulated = true, screenshotFixture = true)
         compose.onNodeWithTag("dashboard_origin").assertTextEquals("SIMULATOR · SYNTHETIC DATA")
-        compose.onNodeWithTag("dashboard_value_SIMULATOR_speed").assertTextEquals("0")
-        compose.onNodeWithTag("dashboard_value_SIMULATOR_intake_temperature").assertTextEquals("28")
+        compose.onNodeWithTag("live_dashboard").performScrollToIndex(1)
+        compose.onNodeWithTag("dashboard_value_SIMULATOR_speed").assertTextEquals("0").assertIsDisplayed()
+        compose.onNodeWithTag("dashboard_value_SIMULATOR_intake_temperature").assertTextEquals("28").assertIsDisplayed()
+        compose.onNodeWithText("UI TEST FIXTURE · SYNTHETIC DASHBOARD").assertIsDisplayed()
         captureFavoritesScreen()
     }
 
-    private fun show(snapshot: ObdSessionSnapshot, favorites: Set<ObdMetric> = emptySet(), simulated: Boolean = false) {
+    private fun show(snapshot: ObdSessionSnapshot, favorites: Set<ObdMetric> = emptySet(), simulated: Boolean = false, screenshotFixture: Boolean = false) {
         compose.setContent {
             Rx8Theme {
                 Surface(
@@ -153,7 +159,8 @@ class LiveDashboardTest {
                     contentColor = MaterialTheme.colorScheme.onBackground,
                 ) {
                     Column {
-                        if (!simulated) Text("UI TEST FIXTURE · SYNTHETIC VALUES")
+                        if (screenshotFixture) Text("UI TEST FIXTURE · SYNTHETIC DASHBOARD")
+                        else if (!simulated) Text("UI TEST FIXTURE · SYNTHETIC VALUES")
                         LiveDashboard(snapshot, favorites, {}, {}, modifier = Modifier.weight(1f), isSimulated = simulated)
                     }
                 }
@@ -181,9 +188,13 @@ class LiveDashboardTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val directory = File(instrumentation.targetContext.getExternalFilesDir(null), "screenshots")
         assertTrue(directory.isDirectory || directory.mkdirs())
-        val screenshot = instrumentation.uiAutomation.takeScreenshot()
-        assertNotNull("The emulator must capture the synthetic dashboard fixture", screenshot)
-        val captured = requireNotNull(screenshot)
+        // Capture rendered Compose content instead of racing the emulator window presentation.
+        var rendered: Bitmap? = null
+        compose.waitUntil(5_000L) {
+            val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
+            if (hasDashboardContent(bitmap)) { rendered = bitmap; true } else { bitmap.recycle(); false }
+        }
+        val captured = requireNotNull(rendered)
         try {
             val source = File(directory, "favourites.png")
             source.outputStream().use { assertTrue(captured.compress(Bitmap.CompressFormat.PNG, 100, it)) }
@@ -195,5 +206,21 @@ class LiveDashboardTest {
             )).use { it.readBytes() }
             assertArrayEquals("The dashboard screenshot must survive teardown", source.readBytes(), copied)
         } finally { captured.recycle() }
+    }
+
+    private fun hasDashboardContent(bitmap: Bitmap): Boolean {
+        var dark = 0
+        var light = 0
+        var samples = 0
+        for (y in 0 until bitmap.height step (bitmap.height / 96).coerceAtLeast(1)) {
+            for (x in 0 until bitmap.width step (bitmap.width / 96).coerceAtLeast(1)) {
+                val pixel = bitmap.getPixel(x, y)
+                val brightness = ((pixel ushr 16 and 255) + (pixel ushr 8 and 255) + (pixel and 255)) / 3
+                samples++
+                if ((pixel ushr 24 and 255) > 127 && brightness < 96) dark++
+                if ((pixel ushr 24 and 255) > 127 && brightness > 160) light++
+            }
+        }
+        return samples > 0 && dark > samples / 10 && light >= 8
     }
 }

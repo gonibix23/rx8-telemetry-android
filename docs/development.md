@@ -2,7 +2,7 @@
 
 ## Current implementation
 
-The 0.9.0-dev iteration (version code 10) adds Vehicle capabilities inside Adapter and explicit JSON snapshot export. The user confirmed 0.8.0-dev worked, and PR #20 is merged. Local API preparation stays disabled; recording, history, summaries, charts, and exports remain offline. Its five tabs are Adapter, Live, Trips, Vehicles, and Simulator:
+The 0.10.0-dev iteration (version code 11) adds saved-trip charts selectable by recorded metric and ECU. PR #22 / 0.9.0-dev is merged on software verification; the user explicitly deferred phone validation and requested continued development. Local API preparation stays disabled; recording, history, summaries, charts, and exports remain offline. Its five tabs are Adapter, Live, Trips, Vehicles, and Simulator:
 
 | Module | Responsibility |
 | --- | --- |
@@ -194,7 +194,7 @@ Use the current update with existing app data intact; do not clear the user's da
 2. Open Trips and choose Start recording. Check that the recorded vehicle name matches the selected profile and the saved-sample count begins advancing. Opening a tab, connecting Bluetooth, or opening Live never starts a trip automatically.
 3. Change tabs, background the app, and lock the A53 for a measured interval. The same explicit recording should continue through the service. Changing the selected profile must not change the active trip's frozen UUID/name. Record actual duration, saved count, and failures without publishing identifiers.
 4. Choose Stop recording in Trips. Wait until the terminal write is confirmed and the trip appears in history. Live acquisition remains running. Separately test notification Stop: it closes live acquisition and completes the active trip after queued writes are saved.
-5. Open a finished trip without Internet access. Review sample/valid counts, duration, peak recorded RPM, peak speed, identified speed ECU, and the bounded speed chart. Missing/failed data and gaps must not become zero measurements or connecting chart lines.
+5. Open a finished trip without Internet access. Review sample/valid counts, duration, peak recorded RPM, peak speed, and identified speed ECU. Select another recorded sensor/ECU and review its chart, canonical unit, full-stream min/max, valid count, and coverage. Valid zero and negative temperatures remain readings; missing/failed data and gaps must not become zero measurements or connecting chart lines. The trip overview stays unchanged when selecting a chart. Rapid switches, returning to a previous trip, and rotation must retain the intended selection without older results replacing it.
 6. Treat estimated distance as covered valid speed intervals only, never as the odometer. Speed analysis uses one deterministic ECU and integrates only adjacent valid intervals of at most five seconds. Check the displayed covered/uncovered duration; RPM peak can come from any valid RPM source.
 7. Choose Export JSON or Export CSV, then select the destination in Android's document picker. The screen retains the intended trip/format across Activity recreation. Canceling the picker creates no success message. Success must appear only after the output is written, flushed, and closed; provider/write failures remain visible and may leave an incomplete document.
 8. Inspect an anonymized export: JSON uses schemaVersion 1 with trip metadata and samples; CSV uses schema_version 1, one sample per row and a metadata row for an empty trip. IDs, sequence, timestamps, units, ECU sources, quality, and null/error values remain available. Spreadsheet-sensitive text in CSV is escaped for safe display. No VIN, Bluetooth MAC, GPS, or upload is included.
@@ -263,6 +263,7 @@ The user has confirmed the simulator, Bluetooth connection, and general live rea
 - [RX8-007](https://github.com/gonibix23/rx8-telemetry-android/issues/7): validate explicit recording, screen lock/background, committed-data recovery, gaps, summaries, document exports, deletion, and storage errors on the A53.
 - [RX8-008](https://github.com/gonibix23/rx8-telemetry-android/issues/8): verify the 0.8.0-dev upgrade, preserved history, local queue counts, exports/deletion, and uploads-disabled behavior on the A53. Real API integration remains a later task.
 - [RX8-010](https://github.com/gonibix23/rx8-telemetry-android/issues/21): validate capability preview, frozen JSON export, retained stopped state, and continued live/trip operation on the A53.
+- [RX8-012](https://github.com/gonibix23/rx8-telemetry-android/issues/24): review saved sensor/ECU charts offline, selection retention, gaps, and unaffected overview/export behavior on the A53. The user has deferred these phone checks; they remain open while verified software development continues.
 
 Keep issues open while required evidence is missing. PR #14 is merged, but RX8-004 remains open for detailed hardware checks. RX8-005 software does not close RX8-001 or prove VIN compatibility.
 There are no published APK releases.

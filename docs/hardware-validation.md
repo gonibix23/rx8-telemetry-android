@@ -12,7 +12,7 @@ The user subsequently confirmed that the Bluetooth connection now works, followi
 Detailed scan/pairing steps, interruptions, reconnection behavior, and physical adapter revision were not supplied. RX8-001 and remaining RX8-003 checks stay open.
 On October 11, 2026, the user reported that live readings worked; PR #14 is merged. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed that 0.5.0-dev reads data correctly. Individual sensors, ECU identifiers, measured response rates, and sustained lifecycle results remain unverified. RX8-004 stays open for those detailed checks. No VIN or saved-profile result has been reported.
 The user also reported screen sleep while idle and loss of connection/readings after backgrounding in 0.5.0-dev, describing this as unpairing. The old policy deliberately disconnected outside Adapter; actual removal of the Android bond is unconfirmed, and the code has no removeBond call.
-The user subsequently confirmed 0.5.1-dev worked, providing broad success evidence for the background/screen fix in merged PR #17. The detailed issue #16 checks below remain unreported: measured background/lock intervals, battery use, notification scenarios, and actual bond-entry observations. The user then confirmed that the 0.6.0-dev dashboard build works perfectly; PR #18 is merged. This broad result does not establish the individual favorite/ECU scenarios below. The user subsequently confirmed that 0.7.0-dev works perfectly, and PR #19 is merged. Detailed trip duration, export-provider, interruption/storage, and battery results remain unreported; the new 0.8.0-dev migration and disabled-upload display still need validation.
+The user subsequently confirmed 0.5.1-dev worked, providing success evidence for the background/screen fix in merged PR #17. On October 11, 2026, the user explicitly requested closure of issue #16 with all acceptance checkboxes complete, and it was closed. No measured duration or detailed test log accompanied that confirmation; the extended lifecycle checklist below remains a separate record of those observations. The user then confirmed that the 0.6.0-dev dashboard build works perfectly; PR #18 is merged. This broad result does not establish the individual favorite/ECU scenarios below. The user subsequently confirmed that 0.7.0-dev works perfectly, and PR #19 is merged. Detailed trip duration, export-provider, interruption/storage, and battery results remain unreported. The user also confirmed 0.8.0-dev worked correctly and PR #20 is merged; individual migration and queue-display scenarios remain unreported.
 A simulator test and a Bluetooth socket connection are separate from ECU validation.
 
 ## Test record
@@ -166,7 +166,7 @@ Fake-server ACK, retry, lease, conflict, and oversized-batch behavior is validat
 
 ## Capability report checklist (RX8-010)
 
-Use 0.9.0-dev as an update with existing data intact. These new checks remain pending until the user reports them.
+Use 0.9.0-dev or newer as an update with existing data intact. The user explicitly deferred these phone checks while development continues. PR #22 is merged on software verification; these checks remain pending until reported.
 
 - [ ] Start real live data in Adapter and wait for discovery. Open Vehicle capabilities without selecting a profile or starting a trip; confirm the protocol and separate ECU PID lists appear.
 - [ ] Distinguish an advertised PID from an implemented decoder and a valid reading. Confirm valid zero, missing/error, and stale states remain visibly different. Unimplemented PIDs must not gain invented readings.
@@ -177,6 +177,18 @@ Use 0.9.0-dev as an update with existing data intact. These new checks remain pe
 - [ ] Check Back, Adapter tab navigation, and notification open/Stop. Existing saved profiles, trips, exports, and disabled-upload queue must remain usable.
 
 The snapshot uses the latest displayed state, not request counts or a sensor trace. Initial no-data states may predate a query. A report helps fill in the evidence matrix but is not proof of a 10-minute sustained session, background continuity, accuracy, battery behavior, or proprietary Mazda compatibility. Report engine conditions and test duration separately when providing hardware evidence.
+
+## Trip sensor review checklist (RX8-012)
+
+Use 0.10.0-dev or newer with existing app data intact. These phone checks are deferred at the user's request; synthetic automated fixtures do not complete them.
+
+- [ ] Open an existing completed or interrupted trip offline without an adapter. Confirm recorded sensor/ECU choices appear even if the current profile or favorites differ.
+- [ ] Switch between recorded metrics and, where present, ECU sources. Check the unit, valid/sample count, observed minimum/maximum, and coverage. Sources must remain separate; unavailable or failed readings must not become zero.
+- [ ] Where the trip actually contains them, inspect valid zero, negative Celsius, constant readings, and gaps. Do not manufacture hardware evidence for absent cases; automated fixtures cover them separately.
+- [ ] Switch quickly between charts and trips, return to the same trip, and rotate. Confirm the visible chart matches the selected sensor/ECU and completed data never replaces a later selection.
+- [ ] Confirm the trip overview's identified speed ECU and distance estimate stay unchanged while selecting charts. JSON/CSV export, confirmed deletion, live acquisition, and recording remain usable.
+
+Only eligible adjacent intervals of at most five seconds contribute coverage. Chart point reduction may omit visual detail; displayed selected-series counts and extrema use the complete recorded stream.
 
 ## Evidence matrix
 

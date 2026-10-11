@@ -2,10 +2,12 @@ package com.gonibix.rx8.connection
 
 import android.graphics.Bitmap
 import android.os.ParcelFileDescriptor
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -236,32 +238,36 @@ class BluetoothConnectionScreenTest {
                     color = MaterialTheme.colorScheme.background,
                     contentColor = MaterialTheme.colorScheme.onBackground,
                 ) {
-                    BluetoothConnectionScreen(
-                        state = BluetoothConnectionUiState(
-                            availability = BluetoothAvailability.READY,
-                            devices = listOf(device),
-                            selectedDevice = device,
-                            isForeground = true,
-                            hasScanned = true,
-                        ),
-                        onRefresh = {},
-                        onRequestPermission = {},
-                        onOpenBluetoothSettings = {},
-                        onOpenAppSettings = {},
-                        onSelectDevice = {},
-                        onConnect = {},
-                        onDisconnect = {},
-                        onScan = {},
-                        onStopScan = {},
-                        onOpenLocationSettings = {},
-                        modifier = Modifier.fillMaxSize().safeDrawingPadding(),
-                    )
+                    Column(Modifier.safeDrawingPadding()) {
+                        Text("UI TEST FIXTURE · SYNTHETIC DISCOVERY", style = MaterialTheme.typography.labelMedium)
+                        BluetoothConnectionScreen(
+                            state = BluetoothConnectionUiState(
+                                availability = BluetoothAvailability.READY,
+                                devices = listOf(device),
+                                selectedDevice = device,
+                                isForeground = true,
+                                hasScanned = true,
+                            ),
+                            onRefresh = {},
+                            onRequestPermission = {},
+                            onOpenBluetoothSettings = {},
+                            onOpenAppSettings = {},
+                            onSelectDevice = {},
+                            onConnect = {},
+                            onDisconnect = {},
+                            onScan = {},
+                            onStopScan = {},
+                            onOpenLocationSettings = {},
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
             }
         }
         compose.onNodeWithText("OBDII").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("02:00:00:AB:CD:EF").assertIsDisplayed()
         compose.onNodeWithText("Nearby · pairing may be requested").assertIsDisplayed()
+        compose.onNodeWithText("UI TEST FIXTURE · SYNTHETIC DISCOVERY").assertIsDisplayed()
         captureDiscoveryScreen()
         compose.onNodeWithTag("connect_adapter").assertIsEnabled()
     }

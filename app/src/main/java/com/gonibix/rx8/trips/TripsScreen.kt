@@ -2,7 +2,6 @@ package com.gonibix.rx8.trips
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -10,7 +9,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -33,11 +31,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -158,6 +153,8 @@ fun TripsScreen(
         modifier = modifier,
         exportPending = exportActions.isPending,
         pickerError = exportActions.error,
+        onSelectSeries = viewModel::selectSeries,
+        onRetrySeries = viewModel::retrySeries,
     )
 }
 
@@ -181,6 +178,8 @@ internal fun TripsContent(
     modifier: Modifier = Modifier,
     exportPending: Boolean = false,
     pickerError: String? = null,
+    onSelectSeries: (TripSeriesKey) -> Unit = {},
+    onRetrySeries: () -> Unit = {},
 ) {
     var deleteId by rememberSaveable { mutableStateOf<String?>(null) }
     val deletion = state.trips.firstOrNull { it.id == deleteId } ?: state.detail?.session?.takeIf { it.id == deleteId }
@@ -262,7 +261,18 @@ internal fun TripsContent(
             }
             state.detail?.let { detail ->
                 item { TripSummary(detail) }
-                item { TripSpeedChart(detail) }
+                item {
+                    TripSensorChart(
+                        options = detail.seriesOptions,
+                        selected = state.selectedSeries,
+                        series = state.series,
+                        isLoading = state.isLoadingSeries,
+                        error = state.seriesError,
+                        durationMillis = detail.session.durationMillis,
+                        onSelectSeries = onSelectSeries,
+                        onRetry = onRetrySeries,
+                    )
+                }
                 item {
                     TripActions(
                         session = detail.session,
@@ -335,43 +345,6 @@ private fun TripActions(session: TripSession, enabled: Boolean, onExport: (TripS
         OutlinedButton(onClick = { onExport(session, TripExportFormat.JSON) }, enabled = enabled, modifier = Modifier.testTag("export_trip_json")) { Text("Export JSON") }
         OutlinedButton(onClick = { onExport(session, TripExportFormat.CSV) }, enabled = enabled, modifier = Modifier.testTag("export_trip_csv")) { Text("Export CSV") }
         TextButton(onClick = onDelete, enabled = enabled, modifier = Modifier.testTag("delete_trip_details")) { Text("Delete trip") }
-    }
-}
-
-@Composable
-private fun TripSpeedChart(detail: TripAnalysis) {
-    val points = detail.chart
-    val values = points.mapNotNull { it.value?.takeIf(Double::isFinite) }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Recorded speed", style = MaterialTheme.typography.titleMedium)
-        if (values.isEmpty()) {
-            Text("No valid speed readings available for a chart.", color = MutedColor, modifier = Modifier.testTag("empty_trip_chart"))
-        } else {
-            val maximum = (values.maxOrNull() ?: 0.0).coerceAtLeast(1.0)
-            val end = maxOf(detail.session.durationMillis, points.maxOfOrNull { it.elapsedMillis } ?: 0L, 1L)
-            Text("0–${String.format(Locale.ROOT, "%.0f", maximum)} km/h · 0–${durationLabel(end)}", color = MutedColor, style = MaterialTheme.typography.bodySmall)
-            Canvas(
-                Modifier.fillMaxWidth().height(160.dp).testTag("trip_speed_chart").semantics {
-                    contentDescription = "Recorded speed chart from ECU ${detail.speedEcuId ?: "unknown"}. Gaps are not joined. Peak ${detail.maxSpeedKph ?: 0.0} kilometers per hour."
-                },
-            ) {
-                val inset = 5.dp.toPx()
-                val width = (size.width - 2 * inset).coerceAtLeast(1f)
-                val height = (size.height - 2 * inset).coerceAtLeast(1f)
-                drawLine(MutedColor, Offset(inset, height + inset), Offset(width + inset, height + inset), 1.dp.toPx())
-                var previous: Pair<TripChartPoint, Offset>? = null
-                points.forEach { point ->
-                    val value = point.value?.takeIf { it.isFinite() && it >= 0.0 }
-                    if (value == null) previous = null else {
-                        val current = Offset(inset + width * (point.elapsedMillis.toDouble() / end).toFloat().coerceIn(0f, 1f), inset + height * (1 - value / maximum).toFloat().coerceIn(0f, 1f))
-                        previous?.takeIf { it.first.ecuId == point.ecuId }?.let { drawLine(AccentColor, it.second, current, 2.dp.toPx()) }
-                        drawCircle(AccentColor, 2.dp.toPx(), current)
-                        previous = point to current
-                    }
-                }
-            }
-            Text("A bounded view of the saved speed data. Blank gaps contain no valid coverage; values are not interpolated across them.", color = MutedColor, style = MaterialTheme.typography.bodySmall)
-        }
     }
 }
 
