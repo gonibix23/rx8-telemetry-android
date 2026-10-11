@@ -2,6 +2,7 @@ package com.gonibix.rx8.obd
 
 import com.gonibix.rx8.bluetooth.AdapterConnection
 import com.gonibix.rx8.telemetry.obd.ObdPid
+import com.gonibix.rx8.telemetry.obd.VinResponse
 import java.io.IOException
 
 /** Real Mode 01 parameters; formulas and canonical units are owned by the pure parser module. */
@@ -20,6 +21,14 @@ enum class ObdMetric(val parameter: ObdPid) {
 
 enum class ObdPhase { IDLE, INITIALIZING, DISCOVERING, LIVE, ERROR, STOPPED }
 enum class ObdReadingStatus { VALID, UNSUPPORTED, NO_DATA, TIMEOUT, PARSE_ERROR, ADAPTER_ERROR, STALE }
+
+enum class ObdVinStatus { NOT_REQUESTED, READING, AVAILABLE, NO_DATA, ERROR }
+
+data class ObdVinSnapshot(
+    val status: ObdVinStatus = ObdVinStatus.NOT_REQUESTED,
+    val message: String = "VIN reading is optional. A vehicle can use its saved ID without a VIN.",
+    val candidates: List<VinResponse> = emptyList(),
+)
 
 data class ObdReading(
     val metric: ObdMetric,
@@ -42,11 +51,15 @@ data class ObdSessionSnapshot(
     val supportedPidCount: Int = 0,
     val effectiveResponsesPerSecond: Double = 0.0,
     val elapsedMillis: Long = 0L,
+    val vin: ObdVinSnapshot = ObdVinSnapshot(),
 )
 
 interface ObdSession {
     /** Runs until cancelled or a terminal failure; either outcome closes the owned connection. */
     suspend fun run(onSnapshot: (ObdSessionSnapshot) -> Unit)
+
+    /** Queues one optional VIN request between complete sensor exchanges. */
+    fun requestVin(): Boolean = false
 }
 
 fun interface ObdSessionFactory {

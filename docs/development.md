@@ -2,15 +2,15 @@
 
 ## Current implementation
 
-The 0.4.0-dev iteration adds read-only OBD initialization, capability discovery, and six live parameters to the Bluetooth and simulator foundation:
+The 0.5.0-dev iteration adds permanent vehicle profiles and optional manual/OBD VINs to the Bluetooth, live Mode 01, and simulator foundation:
 
 | Module | Responsibility |
 | --- | --- |
-| `:app` | Compose interface, Bluetooth transport, OBD session scheduling, and foreground lifecycle integration |
-| `:core:telemetry` | Pure Kotlin OBD parsing/decoding, telemetry types, and deterministic simulated data |
+| `:app` | Compose interface, Bluetooth transport, OBD session scheduling, Room profiles, and foreground lifecycle |
+| `:core:telemetry` | Pure Kotlin Mode 01/VIN parsing, VIN validation, telemetry types, and deterministic simulation |
 
 The simulator is identified in the interface and supplies synthetic engine speed, vehicle speed, coolant temperature, intake air temperature, throttle position, and engine load readings.
-The simulator stays separate from real acquisition. Neither screen identifies the vehicle permanently, saves trips, or uploads data.
+The simulator stays separate from real acquisition and saved profiles. Vehicles stores explicit profiles and active selection; no screen saves trips or uploads data.
 Bluetooth connection alone opens a socket. Read live data explicitly starts ELM initialization and read-only Mode 01 queries.
 The architecture and API documents describe later implementation work unless explicitly marked as implemented.
 
@@ -29,9 +29,11 @@ Use the checked-in Gradle wrapper rather than a separately installed Gradle vers
 | Android minimum SDK | 26 |
 | Android SDK Build-Tools | 35.0.0, the Android Gradle Plugin default |
 | Compose BOM | 2025.12.01 |
+| Room runtime/compiler/plugin | 2.8.5 |
+| Kotlin Symbol Processing (KSP) | 2.3.10 |
 
 A first build needs Internet access to download dependencies.
-The app does not request Internet access; simulator and Bluetooth connection checks work without it.
+The app does not request Internet access; acquisition and local vehicle profiles work without it.
 
 ## Android Studio and SDK setup
 
@@ -97,7 +99,7 @@ The application package is `com.gonibix.rx8`.
 On October 10, 2026, the user reported that the app worked after testing the simulator foundation.
 The user confirmed that the Samsung A53 runs Android 16, completing RX8-002. The paired-only Bluetooth build failed to list the adapter.
 Car Scanner reportedly finds it through in-app search with plain Bluetooth selected, showing OBDII and its MAC address.
-The user subsequently confirmed that Bluetooth connects successfully, and PR #13 is merged. No detailed interruption tests or ECU responses have been reported.
+The user confirmed Bluetooth and reported live readings worked on October 11, 2026; PR #14 is merged. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed correct readings in 0.5.0-dev. Individual sensor support, ECU identifiers, measured rates, and sustained lifecycle checks remain unverified; the report does not validate profiles or VIN retrieval.
 
 ## Finding and connecting the Bluetooth adapter
 
@@ -106,7 +108,7 @@ The user subsequently confirmed that Bluetooth connects successfully, and PR #13
 3. On Android 8-11/API 26-30 only, grant the location permission required for discovery and enable location services. No location is collected.
 4. Select OBDII, comparing its MAC address with the device shown by Car Scanner. Unnamed nearby devices also show an address. Already-paired devices remain available.
 5. Connect and complete Android's pairing prompt if it appears. A successful result means a Bluetooth socket is open; ECU communication remains unchecked until Read live data succeeds.
-6. Disconnect explicitly, switch to Simulator, or leave the app to close the connection. Reconnect manually after returning to Adapter.
+6. Disconnect explicitly, switch to Vehicles or Simulator, or leave the app to close the connection. Reconnect manually after returning to Adapter.
 
 This is a provisional secure RFCOMM/SPP connection. Discovery is bounded and stops before connection or when leaving the Adapter tab.
 The scan lasts up to 15 seconds, with up to two seconds beforehand to stop an existing inquiry. Connection attempts allow 15 seconds for a paired device or 45 seconds for an unpaired device so Android can request pairing.
@@ -137,9 +139,27 @@ The engine serializes all exchanges, assembles Bluetooth fragments through the E
 Losing prompt framing closes the connection and requires a manual reconnect, preventing delayed responses from being mistaken for new readings.
 RPM and speed receive priority; measured latency and errors slow requests instead of allowing a backlog. Actual rates still require a real-car test.
 
-This build configures the adapter and sends only read-only Mode 01 diagnostics. It does not clear faults, control actuators, query the VIN, or save a trip.
-Current Mode 01 replies fit a single CAN frame; arbitrary ISO-TP multi-frame responses and VIN reconstruction are deferred.
+This build sends read-only Mode 01 diagnostics and, only when requested, Mode 09 PID 02 for VIN. It does not clear faults, control actuators, or save a trip.
+Mode 01 replies fit a single CAN frame. VIN support is limited to its 20-byte CAN message or five numbered legacy packets; general ISO-TP support is not implemented.
 Read [Architecture](architecture.md#current-read-only-obd-engine) for the separation between transport, parser, session, and UI.
+
+## Saved vehicles and optional VINs
+
+1. Open Vehicles and choose Create vehicle. Enter a name with 1-60 characters. A VIN is optional; leaving it empty still creates a permanent UUID.
+2. Select a saved profile explicitly. Rename changes its alias; Add VIN is available only for a profile without one. A manual VIN requires 17 letters/numbers excluding I, O, and Q.
+3. Restart the app and verify the profile and selected ID remain. The database is local; no Internet or account is required.
+4. To try OBD VIN retrieval, return to Adapter, reconnect, and choose Read live data. Once acquisition is live, choose Read VIN. It runs between sensor requests, which resume afterward.
+5. Review the masked candidates and ECU sources. Choosing a candidate opens Vehicles and closes the Bluetooth link. This does not save the candidate automatically.
+6. Explicitly attach it to the selected VIN-less profile, select the profile already holding that VIN, or create a separate vehicle. A different VIN cannot replace the selected profile's VIN or ID.
+7. Use Show VIN only when needed and Hide VIN afterward. Screenshots and issues must contain fake identifiers or redacted values.
+
+VIN support on the actual car remains unverified. NO DATA, unsupported, or malformed complete replies allow sensor polling to continue; a timeout or missing prompt closes the link and requires manual reconnection.
+VIN validation checks format, not ownership, check digit, or vehicle specifications. A Bluetooth MAC is never a vehicle ID.
+Only profiles and their active selection are saved. No telemetry history, trip recording, profile deletion, upload, export, or restore feature is implemented.
+Backups/device transfer are disabled. Clearing app data or reinstalling removes the saved UUIDs, with no current recovery workflow.
+
+Room version 1 exports its schema under `app/schemas`. Future database changes need explicit migrations; destructive migration fallback is prohibited.
+Instrumented checks include database close/reopen and Compose identity flows. With an emulator or authorized test device, use `./gradlew :app:connectedDebugAndroidTest` (or `./gradlew.bat` on Windows). The workflow also captures labeled, synthetic UI fixtures; these are not evidence from the RX-8.
 
 ## Using the simulator
 
@@ -152,7 +172,7 @@ Read [Architecture](architecture.md#current-read-only-obd-engine) for the separa
 Missing or failed readings must remain visibly distinct from numerical zero.
 All readings in this foundation are simulated; they are not measurements from the RX-8.
 
-Sampling runs only while the Simulator tab is visible in the foreground. Switching to Adapter or moving the app to the background pauses sampling; returning to Simulator allows a connected simulation to resume.
+Sampling runs only while the Simulator tab is visible in the foreground. Switching to Adapter or Vehicles, or moving the app to the background, pauses sampling; returning to Simulator allows a connected simulation to resume.
 The pause does not represent a saved trip, background service, or continuous recording.
 Screen-locked trip recording belongs to RX8-007 and needs separate implementation and device validation.
 
@@ -169,12 +189,13 @@ These checks validate documentation formatting separately from Android checks.
 
 ## Validation still required
 
-The RX8-002 foundation is complete, and the user has confirmed a successful Bluetooth connection after the discovery fix. OBD acquisition still needs its first real-car test.
+The user has confirmed the simulator, Bluetooth connection, and general live readings on the A53. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and correct readings in 0.5.0-dev. Individual sensor results, ECU identifiers, measured rates, and sustained lifecycle behavior still need detailed evidence. Profile persistence and VIN retrieval still need device checks.
 
 - [RX8-001](https://github.com/gonibix23/rx8-telemetry-android/issues/1): test the real adapter and RX-8, including ECU communication, supported PIDs, VIN availability, stability, and reconnection.
 - [RX8-003](https://github.com/gonibix23/rx8-telemetry-android/issues/3): validate scan and connection permissions, nearby discovery, pairing, connection, cancellation, disconnection, and manual reconnection with the actual adapter.
 - [RX8-004](https://github.com/gonibix23/rx8-telemetry-android/issues/4): validate ELM initialization, detected protocol, capabilities, actual values, observed rate, and failure recovery.
-- Later issues: implement and validate vehicle identity, persistence, trip recording, and API preparation.
+- [RX8-005](https://github.com/gonibix23/rx8-telemetry-android/issues/5): validate profile persistence, selected UUID, optional VIN retrieval, provenance, and explicit conflict decisions.
+- Later issues: implement and validate the dedicated dashboard, telemetry persistence, trip recording, and API preparation.
 
-Keep issues open while required evidence is missing. The software OBD PR uses `Refs #4`; it does not close RX8-001 or establish ECU compatibility.
+Keep issues open while required evidence is missing. PR #14 is merged, but RX8-004 remains open for detailed hardware checks. RX8-005 software does not close RX8-001 or prove VIN compatibility.
 There are no published APK releases.

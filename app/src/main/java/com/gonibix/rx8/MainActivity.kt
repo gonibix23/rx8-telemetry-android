@@ -45,11 +45,26 @@ import com.gonibix.rx8.bluetooth.AndroidBluetoothGateway
 import com.gonibix.rx8.connection.BluetoothConnectionScreen
 import com.gonibix.rx8.connection.BluetoothConnectionViewModel
 import com.gonibix.rx8.ui.SimulatorDashboard
+import com.gonibix.rx8.obd.ObdPhase
+import com.gonibix.rx8.obd.ObdVinStatus
+import com.gonibix.rx8.vehicle.RoomVehicleRepository
+import com.gonibix.rx8.vehicle.VehicleDatabase
+import com.gonibix.rx8.vehicle.VehicleProfileScreen
+import com.gonibix.rx8.vehicle.VehicleProfileViewModel
 import com.gonibix.rx8.ui.theme.AccentColor
 import com.gonibix.rx8.ui.theme.MutedColor
 import com.gonibix.rx8.ui.theme.Rx8Theme
 
 class MainActivity : ComponentActivity() {
+    private val vehicleViewModel by lazy {
+        ViewModelProvider(this, object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                require(modelClass == VehicleProfileViewModel::class.java)
+                return VehicleProfileViewModel(RoomVehicleRepository(VehicleDatabase.open(applicationContext))) as T
+            }
+        })[VehicleProfileViewModel::class.java]
+    }
     private val simulatorViewModel by lazy {
         ViewModelProvider(this)[SimulatorViewModel::class.java]
     }
@@ -112,7 +127,9 @@ class MainActivity : ComponentActivity() {
         )
         setContent {
             Rx8Theme {
-                var showBluetooth by rememberSaveable { mutableStateOf(true) }
+                var selectedTab by rememberSaveable { mutableStateOf("adapter") }
+                val showBluetooth = selectedTab == "adapter"
+                val vehicles by vehicleViewModel.uiState.collectAsStateWithLifecycle()
                 LaunchedEffect(showBluetooth, scanAfterPermission) {
                     if (!showBluetooth) scanAfterPermission = false
                 }
@@ -127,15 +144,23 @@ class MainActivity : ComponentActivity() {
                                 selected = showBluetooth,
                                 selectedContentColor = AccentColor,
                                 unselectedContentColor = MutedColor,
-                                onClick = { showBluetooth = true },
+                                onClick = { selectedTab = "adapter" },
                                 text = { Text("Adapter") },
                                 modifier = Modifier.weight(1f).testTag("adapter_tab"),
                             )
                             Tab(
-                                selected = !showBluetooth,
+                                selected = selectedTab == "vehicles",
                                 selectedContentColor = AccentColor,
                                 unselectedContentColor = MutedColor,
-                                onClick = { showBluetooth = false },
+                                onClick = { selectedTab = "vehicles" },
+                                text = { Text("Vehicles") },
+                                modifier = Modifier.weight(1f).testTag("vehicles_tab"),
+                            )
+                            Tab(
+                                selected = selectedTab == "simulator",
+                                selectedContentColor = AccentColor,
+                                unselectedContentColor = MutedColor,
+                                onClick = { selectedTab = "simulator" },
                                 text = { Text("Simulator") },
                                 modifier = Modifier.weight(1f).testTag("simulator_tab"),
                             )
@@ -169,11 +194,36 @@ class MainActivity : ComponentActivity() {
                                     onConnect = bluetoothViewModel::connect,
                                     onDisconnect = bluetoothViewModel::disconnect,
                                     onStartObd = bluetoothViewModel::startObd,
+                                    onReadVin = bluetoothViewModel::readVin,
+                                    canReviewVin = !vehicles.isLoading && !vehicles.isSaving,
+                                    onReviewVin = { candidate ->
+                                        val current = bluetoothViewModel.uiState.value.obd
+                                        if (current.phase == ObdPhase.LIVE && current.vin.status == ObdVinStatus.AVAILABLE &&
+                                            candidate in current.vin.candidates && vehicleViewModel.offerObdVin(candidate)
+                                        ) selectedTab = "vehicles"
+                                    },
                                     onScan = ::requestDiscovery,
                                     onStopScan = bluetoothViewModel::stopDiscovery,
                                     onOpenLocationSettings = {
                                         openSettings(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
                                     },
+                                )
+                            } else if (selectedTab == "vehicles") {
+                                LaunchedEffect(Unit) { vehicleViewModel.reload() }
+                                VehicleProfileScreen(
+                                    state = vehicles.vehicles,
+                                    onCreate = vehicleViewModel::create,
+                                    onSelect = vehicleViewModel::select,
+                                    onRename = vehicleViewModel::rename,
+                                    onAttachManualVin = vehicleViewModel::attachManualVin,
+                                    isLoading = vehicles.isLoading,
+                                    isSaving = vehicles.isSaving,
+                                    message = vehicles.message,
+                                    matchingVehicleId = vehicles.matchingVehicleId,
+                                    pendingVin = vehicles.pendingVin,
+                                    onAttachDetectedVin = vehicleViewModel::attachDetectedVin,
+                                    onCreateDetectedVehicle = vehicleViewModel::createDetectedVehicle,
+                                    onDismissDetectedVin = vehicleViewModel::dismissDetectedVin,
                                 )
                             } else {
                                 val state by simulatorViewModel.uiState.collectAsStateWithLifecycle()

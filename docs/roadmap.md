@@ -3,7 +3,9 @@
 Current status: the simulator foundation was merged in [PR #12](https://github.com/gonibix23/rx8-telemetry-android/pull/12) after the user reported a successful app test on October 10, 2026.
 The user confirmed that the Samsung A53 runs Android 16, completing RX8-002. The paired-only Bluetooth build failed to list the adapter.
 Car Scanner reportedly finds OBDII through in-app search with plain Bluetooth selected. After the discovery fix, the user confirmed the app's Bluetooth connection works, and [PR #13](https://github.com/gonibix23/rx8-telemetry-android/pull/13) is merged.
-RX8-004 now adds the first read-only OBD engine and a live panel for verifying six standard parameters. ECU communication and detailed transport behavior still require device testing.
+On October 11, 2026, the user reported that live readings worked. [PR #14](https://github.com/gonibix23/rx8-telemetry-android/pull/14) is merged at `7eb75463adbb28f1e00b80b7687b6d9f83e0859d`.
+The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed that 0.5.0-dev reads data correctly. These reports do not establish each of the six sensors, ECU identifiers, measured rates, sustained lifecycle behavior, VIN retrieval, or profile persistence; RX8-004 remains open for detailed hardware checks.
+RX8-005 / 0.5.0-dev adds Room vehicle profiles with stable UUIDs, persisted selection, and optional manual/OBD VIN review. Device validation is pending; trips and API work remain planned.
 
 ## Milestones and issues
 
@@ -21,7 +23,7 @@ RX8-004 now adds the first read-only OBD engine and a live panel for verifying s
 
 [Project issues](https://github.com/gonibix23/rx8-telemetry-android/issues) and [milestones](https://github.com/gonibix23/rx8-telemetry-android/milestones) are the operational tracker.
 RX8-xxx codes remain stable even if an issue number changes.
-The reported successful connection allows RX8-004 software development to proceed. RX8-003 stays open for remaining device-specific scenarios, while RX8-001 tracks ECU support and sustained behavior.
+The reported live-reading success allows vehicle-identity development to proceed. RX8-003 and RX8-004 retain their unverified device-specific checks, while RX8-001 tracks compatibility and sustained behavior. RX8-005 is not complete until its required checks are satisfied.
 
 ## Repository status
 
@@ -29,15 +31,17 @@ The reported successful connection allows RX8-004 software development to procee
 - Android foundation with deterministic simulation in normal, timeout, and missing-data modes; foreground-only sampling.
 - Bounded Classic discovery, paired and nearby device selection with names and MAC addresses, separate scan/connection permissions, secure SPP connection, cancellation, and manual reconnection. No BLE transport.
 - User-started read-only OBD initialization, protocol and supported-PID discovery, six standard decoders, and per-ECU live values with explicit error and stale states. The dedicated dashboard/favorites work remains RX8-006.
+- Explicit vehicle creation/selection/rename, stable UUIDs, optional VINs and provenance, and Room persistence. Duplicate or different VINs never silently reassign a profile.
+- Optional, user-started Mode 09 PID 02 acquisition during LIVE; limited CAN/legacy VIN reconstruction, masked candidates, and explicit review in Vehicles before saving. No general ISO-TP support or automatic vehicle assignment.
 - Android build, unit-test, lint, and Markdown check commands are documented in [Development](development.md). Record actual check results in each PR.
 - Squash merging and automatic deletion of merged branches are enabled.
 - Main branch protection is enabled: pull requests, passing Documentation checks on an up-to-date branch, and resolved review conversations are required, including for administrators. Force-push and branch deletion are disabled. No additional reviewer approval is required for solo maintenance.
-- Debug APK assembly and delivery to a configured local folder are part of the development workflow. The simulator and Bluetooth connection work on the A53 running Android 16 according to the user. No backend, deployment, published APK release, or GitHub Projects board has been created.
+- Debug APK assembly and delivery to a configured local folder are part of the development workflow. The simulator, Bluetooth connection, and general live readings work on the A53 running Android 16 according to the user. No backend, deployment, published APK release, or GitHub Projects board has been created.
 
 ## Pending decisions
 
 - Detailed interruption, permission, and reconnection validation on the A53 running Android 16. The minimum SDK is 26; compile and target SDK are 36.
-- Actual ECU protocol and compatibility with the adapter's ELM command implementation.
+- Remaining compatibility with the adapter's ELM command implementation, beyond the reported successful live readings over `ISO 15765-CAN (11 bit, 500 kbaud)`.
 - Supported PIDs and sustained sampling rate with this adapter.
 - Local retention policy and limits measured with real data.
 - Authentication, hosting, and database engine for the future server.
@@ -45,6 +49,6 @@ The reported successful connection allows RX8-004 software development to procee
 
 ## Next verifiable outcome
 
-Connect OBDII on the A53, select Read live data with the vehicle stationary and ignition on, and record the detected protocol and actual RPM, speed, and coolant values or explicit errors.
-Follow the [hardware checklist](hardware-validation.md) for sustained readings, interruptions, and manual reconnection. VIN retrieval, permanent vehicle identity, and saved trips follow in later increments.
+Create a profile without a VIN, restart the app, and verify its UUID and selection remain. Then optionally request a VIN during live acquisition and review it before explicit attachment/selection/creation; the existing UUID must not change.
+Follow the [hardware checklist](hardware-validation.md) for VIN/profile checks and the outstanding sensor, ECU identifier, rate, sustained-reading, and reconnection evidence. The dedicated dashboard and saved trips follow in later increments.
 No backend is required.

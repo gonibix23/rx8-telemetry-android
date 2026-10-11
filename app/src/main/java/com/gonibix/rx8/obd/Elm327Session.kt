@@ -3,6 +3,7 @@ package com.gonibix.rx8.obd
 import com.gonibix.rx8.bluetooth.AdapterConnection
 import com.gonibix.rx8.telemetry.obd.ElmError
 import com.gonibix.rx8.telemetry.obd.ElmResponseParser
+import com.gonibix.rx8.telemetry.obd.ElmVinParser
 import com.gonibix.rx8.telemetry.obd.ObdFailure
 import com.gonibix.rx8.telemetry.obd.ObdParseException
 import com.gonibix.rx8.telemetry.obd.ObdProtocol
@@ -32,6 +33,15 @@ class Elm327Session(
     private var liveAt: Long? = null
     private var successfulResponses = 0L
     private var activeMetric: ObdMetric? = null
+    private val vinRequested = AtomicBoolean(false)
+    private val vinBusy = AtomicBoolean(false)
+
+    override fun requestVin(): Boolean = synchronized(stateLock) {
+        if (snapshot.phase != ObdPhase.LIVE || !vinBusy.compareAndSet(false, true)) return@synchronized false
+        vinRequested.set(true)
+        snapshot = snapshot.copy(vin = ObdVinSnapshot(ObdVinStatus.READING, "VIN request queued after the current sensor reading."))
+        true
+    }
 
     override suspend fun run(onSnapshot: (ObdSessionSnapshot) -> Unit): Unit = coroutineScope {
         check(started.compareAndSet(false, true)) { "An OBD session can run only once." }
@@ -89,6 +99,7 @@ class Elm327Session(
                     phase = ObdPhase.STOPPED,
                     statusMessage = "Readings stopped. Reconnect the adapter to start again.",
                     readings = it.readings.map(::markStale),
+                    vin = ObdVinSnapshot(),
                 )
             }
             throw cancelled
@@ -101,6 +112,7 @@ class Elm327Session(
                 it.copy(
                     phase = ObdPhase.ERROR,
                     statusMessage = message,
+                    vin = ObdVinSnapshot(),
                     readings = it.readings.map { reading ->
                         if (reading.metric == activeMetric && reading.status != ObdReadingStatus.UNSUPPORTED) {
                             reading.copy(value = null, status = status, observedAtEpochMillis = clock.epochMillis(), elapsedMillis = elapsed())
@@ -110,6 +122,8 @@ class Elm327Session(
             }
             throw ObdSessionException(message, linkClosed = true, cause = failure)
         } finally {
+            vinRequested.set(false)
+            vinBusy.set(false)
             ticker.cancel()
             exchange.close()
         }
@@ -162,13 +176,17 @@ class Elm327Session(
         val schedule = POLLING_ORDER.filter { metric -> capabilities.any { metric.pid in it.supportedPids } }
         if (schedule.isEmpty()) {
             publish(onSnapshot) { it.copy(statusMessage = "Vehicle communication verified. None of the six dashboard parameters is supported.") }
-            while (currentCoroutineContext().isActive) delay(1_000L)
+            while (currentCoroutineContext().isActive) {
+                readPendingVin(protocol, onSnapshot)
+                delay(250L)
+            }
             return
         }
         var consecutiveErrors = 0
         while (currentCoroutineContext().isActive) {
             for (metric in schedule) {
                 currentCoroutineContext().ensureActive()
+                readPendingVin(protocol, onSnapshot)
                 activeMetric = metric
                 val began = clock.monotonicMillis()
                 try {
@@ -214,6 +232,36 @@ class Elm327Session(
                 // Deliberately serial and conservative. Slower replies and errors increase the pause.
                 delay((250L + latency / 4L + consecutiveErrors * 350L).coerceAtMost(2_500L))
             }
+        }
+    }
+
+    private suspend fun readPendingVin(protocol: ObdProtocol, onSnapshot: (ObdSessionSnapshot) -> Unit) {
+        if (!vinRequested.getAndSet(false)) return
+        publish(onSnapshot) { it.copy(vin = ObdVinSnapshot(ObdVinStatus.READING, "Reading the VIN. Live sensors resume afterward.")) }
+        try {
+            if (protocol.canIdBits != null) {
+                val flowControl = ElmResponseParser.parse("ATCFC1", exchange.execute("ATCFC1"))
+                if (!flowControl.isOk) throw ObdParseException(ObdFailure.ADAPTER_ERROR, "VIN flow control could not be enabled.")
+            }
+            val candidates = request("0902") { ElmVinParser.parse(it, protocol) }
+            publish(onSnapshot) {
+                it.copy(vin = ObdVinSnapshot(
+                    ObdVinStatus.AVAILABLE,
+                    "VIN response received. Review a candidate before saving it to a vehicle profile.",
+                    candidates,
+                ))
+            }
+        } catch (failure: ObdParseException) {
+            val noData = failure.reason == ObdFailure.NO_DATA || failure.reason == ObdFailure.NEGATIVE_RESPONSE
+            publish(onSnapshot) {
+                it.copy(vin = ObdVinSnapshot(
+                    if (noData) ObdVinStatus.NO_DATA else ObdVinStatus.ERROR,
+                    if (noData) "No VIN was returned. You can continue using a saved vehicle ID." else
+                        "The VIN response could not be read. Live sensors continue; you can use a saved vehicle ID.",
+                ))
+            }
+        } finally {
+            vinBusy.set(false)
         }
     }
 

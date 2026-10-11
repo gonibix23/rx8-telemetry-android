@@ -10,7 +10,7 @@ The user confirmed Android 16 on the A53, completing RX8-002. The paired-only Bl
 The user reports that Car Scanner searches inside the app with plain Bluetooth selected and displays OBDII with its MAC address.
 The user subsequently confirmed that the Bluetooth connection now works, following delivery of the discovery APK. PR #13 is merged.
 Detailed scan/pairing steps, interruptions, reconnection behavior, and physical adapter revision were not supplied. RX8-001 and remaining RX8-003 checks stay open.
-No ECU response, PID reading, or VIN result has been reported. RX8-004 provides the next read-only acquisition build for testing.
+On October 11, 2026, the user reported that live readings worked; PR #14 is merged. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed that 0.5.0-dev reads data correctly. Individual sensors, ECU identifiers, measured response rates, and sustained lifecycle results remain unverified. RX8-004 stays open for those detailed checks. No VIN or saved-profile result has been reported.
 A simulator test and a Bluetooth socket connection are separate from ECU validation.
 
 ## Test record
@@ -22,7 +22,7 @@ For each hardware test, record:
 - Visible adapter model/revision, Bluetooth type, and pairing result.
 - Ignition/engine conditions, test duration, and steps actually performed.
 - Observed connection, permission, timeout, cancellation, and reconnection behavior.
-- For later ECU tests: identification response, detected protocol, supported PIDs, queries, and latency.
+- For ECU tests: identification response, detected protocol, supported PIDs, queries, and latency.
 - VIN result only: valid, absent, error, or unsupported.
 
 An adapter identification string is not proof of authenticity. Share anonymized evidence only.
@@ -41,18 +41,18 @@ Use the actual adapter with the vehicle stationary. Disconnect Car Scanner befor
 - [ ] Select the discovered adapter and connect; complete Android's pairing prompt if shown. Record success, error, or timeout.
 - [ ] Confirm that a successful socket connection is labelled separately from ECU communication, which remains not checked.
 - [ ] Cancel a connection attempt and disconnect a connected session; confirm the controls allow another manual attempt.
-- [ ] Turn Bluetooth off or remove adapter power and record the observed response. No ECU heartbeat is implemented.
-- [ ] Switch to Simulator, leave the app, and lock the screen in separate checks; confirm discovery stops and the connection closes. Returning to Adapter requires manual reconnection.
+- [ ] Turn Bluetooth off or remove adapter power and record the observed response, both before and during live acquisition. A connected idle socket has no separate ECU heartbeat; live requests have deadlines.
+- [ ] Switch to Vehicles or Simulator, leave the app, and lock the screen in separate checks; confirm discovery stops and the connection closes. Returning to Adapter requires manual reconnection.
 - [ ] Reconnect repeatedly and record failures or signs of duplicate connections.
 - [ ] Repeat with Internet connectivity disabled and verify the simulator remains a separate synthetic-data screen.
 
 The Connect action only opens Bluetooth. Selecting Read live data additionally initializes the ELM interface and starts read-only Mode 01 requests.
 Bounded byte read/write and cancellation behavior require real I/O checks; do not claim these were physically tested by opening a socket alone.
-The Classic/SPP connection has a successful user report. BLE transport, VIN retrieval, and recorded-trip continuity are not implemented.
+The Classic/SPP connection and general live readings have successful user reports. Optional VIN retrieval is implemented in 0.5.0-dev but unverified on the car. BLE transport and recorded-trip continuity are not implemented.
 
 ## ECU validation sequence (RX8-001 and RX8-004)
 
-Use Read live data in 0.4.0-dev for Mode 01 checks, or an appropriate diagnostic tool for separate RX8-001 evidence.
+Use Read live data in 0.5.0-dev for Mode 01 checks, or an appropriate diagnostic tool for separate RX8-001 evidence.
 Record the exact app version and operating conditions. No real-car readings are established by automated parser or UI tests.
 
 1. With the vehicle stationary and ignition on, connect Bluetooth and choose Read live data. Distinguish adapter initialization from an actual ECU reply.
@@ -62,18 +62,39 @@ Record the exact app version and operating conditions. No real-car readings are 
 5. Remove adapter power or interrupt Bluetooth. Check that reading deadlines end the session, old readings become stale, and a manual reconnect starts a fresh session.
 6. Cancel initialization, leave Adapter, and background the app; verify polling stops and does not restart automatically.
 7. Repeat without an Internet connection. The Simulator tab must remain clearly separate from these real readings.
-8. VIN support remains a later app check: use a separate tool for RX8-001 evidence, or wait for RX8-005 implementation. Do not publish the full VIN.
+8. Follow the optional VIN/profile checklist below. Do not publish the full VIN or treat a valid-looking response as proof of vehicle ownership.
 
 Screen-locked recording continuity is a separate RX8-007 check after persistence and a recording service are implemented.
 To validate speed while moving, use an already running recording or a passenger; review results afterward.
+
+## Vehicle identity and VIN checklist (RX8-005)
+
+Use fake identifiers for screenshots and automated fixtures. Record real-car outcomes without recording the actual VIN in the issue.
+These checks are pending; a general live-reading success does not establish them.
+
+- [ ] Create a named vehicle without a VIN; record an anonymous reference to its UUID and selected state.
+- [ ] Restart the app and confirm the same UUID, alias, and selected profile are restored.
+- [ ] Rename the profile and add a valid manual VIN; confirm its UUID is unchanged and source is manual.
+- [ ] Check invalid manual input, a VIN already held by another profile, and explicit selection of the matching profile. No duplicate profile or silent selection should occur.
+- [ ] Confirm saved and detected VINs are masked initially and that Show VIN/Hide VIN works. Do not share the revealed value.
+- [ ] Connect and start live acquisition; confirm Read VIN is explicit and unavailable before the LIVE phase.
+- [ ] Request the VIN, record available/no data/error and ECU source only, and confirm Mode 01 resumes after a complete response.
+- [ ] Choose a candidate explicitly; confirm opening Vehicles closes Bluetooth and that reviewing the candidate alone does not save it.
+- [ ] Attach a candidate to a VIN-less profile and verify the same UUID plus OBD/ECU provenance after restart.
+- [ ] If a candidate matches a saved profile, verify explicit selection. If it differs from the selected profile's VIN, verify creation/selection without overwriting the existing VIN or UUID.
+- [ ] Interrupt a VIN request; confirm timeout/framing loss closes the session, candidate state is cleared, and reconnect is manual.
+- [ ] Confirm no-VIN/no-data operation remains usable and profiles can be managed without Internet access.
+
+A structurally valid VIN is not proof of the car's identity. The implemented parser accepts the specific CAN 20-byte VIN message and five numbered legacy packets; this does not establish compatibility with every adapter or response layout.
+Only profiles are stored. No trip history exists to test for continuity yet. Backups/device transfer are disabled and there is no export/restore feature; clearing app data or reinstalling loses saved IDs. Do not clear a user's data as a routine validation step.
 
 ## Evidence matrix
 
 | Data | Documented | Reported as supported | Reading validated | Unit | Notes |
 | --- | --- | --- | --- | --- | --- |
-| RPM | Yes, first-series service manual | Pending | Pending | rpm | |
-| Coolant temperature | Yes, first-series service manual | Pending | Pending | °C | |
-| Speed | Yes, first-series service manual | Pending | Pending | km/h | |
+| RPM | Yes, first-series service manual | Pending | Pending | rpm | General live-reading report does not identify this sensor |
+| Coolant temperature | Yes, first-series service manual | Pending | Pending | °C | Individual result not supplied |
+| Speed | Yes, first-series service manual | Pending | Pending | km/h | Individual result not supplied |
 | VIN | Standard request; optional support | Pending | Pending | text | Do not record the actual value here |
 | Other PIDs | To investigate | Pending | Pending | Pending | |
 

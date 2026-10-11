@@ -80,12 +80,13 @@ See [Development](docs/development.md) for the JDK, SDK, installation, and simul
 Report the commands actually run and their results; compilation is not evidence of installation on the A53.
 
 The current simulator checks deterministic data, timeout, and missing-data behavior.
-Add parser, persistence, migration, and synchronization coverage when those features are implemented, including fragmented OBD responses.
+Maintain parser, framing, vehicle-identity, and Room persistence coverage, including fragmented Mode 01/VIN responses and database reopen checks. Add migration tests before changing the schema and synchronization tests when implementing that feature.
+Keep exported Room schema files under version control. Never use destructive migration fallback to bypass an upgrade, or use real VINs in fixtures and screenshots.
 Do not add tests that merely repeat the implementation.
 
 A task is done when it meets its criteria, preserves existing history, documents its behavior, has sufficient verification, and its changes are merged.
 Changes that depend on the vehicle must explicitly state if they were tested only with a simulator.
-The user reported successful simulator and Bluetooth connection tests on October 10, 2026 and confirmed the Samsung A53 runs Android 16. PRs #12 and #13 are merged. Detailed Bluetooth lifecycle checks and RX8-001/RX8-004 ECU validation remain pending; a working Bluetooth link does not establish sensor support. Use `Refs #N` while any criteria remain pending.
+The user reported simulator/Bluetooth success on October 10, 2026 and live-reading success on October 11, 2026 on the A53 running Android 16. PRs #12, #13, and #14 are merged. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed correct readings in 0.5.0-dev. Do not infer individual sensor support, ECU identifiers, measured rates, or sustained lifecycle behavior from these reports. RX8-001/RX8-004 and remaining hardware checks stay open; RX8-005 adds profile/VIN software with device validation pending. Use `Refs #N` while any criteria remain pending.
 Actual adapter and ECU compatibility is tracked separately in RX8-001.
 
 ## Decisions and releases

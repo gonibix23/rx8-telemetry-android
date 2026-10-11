@@ -7,8 +7,18 @@ User's adapter: iLC OBD2 Bluetooth, ASIN B0BDRHRR22.
 Selected priority: live data and trip recording. Prepare for a future API without developing it yet.
 The user reported a successful simulator app test on October 10, 2026. The paired-only Bluetooth build failed to list the adapter.
 Car Scanner reportedly finds OBDII and its MAC address through in-app search with plain Bluetooth selected.
-The user subsequently confirmed that the app's Bluetooth connection works. Detailed transport checks and ECU compatibility remain unverified.
-The 0.4.0-dev increment adds an explicit Read live data action, six standard Mode 01 decoders, supported-PID discovery, and per-ECU readings; actual values still need testing with the RX-8.
+The user confirmed Bluetooth works and reported successful live readings on October 11, 2026; PR #14 is merged. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed correct readings in 0.5.0-dev. Individual sensors, ECU identifiers, measured rates, sustained lifecycle behavior, VIN retrieval, and profile persistence remain unverified.
+The 0.5.0-dev increment adds saved vehicle profiles and optional manual/OBD VINs to the existing six Mode 01 decoders, capability discovery, and per-ECU readings. RX8-004 stays open for detailed hardware checks.
+
+## Current vehicle profiles
+
+The Vehicles tab lets the user explicitly create a named profile, select it, rename it, and add a VIN later. Room retains the UUID and selected profile across app restarts.
+Names contain 1-60 characters after trimming. The optional VIN contains 17 letters/numbers excluding I, O, and Q; this validates its structure, not ownership or the car's identity.
+Read VIN is available only after live acquisition starts. The user chooses a candidate in Adapter, then reviews it in Vehicles before attaching it to a VIN-less profile or creating a separate profile.
+A matching VIN offers explicit selection of its existing profile. A different VIN cannot overwrite the selected profile. Adding a VIN or changing the name never changes the UUID.
+VINs are masked by default and record manual entry or OBD/ECU provenance. A car can be used without a VIN; its Bluetooth adapter does not identify it.
+Switching to Vehicles closes the Bluetooth session. Only profiles are saved in this increment: trips, telemetry history, and API synchronization remain planned.
+Backups/device transfer are disabled, and export/restore is not implemented. Clearing app data or reinstalling loses the saved IDs.
 
 ## Expected MVP outcome
 
@@ -19,7 +29,8 @@ They can lock the screen during recording, stop recording from a notification, a
 
 | Screen | Contents |
 | --- | --- |
-| Connection and vehicle | Adapter, permissions, status, profile, alias, and optional VIN |
+| Adapter (implemented) | Discovery, permissions, Bluetooth/ECU status, live readings, optional VIN request |
+| Vehicles (implemented) | Saved profiles, selection, permanent UUID, alias, optional VIN and source |
 | Live data | RPM, coolant temperature, speed, and favorites from supported sensors |
 | Trips | Sessions, duration, charts, connection gaps, and summary |
 | Trip details | Samples, valid minimum/maximum values, export, and deletion |
@@ -33,7 +44,7 @@ Distance calculated from speed must be labeled as an estimate, not the car's odo
 The first-series workshop manual lists RPM, speed, coolant temperature, intake air temperature, load, MAF, throttle position, fuel trims, and ignition timing advance.
 This is a candidate list: each parameter must be confirmed through capability discovery and readings from the real car.
 
-The app will attempt to read the VIN through mode 09, PID 02; it can continue without it.
+The app optionally requests the VIN through Mode 09 PID 02 after an explicit action. It can continue without it; actual VIN availability on the RX-8 is not yet established.
 Total mileage, oil temperature/pressure, and other Mazda data are not guaranteed through generic OBD.
 An oil pressure switch does not provide continuous pressure in bar.
 Compression requires an external measurement and will not be offered as an OBD reading.

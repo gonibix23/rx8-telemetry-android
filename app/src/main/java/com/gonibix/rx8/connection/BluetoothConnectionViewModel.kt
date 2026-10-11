@@ -9,8 +9,11 @@ import com.gonibix.rx8.bluetooth.BluetoothGateway
 import com.gonibix.rx8.obd.Elm327Session
 import com.gonibix.rx8.obd.ObdPhase
 import com.gonibix.rx8.obd.ObdReadingStatus
+import com.gonibix.rx8.obd.ObdSession
 import com.gonibix.rx8.obd.ObdSessionFactory
 import com.gonibix.rx8.obd.ObdSessionSnapshot
+import com.gonibix.rx8.obd.ObdVinSnapshot
+import com.gonibix.rx8.obd.ObdVinStatus
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -57,6 +60,7 @@ class BluetoothConnectionViewModel(
     private var scanJob: Job? = null
     private var scanGeneration = 0L
     private var obdJob: Job? = null
+    private var obdSession: ObdSession? = null
     private var paired = emptyList<AdapterDevice>()
     private val discovered = linkedMapOf<String, AdapterDevice>()
 
@@ -294,7 +298,9 @@ class BluetoothConnectionViewModel(
         )
         obdJob = viewModelScope.launch(dispatcher) {
             try {
-                obdSessionFactory.create(ownedConnection).run { snapshot ->
+                val session = obdSessionFactory.create(ownedConnection)
+                obdSession = session
+                session.run { snapshot ->
                     if (sessionGeneration == generation && connection === ownedConnection && mutableState.value.isForeground) {
                         mutableState.value = mutableState.value.copy(obd = snapshot)
                     }
@@ -319,6 +325,7 @@ class BluetoothConnectionViewModel(
                         phase = BluetoothConnectionPhase.DISCONNECTED,
                         obd = last.copy(
                             phase = ObdPhase.ERROR,
+                            vin = ObdVinSnapshot(),
                             statusMessage = if (last.phase == ObdPhase.ERROR) last.statusMessage else
                                 "Readings stopped. Check the adapter and ignition, then reconnect.",
                             readings = last.readings.map {
@@ -330,6 +337,18 @@ class BluetoothConnectionViewModel(
             } finally {
                 if (sessionGeneration == generation) obdJob = null
             }
+        }
+    }
+
+    fun readVin() {
+        val current = mutableState.value
+        if (!current.isForeground || current.phase != BluetoothConnectionPhase.CONNECTED ||
+            current.obd.phase != ObdPhase.LIVE || current.obd.vin.status == ObdVinStatus.READING
+        ) return
+        if (obdSession?.requestVin() == true) {
+            mutableState.value = current.copy(obd = current.obd.copy(
+                vin = ObdVinSnapshot(ObdVinStatus.READING, "VIN request queued after the current sensor reading."),
+            ))
         }
     }
 
@@ -413,6 +432,7 @@ class BluetoothConnectionViewModel(
         generation++
         obdJob?.cancel()
         obdJob = null
+        obdSession = null
         attempt?.cancel()
         attempt = null
         connection?.closeSafely()
@@ -422,6 +442,7 @@ class BluetoothConnectionViewModel(
         if (last.phase != ObdPhase.IDLE) {
             mutableState.value = mutableState.value.copy(
                 obd = last.copy(
+                    vin = ObdVinSnapshot(),
                     phase = if (last.phase == ObdPhase.ERROR) ObdPhase.ERROR else ObdPhase.STOPPED,
                     statusMessage = if (last.phase == ObdPhase.ERROR) last.statusMessage else
                         "Readings stopped. Reconnect to read from the car again.",

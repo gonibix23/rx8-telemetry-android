@@ -83,7 +83,7 @@ class ElmCommandExchangeTest {
     fun `unapproved commands never reach the adapter`() = runTest {
         val connection = FakeObdConnection { _, _ -> error("Must not write") }
         val exchange = ElmCommandExchange(connection)
-        for (command in listOf("04", "0902", "ATSH7E0", "010C\r04", "", "010C\n", "ATD")) {
+        for (command in listOf("04", "0904", "ATSH7E0", "010C\r04", "", "010C\n", "ATD")) {
             assertTrue(runCatching { exchange.execute(command) }.exceptionOrNull() is IllegalArgumentException)
         }
         assertTrue(connection.commands.isEmpty())

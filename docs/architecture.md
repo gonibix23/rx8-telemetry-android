@@ -2,18 +2,18 @@
 
 ## Status
 
-The app contains a deterministic simulator, Bluetooth Classic/SPP transport with bounded discovery, and a read-only OBD acquisition engine.
+The 0.5.0-dev app contains a deterministic simulator, Bluetooth Classic/SPP discovery, a read-only OBD engine, optional VIN acquisition, and Room vehicle profiles.
 The Bluetooth screen combines paired devices and nearby discoveries, handles scan and connection permissions separately, and opens a secure RFCOMM socket.
 Device names and MAC addresses are shown locally so the user can identify the OBDII adapter reported in Car Scanner.
 The connection starts without OBD commands. An explicit Read live data action initializes the adapter and starts Mode 01 acquisition, keeping Bluetooth status separate from ECU communication.
 
-Both screens are foreground-only: simulation pauses when its tab is hidden, and leaving the Adapter tab or app closes the connection and requires manual reconnection.
+Acquisition is foreground-only: simulation pauses when its tab is hidden, and leaving Adapter for Vehicles, Simulator, or the background closes the connection and requires manual reconnection. Saved profiles remain available without a connection.
 The user reported the simulator app worked after testing on October 10, 2026 and confirmed the Samsung A53 runs Android 16.
 The paired-only Bluetooth build failed to list the adapter, which the user finds by searching in Car Scanner with plain Bluetooth selected.
-The user subsequently confirmed that the Bluetooth connection works; PR #13 is merged. No ECU result or detailed lifecycle test has been reported.
+The user confirmed Bluetooth works and, on October 11, 2026, reported that live readings worked; PR #14 is merged. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed correct readings in 0.5.0-dev. These reports do not establish individual sensors, ECU identifiers, measured rates, sustained lifecycle behavior, VIN retrieval, or profile persistence. Detailed RX8-001/RX8-004 checks remain open.
 
-The diagram and later storage, identity, recording, and synchronization sections describe the **target MVP architecture**.
-The current engine provides six standard Mode 01 decoders and capability discovery. Vehicle identity, saved trips, Room/DataStore storage, and API integration remain planned.
+The diagram and recording/synchronization sections describe the **target MVP architecture**. The profile storage and identity sections below describe the implemented RX8-005 boundary.
+The engine provides six Mode 01 decoders, capability discovery, and an explicit Mode 09 PID 02 VIN request. Room stores profiles and active selection; saved trips, telemetry persistence, DataStore settings, and API integration remain planned.
 See [Development](development.md) for setup and current behavior.
 
 Target: European-market 2004 RX-8 with 231 PS, Samsung A53 running Android 16, and iLC B0BDRHRR22 adapter.
@@ -37,7 +37,7 @@ flowchart LR
 ```
 
 Use Kotlin and Jetpack Compose for the interface, ViewModel/StateFlow for its state, and coroutines for asynchronous work.
-Room stores structured data; DataStore stores settings.
+Room currently stores vehicle profiles and active selection. The target architecture adds trip/sample tables and DataStore settings later.
 Components can start as packages; there is no need to create a Gradle module for each component from day one.
 
 ## Transport and OBD engine
@@ -74,13 +74,24 @@ RX8-004 separates pure parsing in `:core:telemetry` from the session scheduler i
 
 The first decoders cover PIDs `04`, `05`, `0C`, `0D`, `0F`, and `11`: load, coolant temperature, RPM, speed, intake temperature, and throttle position.
 Capability blocks are discovered separately from decoding; a reported PID is not a promise that this build displays that parameter.
-All current requests fit a single CAN data frame. Reassembling Bluetooth fragments does not implement general ISO-TP multi-frame messages; VIN retrieval remains RX8-005 work.
+Mode 01 replies fit a single CAN data frame. VIN reconstruction is separately limited to the Mode 09 layouts below; neither path implements general ISO-TP or arbitrary multi-frame diagnostics.
 The live panel displays separate ECU groups when several modules respond; it does not silently combine their values or identify an ECU as the engine controller based only on its address.
 The engine uses read-only diagnostic requests and adapter configuration. It sends no fault-clearing, actuator, or ECU programming commands.
 
 Do not commit to a per-sensor sampling rate before measuring it. Sequential readings are not simultaneous: each has its own timestamp.
 The adapter's identification string alone does not prove its authenticity or all of its capabilities.
 Command and response layouts follow the [ELM327 data sheet](https://www.elmelectronics.com/wp-content/uploads/2016/07/ELM327DS.pdf). Adapter clones and the actual RX-8 still require hardware testing.
+
+### Optional VIN acquisition
+
+The user chooses Read VIN only after the OBD session reaches LIVE. The request is queued between complete sensor exchanges; it does not run automatically on Bluetooth connection, profile selection, or live-data startup.
+For CAN, the session first enables automatic adapter flow control with `ATCFC1`, then requests `0902`. Sensor polling resumes after the bounded VIN request.
+The pure VIN parser supports CAN 11/29-bit identifiers with the 20-byte Mode 09 response (`49 02 01` plus 17 VIN characters), and five ordered legacy packets with three leading zero filler bytes.
+It checks per-ECU completeness, sequence, service/PID, and VIN structure. Conflicting, partial, or malformed sequences fail the complete reply; no partial VIN becomes a candidate. Headerless, extended-address, long KWP, and general ISO-TP layouts are not inferred.
+The adapter validates legacy checksums/CRCs; printed error markers are rejected. This software support does not establish that the actual adapter/car supplies a VIN.
+
+A complete prompt containing NO DATA, an unsupported request, or malformed VIN data reports a VIN-specific result while Mode 01 polling continues. A transport timeout, missing prompt, or unsafe framing closes the link and requires manual reconnection.
+Multiple valid ECU candidates remain separate. Candidates are masked, held in memory, and cleared with the session. Choosing one explicitly copies it into Vehicles for review before any database write.
 
 ## Local model
 
@@ -93,24 +104,30 @@ Command and response layouts follow the [ELM327 data sheet](https://www.elmelect
 | TelemetrySample | UUID, sequence, timestamps, metric, value, unit, source, and status |
 | OutboxEntry | Pending work, attempts, next execution, and acknowledgments |
 
-Samples are immutable. Sessions use the recording, completed, or interrupted states.
+Only Vehicle and the active selection are currently persisted. The other entities in this table are planned; no existing telemetry history is stored or reassigned by profile changes.
+
+In the target recording model, samples are immutable. Sessions use the recording, completed, or interrupted states.
 Each reading carries a UTC timestamp and monotonic elapsed time since the start; sequence determines ordering.
 Values are normalized to canonical units and converted only for display.
 
 A failed reading has a null value. The interface may show the last valid reading as stale without storing it again as a new measurement.
 Distance integrated from speed is identified as an estimate and records intervals with missing data.
 
-## Identity
+## Identity and current persistence
 
-Always create a vehicleId UUID when registering a car.
-The VIN is optional, retrieved through mode 09 PID 02 or entered manually, with validation and provenance.
+A profile is created only after an explicit user action. The repository generates one UUID, stores its alias and creation timestamp, and selects it in the same Room transaction.
+Aliases are trimmed, contain 1-60 characters, and reject control characters. Rename changes only the alias.
+A VIN is optional. Manual input trims surrounding whitespace and uppercases ASCII characters, requiring 17 letters/numbers excluding I, O, and Q. This is structural validation; it does not infer region/model/year, impose a regional check digit, or prove ownership.
+Saved provenance is MANUAL or OBD; OBD provenance includes the ECU source. Attaching the same VIN preserves original provenance; adding a VIN to a VIN-less profile preserves the UUID.
 
-Adding a VIN does not change the identity or split the history.
-A different VIN must not be silently assigned to the active profile: the user must select or create the corresponding vehicle.
-The adapter's MAC address does not identify the car. Without a VIN, the user selects the profile when necessary.
+The Vehicles screen shows saved profiles, selected state, permanent IDs, and masked VINs with explicit show/hide controls.
+A duplicate VIN points to its existing profile and requires explicit selection. A different VIN cannot overwrite a profile: the user must select the corresponding vehicle or create a separate one. No automatic profile assignment or merging is implemented.
+The adapter MAC address never identifies a vehicle. Selecting a profile does not persist or relabel the current telemetry buffer; recording and historical links are future work.
 
-After clearing app data or reinstalling, recovering the same UUIDs requires restoring a compatible backup/export.
-Import/restore has not been implemented and is not guaranteed in the MVP; JSON retains the necessary information.
+Room schema version 1 contains `vehicle_profiles` and a singleton `active_vehicle` reference. VIN uniqueness and a foreign key protect identity and selection; writes and returned state share a transaction.
+The application-scoped `rx8-vehicles.db` lives in private app storage. A failed read or write reports an error rather than replacing profiles with a new empty database. There is no destructive migration fallback; future changes require explicit migrations and schema review.
+Only successful storage results reach the UI as saved. Profile deletion, telemetry tables, export, import, and restore are not implemented.
+Android backups and device transfer are excluded. Clearing app data or reinstalling removes the UUIDs; recovering them would require a future compatible export/restore feature, and recovery is not currently promised.
 
 ## Sessions and permissions
 
@@ -123,7 +140,7 @@ Those legacy permissions are limited to API 30. Android 12+ does not request loc
 Android can present pairing during connection. Bluetooth and permission settings remain available for recovery.
 See Android's [Bluetooth permission guidance](https://developer.android.com/develop/connectivity/bluetooth/bt-permissions).
 
-The connection closes when the Adapter tab is hidden or the app leaves the foreground. Returning requires a manual reconnect.
+The connection closes when Adapter is hidden, including navigation to Vehicles to review a chosen VIN, or when the app leaves the foreground. Returning requires a manual reconnect.
 This is not screen-locked trip recording.
 
 ### Planned recording sessions
@@ -148,17 +165,17 @@ See [the contract](api-contract.md) for details.
 
 ## Retention and export
 
-Keep trips until explicitly deleted, show storage usage, and warn before storage runs out.
+The following policies apply to future trip storage; only vehicle profiles exist now. Keep trips until explicitly deleted, show storage usage, and warn before storage runs out.
 If data cannot be saved, stop recording in a controlled way and display the error.
 When deleting records pending upload, explain which data will be lost and remove their queued work.
 
 Export versioned JSON with IDs, units, and statuses; use CSV for analysis.
 Do not commit real databases or private exports.
-Define exclusions/encryption for Android backups before distribution.
+Current app data is excluded from Android backup and device transfer. Any future backup/export design must explicitly address identifiers, encryption, and restore behavior.
 
 ## Validation
 
-Parser tests with complete, fragmented, multi-ECU, and malformed responses.
+Parser tests cover complete, fragmented, multi-ECU, and malformed Mode 01/VIN responses. Identity tests cover duplicate/different VINs, UUID/provenance preservation, explicit selection, storage failures, and reopening Room. Actual run results belong in the PR.
 Tests for persistence, migrations, identity, unexpected termination, the queue, and retries.
 Interface tests with a clearly identified simulator.
 Real-vehicle validation for compatibility, sampling rate, reconnection, and recording with the screen locked.
