@@ -112,8 +112,16 @@ private fun SeriesContent(series: TripSeriesAnalysis, durationMillis: Long) {
         style = MaterialTheme.typography.bodySmall,
         modifier = Modifier.testTag("trip_series_coverage"),
     )
-    if (series.validSampleCount == 0L || minimum == null || maximum == null || segments.isEmpty()) {
+    if (series.validSampleCount == 0L || minimum == null || maximum == null) {
         Text("No valid recorded values for this sensor and ECU.", color = MutedColor, modifier = Modifier.testTag("empty_trip_chart"))
+        return
+    }
+    if (segments.isEmpty()) {
+        Text(
+            "Valid readings were recorded, but this reduced chart has no values to plot. Counts and range above include all valid readings.",
+            color = MutedColor,
+            modifier = Modifier.testTag("reduced_trip_chart_unavailable"),
+        )
         return
     }
     val axis = tripChartAxis(metric, minimum, maximum)
