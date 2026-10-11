@@ -50,7 +50,7 @@ class BluetoothConnectionViewModelTest {
 
     @After
     fun tearDown() {
-        viewModel.setForeground(false)
+        viewModel.stopDiscovery()
         viewModel.disconnect()
         Dispatchers.resetMain()
     }
@@ -167,34 +167,42 @@ class BluetoothConnectionViewModelTest {
     }
 
     @Test
-    fun backgroundClosesConnectionAndDoesNotReconnectOnReturn() = connectionTest {
+    fun backgroundKeepsConnectionAndReturnDoesNotOpenAnotherLink() = connectionTest {
         prepareSelection()
         viewModel.connect()
         runCurrent()
         viewModel.setForeground(false)
 
-        assertEquals(1, gateway.connection.closeCalls)
-        assertEquals(BluetoothConnectionPhase.DISCONNECTED, viewModel.uiState.value.phase)
+        assertEquals(0, gateway.connection.closeCalls)
+        assertEquals(BluetoothConnectionPhase.CONNECTED, viewModel.uiState.value.phase)
         assertFalse(viewModel.uiState.value.isForeground)
         viewModel.setForeground(true)
         runCurrent()
         assertEquals(1, gateway.connectCalls)
-        assertEquals(BluetoothConnectionPhase.DISCONNECTED, viewModel.uiState.value.phase)
+        assertEquals(BluetoothConnectionPhase.CONNECTED, viewModel.uiState.value.phase)
         assertEquals(device, viewModel.uiState.value.selectedDevice)
+        viewModel.disconnect()
+        assertEquals(1, gateway.connection.closeCalls)
+        assertEquals(BluetoothConnectionPhase.DISCONNECTED, viewModel.uiState.value.phase)
     }
 
     @Test
-    fun backgroundCancelsPendingConnectionAndLateSuccessIsClosed() = connectionTest {
+    fun userStartedConnectionCanFinishAfterBackgrounding() = connectionTest {
         lateinit var result: Continuation<AdapterConnection>
         gateway.connectBehavior = { suspendCoroutine { result = it } }
         prepareSelection()
         viewModel.connect()
         runCurrent()
         viewModel.setForeground(false)
-        val lateConnection = FakeConnection()
-        result.resume(lateConnection)
+        assertEquals(BluetoothConnectionPhase.CONNECTING, viewModel.uiState.value.phase)
+        val opened = FakeConnection()
+        result.resume(opened)
         runCurrent()
-        assertEquals(1, lateConnection.closeCalls)
+        assertEquals(0, opened.closeCalls)
+        assertEquals(BluetoothConnectionPhase.CONNECTED, viewModel.uiState.value.phase)
+        assertFalse(viewModel.uiState.value.isForeground)
+        viewModel.disconnect()
+        assertEquals(1, opened.closeCalls)
         assertEquals(BluetoothConnectionPhase.DISCONNECTED, viewModel.uiState.value.phase)
     }
 
@@ -521,7 +529,8 @@ class BluetoothConnectionViewModelTest {
         try {
             block()
         } finally {
-            viewModel.setForeground(false)
+            viewModel.stopDiscovery()
+            viewModel.disconnect()
             runCurrent()
         }
     }

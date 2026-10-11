@@ -64,6 +64,7 @@ fun BluetoothConnectionScreen(
     onReadVin: () -> Unit = {},
     onReviewVin: (VinResponse) -> Unit = {},
     canReviewVin: Boolean = true,
+    notificationsAllowed: Boolean = true,
 ) {
     Column(
         modifier = modifier
@@ -98,6 +99,15 @@ fun BluetoothConnectionScreen(
                 }
             }
             ConnectionStatus(state)
+            if (!notificationsAllowed && state.phase != BluetoothConnectionPhase.DISCONNECTED) {
+                Text(
+                    "Session notifications are disabled. You can still read data and disconnect here. Enable notifications to see the Stop action outside the app.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MutedColor,
+                    modifier = Modifier.testTag("session_notifications_disabled"),
+                )
+                TextButton(onClick = onOpenAppSettings) { Text("Open notification settings") }
+            }
             if (state.phase == BluetoothConnectionPhase.CONNECTED) {
                 ConnectionAction(state, onConnect, onDisconnect)
                 if (state.obd.phase in setOf(ObdPhase.IDLE, ObdPhase.ERROR, ObdPhase.STOPPED)) {
@@ -233,7 +243,7 @@ fun BluetoothConnectionScreen(
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Text(
-                        "The link and readings stop when you leave this screen or put the app in the background. Reconnect manually when ready.",
+                        "The connection and active readings continue when you change tabs, lock the phone, or use another app. Choose Disconnect here or Stop in the session notification to end them. The live-data screen stays awake while visible.",
                         color = MutedColor,
                         style = MaterialTheme.typography.bodySmall,
                     )

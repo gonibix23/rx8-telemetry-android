@@ -2,11 +2,11 @@
 
 ## Current implementation
 
-The 0.5.0-dev iteration adds permanent vehicle profiles and optional manual/OBD VINs to the Bluetooth, live Mode 01, and simulator foundation:
+The 0.5.1-dev iteration adds a service-owned background session and a screen-awake live view to the Bluetooth, OBD/VIN, saved-profile, and simulator foundation:
 
 | Module | Responsibility |
 | --- | --- |
-| `:app` | Compose interface, Bluetooth transport, OBD session scheduling, Room profiles, and foreground lifecycle |
+| `:app` | Compose interface, service-owned Bluetooth/OBD sessions, notification/power lifecycle, and Room profiles |
 | `:core:telemetry` | Pure Kotlin Mode 01/VIN parsing, VIN validation, telemetry types, and deterministic simulation |
 
 The simulator is identified in the interface and supplies synthetic engine speed, vehicle speed, coolant temperature, intake air temperature, throttle position, and engine load readings.
@@ -108,7 +108,7 @@ The user confirmed Bluetooth and reported live readings worked on October 11, 20
 3. On Android 8-11/API 26-30 only, grant the location permission required for discovery and enable location services. No location is collected.
 4. Select OBDII, comparing its MAC address with the device shown by Car Scanner. Unnamed nearby devices also show an address. Already-paired devices remain available.
 5. Connect and complete Android's pairing prompt if it appears. A successful result means a Bluetooth socket is open; ECU communication remains unchecked until Read live data succeeds.
-6. Disconnect explicitly, switch to Vehicles or Simulator, or leave the app to close the connection. Reconnect manually after returning to Adapter.
+6. The connection continues across tabs, backgrounding, screen lock, and Activity recreation. Use Disconnect in Adapter or Stop in the ongoing notification to close it. Reconnect manually after an explicit stop or terminal error.
 
 This is a provisional secure RFCOMM/SPP connection. Discovery is bounded and stops before connection or when leaving the Adapter tab.
 The scan lasts up to 15 seconds, with up to two seconds beforehand to stop an existing inquiry. Connection attempts allow 15 seconds for a paired device or 45 seconds for an unpaired device so Android can request pairing.
@@ -118,7 +118,7 @@ On API 31+, scan and connection permissions are separate; a paired adapter can b
 Android's [permissions](https://developer.android.com/develop/connectivity/bluetooth/bt-permissions) and [device discovery guidance](https://developer.android.com/develop/connectivity/bluetooth/find-bluetooth-devices) describe these requirements.
 
 The connection action sends no application bytes. Read live data uses the transport's bounded byte read/write operations for OBD commands.
-There is no automatic reconnection or background recording. The user-reported successful Bluetooth connection does not establish sensor support.
+There is no automatic reconnection or saved trip recording. An explicitly started live session can continue in the background. The user-reported successful Bluetooth connection does not establish sensor support.
 Use the [hardware checklist](hardware-validation.md#bluetooth-transport-checklist-rx8-003) to record actual behavior.
 
 ## Reading live OBD data
@@ -128,7 +128,7 @@ Use the [hardware checklist](hardware-validation.md#bluetooth-transport-checklis
 3. Inspect the protocol, responding ECU identifiers, and six parameter cards. Each ECU is shown separately when more than one responds.
 4. Confirm engine speed, stationary vehicle speed, and coolant temperature against the actual operating conditions. A valid zero value is allowed; a missing reading must show its status instead.
 5. Observe the timestamps, stale markers, and measured response rate. A parameter appearing in the capability bitmap does not guarantee a valid reading on every request.
-6. Disconnect to stop polling, or leave Adapter/the app. Reconnect and choose Read live data again for a fresh session.
+6. Use Disconnect or notification Stop to stop polling. Leaving Adapter/the app keeps acquisition running. After a stop or terminal error, reconnect and choose Read live data again for a fresh session.
 
 The current decoders cover engine speed (rpm), vehicle speed (km/h), coolant and intake temperatures (°C), throttle position (%), and engine load (%).
 The engine only requests metrics reported as supported. Mode 01 capability bitmaps can report additional parameters that this build does not yet decode.
@@ -143,13 +143,24 @@ This build sends read-only Mode 01 diagnostics and, only when requested, Mode 09
 Mode 01 replies fit a single CAN frame. VIN support is limited to its 20-byte CAN message or five numbered legacy packets; general ISO-TP support is not implemented.
 Read [Architecture](architecture.md#current-read-only-obd-engine) for the separation between transport, parser, session, and UI.
 
+## Keeping a session active
+
+Connect from the visible app starts the connected-device foreground service. On Android 13+, the first Connect action requests notification permission; allow it to see the session notification and its Stop/open-Adapter controls. Denial does not block connection. Follow the in-app guidance to enable notifications, or stop from Adapter.
+Read live data is still a separate explicit action. During initialization, protocol/capability discovery, and live acquisition, the visible Adapter screen stays awake. Switching tabs, using another app, or locking the screen releases that screen-on flag but leaves acquisition running.
+A bounded, renewed partial wake lock supports acquisition while the screen is off. Active acquisition consumes battery; use Disconnect or notification Stop when finished. The app does not request a battery-optimization exemption.
+Discovery stops when Adapter is hidden. The simulator remains foreground-only and does not share the real session's background behavior.
+
+Stop/disconnect and terminal failures release session resources even while the UI stays bound. The service does not restart automatically (`START_NOT_STICKY`), reconnect, or restore a session after process death. Only profiles persist; live readings do not become trip history.
+The user's 0.5.0-dev screen-sleep/background-disconnection report matched the old lifecycle policy. The reported protocol remains `ISO 15765-CAN (11 bit, 500 kbaud)`; actual removal of the Android Bluetooth bond is not confirmed and the code has no `removeBond` call.
+Validate the new behavior with the [issue #16 hardware checklist](hardware-validation.md#background-session-and-screen-awake-checklist-issue-16). No A53 background/lock/battery success is claimed by the implementation or automated tests alone.
+
 ## Saved vehicles and optional VINs
 
 1. Open Vehicles and choose Create vehicle. Enter a name with 1-60 characters. A VIN is optional; leaving it empty still creates a permanent UUID.
 2. Select a saved profile explicitly. Rename changes its alias; Add VIN is available only for a profile without one. A manual VIN requires 17 letters/numbers excluding I, O, and Q.
 3. Restart the app and verify the profile and selected ID remain. The database is local; no Internet or account is required.
-4. To try OBD VIN retrieval, return to Adapter, reconnect, and choose Read live data. Once acquisition is live, choose Read VIN. It runs between sensor requests, which resume afterward.
-5. Review the masked candidates and ECU sources. Choosing a candidate opens Vehicles and closes the Bluetooth link. This does not save the candidate automatically.
+4. To try OBD VIN retrieval, return to Adapter. If there is no active session, connect and choose Read live data. Once acquisition is live, choose Read VIN. It runs between sensor requests, which resume afterward.
+5. Review the masked candidates and ECU sources. Choosing a candidate opens Vehicles while the Bluetooth/acquisition session continues. This does not save the candidate automatically.
 6. Explicitly attach it to the selected VIN-less profile, select the profile already holding that VIN, or create a separate vehicle. A different VIN cannot replace the selected profile's VIN or ID.
 7. Use Show VIN only when needed and Hide VIN afterward. Screenshots and issues must contain fake identifiers or redacted values.
 
@@ -195,6 +206,7 @@ The user has confirmed the simulator, Bluetooth connection, and general live rea
 - [RX8-003](https://github.com/gonibix23/rx8-telemetry-android/issues/3): validate scan and connection permissions, nearby discovery, pairing, connection, cancellation, disconnection, and manual reconnection with the actual adapter.
 - [RX8-004](https://github.com/gonibix23/rx8-telemetry-android/issues/4): validate ELM initialization, detected protocol, capabilities, actual values, observed rate, and failure recovery.
 - [RX8-005](https://github.com/gonibix23/rx8-telemetry-android/issues/5): validate profile persistence, selected UUID, optional VIN retrieval, provenance, and explicit conflict decisions.
+- [Issue #16](https://github.com/gonibix23/rx8-telemetry-android/issues/16): validate background/lock continuity, Activity recreation, visible screen-awake behavior, notification denial/Stop, and battery/resource cleanup on the A53.
 - Later issues: implement and validate the dedicated dashboard, telemetry persistence, trip recording, and API preparation.
 
 Keep issues open while required evidence is missing. PR #14 is merged, but RX8-004 remains open for detailed hardware checks. RX8-005 software does not close RX8-001 or prove VIN compatibility.

@@ -45,7 +45,7 @@ fun VinDetectionPanel(
                 }
             }
             if (snapshot.candidates.isNotEmpty()) {
-                Text("Opening Vehicles stops live readings. Nothing is saved until you confirm the profile.",
+                Text("Readings continue while you review. Nothing is saved until you confirm the profile.",
                     style = MaterialTheme.typography.bodySmall, color = MutedColor)
             }
         }

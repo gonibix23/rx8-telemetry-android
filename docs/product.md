@@ -8,7 +8,7 @@ Selected priority: live data and trip recording. Prepare for a future API withou
 The user reported a successful simulator app test on October 10, 2026. The paired-only Bluetooth build failed to list the adapter.
 Car Scanner reportedly finds OBDII and its MAC address through in-app search with plain Bluetooth selected.
 The user confirmed Bluetooth works and reported successful live readings on October 11, 2026; PR #14 is merged. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed correct readings in 0.5.0-dev. Individual sensors, ECU identifiers, measured rates, sustained lifecycle behavior, VIN retrieval, and profile persistence remain unverified.
-The 0.5.0-dev increment adds saved vehicle profiles and optional manual/OBD VINs to the existing six Mode 01 decoders, capability discovery, and per-ECU readings. RX8-004 stays open for detailed hardware checks.
+The current 0.5.1-dev increment keeps an explicitly started connection and acquisition active across tabs, backgrounding, screen lock, and Activity recreation. Saved vehicle profiles and optional manual/OBD VINs remain available alongside the six Mode 01 decoders. RX8-004 stays open for detailed hardware checks.
 
 ## Current vehicle profiles
 
@@ -17,8 +17,19 @@ Names contain 1-60 characters after trimming. The optional VIN contains 17 lette
 Read VIN is available only after live acquisition starts. The user chooses a candidate in Adapter, then reviews it in Vehicles before attaching it to a VIN-less profile or creating a separate profile.
 A matching VIN offers explicit selection of its existing profile. A different VIN cannot overwrite the selected profile. Adding a VIN or changing the name never changes the UUID.
 VINs are masked by default and record manual entry or OBD/ECU provenance. A car can be used without a VIN; its Bluetooth adapter does not identify it.
-Switching to Vehicles closes the Bluetooth session. Only profiles are saved in this increment: trips, telemetry history, and API synchronization remain planned.
+Switching to Vehicles leaves an active Bluetooth/acquisition session running. Only profiles are saved: trips, telemetry history, and API synchronization remain planned.
 Backups/device transfer are disabled, and export/restore is not implemented. Clearing app data or reinstalling loses the saved IDs.
+
+## Current session behavior
+
+Connect is an explicit action from the visible app. Read live data starts acquisition separately; a connection alone does not query the ECU.
+The active session continues when changing tabs, using another app, locking the screen, or recreating the Activity. Discovery stops when leaving Adapter, and simulation still samples only while Simulator is visible.
+Adapter stays awake only during visible initialization, protocol/capability discovery, and live acquisition. Other screens and an idle connected adapter do not hold the screen on.
+Disconnect in Adapter or Stop in the ongoing notification ends the session. Opening the notification returns to Adapter. Notification denial does not block connection; in-app guidance explains how to enable notifications and disconnect.
+Active acquisition consumes battery while running, including with the screen locked. No battery-optimization exemption is requested. There is no automatic reconnect or process-death recovery.
+
+The user reported screen sleep and background disconnection in 0.5.0-dev. These were consequences of the old lifecycle policy, not confirmed Bluetooth bond removal. [Issue #16](https://github.com/gonibix23/rx8-telemetry-android/issues/16) tracks the fix; real A53 lifecycle and battery checks remain pending.
+This is continued live acquisition, not saved trip recording.
 
 ## Expected MVP outcome
 

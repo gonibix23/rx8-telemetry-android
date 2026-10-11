@@ -8,6 +8,7 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -122,6 +123,9 @@ class SimulatorDashboardTest {
         }
         compose.onNodeWithTag("toggle_simulator").performClick()
         compose.onNodeWithTag("adapter_tab").performClick()
+        compose.waitUntil(timeoutMillis = 5_000L) {
+            compose.onAllNodesWithTag("bluetooth_connection_status").fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithTag("simulation_status").assertDoesNotExist()
         compose.onNodeWithTag("reading_engine_rpm").assertDoesNotExist()
         val pausedAt = viewModel.uiState.value.elapsedMs
