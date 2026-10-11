@@ -33,6 +33,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gonibix.rx8.bluetooth.AdapterDevice
 import com.gonibix.rx8.bluetooth.BluetoothAvailability
+import com.gonibix.rx8.obd.ObdPhase
+import com.gonibix.rx8.ui.LiveObdReadings
 import com.gonibix.rx8.ui.theme.AccentColor
 import com.gonibix.rx8.ui.theme.BorderColor
 import com.gonibix.rx8.ui.theme.CanvasColor
@@ -56,6 +58,7 @@ fun BluetoothConnectionScreen(
     onStopScan: () -> Unit,
     onOpenLocationSettings: () -> Unit,
     modifier: Modifier = Modifier,
+    onStartObd: () -> Unit = {},
 ) {
     Column(
         modifier = modifier
@@ -90,6 +93,25 @@ fun BluetoothConnectionScreen(
                 }
             }
             ConnectionStatus(state)
+            if (state.phase == BluetoothConnectionPhase.CONNECTED) {
+                ConnectionAction(state, onConnect, onDisconnect)
+                if (state.obd.phase in setOf(ObdPhase.IDLE, ObdPhase.ERROR, ObdPhase.STOPPED)) {
+                    Button(
+                        onClick = onStartObd,
+                        enabled = state.isForeground,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp).testTag("start_obd"),
+                        shape = RoundedCornerShape(12.dp),
+                    ) { Text("Read live data", fontWeight = FontWeight.Bold) }
+                    Text(
+                        "Start a read-only ECU check, then view the sensors this vehicle supports.",
+                        color = MutedColor,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+            if (state.obd.phase != ObdPhase.IDLE || state.obd.readings.isNotEmpty()) {
+                LiveObdReadings(state.obd, Modifier.fillMaxWidth())
+            }
             when (state.availability) {
                 BluetoothAvailability.PERMISSION_REQUIRED -> {
                     Text(
@@ -134,43 +156,45 @@ fun BluetoothConnectionScreen(
                     OutlinedButton(onClick = onOpenLocationSettings) { Text("Open location settings") }
                 }
                 BluetoothAvailability.READY -> {
-                    DiscoveryControls(state, onScan, onStopScan, onOpenLocationSettings, onOpenAppSettings)
-                    Text(
-                        "Available Bluetooth devices",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    if (state.devices.isEmpty()) {
+                    if (state.phase != BluetoothConnectionPhase.CONNECTED) {
+                        DiscoveryControls(state, onScan, onStopScan, onOpenLocationSettings, onOpenAppSettings)
                         Text(
-                            "No devices listed yet. Scan nearby with your adapter powered on, or pair it in Bluetooth settings.",
-                            color = MutedColor,
-                            modifier = Modifier.testTag("no_paired_devices"),
+                            "Available Bluetooth devices",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
                         )
-                    } else {
-                        Text(
-                            "Look for OBDII and match its MAC address with Car Scanner.",
-                            color = MutedColor,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        state.devices.forEachIndexed { index, device ->
-                            PairedDeviceRow(
-                                device = device,
-                                selected = device.address.equals(state.selectedDevice?.address, ignoreCase = true),
-                                enabled = state.phase == BluetoothConnectionPhase.DISCONNECTED,
-                                onSelected = { onSelectDevice(device) },
-                                modifier = Modifier.testTag("paired_device_$index"),
+                        if (state.devices.isEmpty()) {
+                            Text(
+                                "No devices listed yet. Scan nearby with your adapter powered on, or pair it in Bluetooth settings.",
+                                color = MutedColor,
+                                modifier = Modifier.testTag("no_paired_devices"),
+                            )
+                        } else {
+                            Text(
+                                "Look for OBDII and match its MAC address with Car Scanner.",
+                                color = MutedColor,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            state.devices.forEachIndexed { index, device ->
+                                PairedDeviceRow(
+                                    device = device,
+                                    selected = device.address.equals(state.selectedDevice?.address, ignoreCase = true),
+                                    enabled = state.phase == BluetoothConnectionPhase.DISCONNECTED,
+                                    onSelected = { onSelectDevice(device) },
+                                    modifier = Modifier.testTag("paired_device_$index"),
+                                )
+                            }
+                        }
+                        if (state.phase == BluetoothConnectionPhase.DISCONNECTED && state.selectedDevice != null) {
+                            Text(
+                                "Disconnect Car Scanner before connecting here. Android may show a pairing prompt for a nearby device.",
+                                color = MutedColor,
+                                style = MaterialTheme.typography.bodySmall,
                             )
                         }
+                        ConnectionAction(state, onConnect, onDisconnect)
+                        SettingsButton(onOpenBluetoothSettings)
                     }
-                    if (state.phase == BluetoothConnectionPhase.DISCONNECTED && state.selectedDevice != null) {
-                        Text(
-                            "Disconnect Car Scanner before connecting here. Android may show a pairing prompt for a nearby device.",
-                            color = MutedColor,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                    ConnectionAction(state, onConnect, onDisconnect)
-                    SettingsButton(onOpenBluetoothSettings)
                 }
             }
             state.message?.let { message ->
@@ -191,22 +215,22 @@ fun BluetoothConnectionScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
-                        "Connection first",
+                        "Read-only vehicle data",
                         fontWeight = FontWeight.SemiBold,
                         style = MaterialTheme.typography.titleSmall,
                     )
                     Text(
-                        "A Bluetooth link does not confirm ECU communication. OBD readings and trip recording are planned; no commands are sent in this step.",
+                        "Choose Read live data to request supported sensor readings. The app does not clear faults or control vehicle systems.",
                         color = MutedColor,
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Text(
-                        "The link closes when you leave this screen or put the app in the background. Reconnect manually when ready.",
+                        "The link and readings stop when you leave this screen or put the app in the background. Reconnect manually when ready.",
                         color = MutedColor,
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Text(
-                        "Compatibility with this RX-8 and adapter is still unverified. No API is configured.",
+                        "Trip recording and API sync are not available yet. Readings are not saved or uploaded.",
                         color = MutedColor,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -345,7 +369,13 @@ private fun ConnectionStatus(state: BluetoothConnectionUiState) {
                 )
             }
             Text(
-                "ECU not checked",
+                when (state.obd.phase) {
+                    ObdPhase.IDLE -> "ECU not checked"
+                    ObdPhase.INITIALIZING, ObdPhase.DISCOVERING -> "ECU check in progress"
+                    ObdPhase.LIVE -> "ECU readings active"
+                    ObdPhase.ERROR -> "ECU reading error"
+                    ObdPhase.STOPPED -> "ECU readings stopped"
+                },
                 color = MutedColor,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.testTag("ecu_status"),

@@ -4,7 +4,8 @@
 
 VINs, trips, and complete logs can identify a vehicle or its usage patterns.
 Use synthetic data in examples, simulators, issues, and tests. Remove VINs, Bluetooth MAC addresses, and locations from shared logs.
-The MVP does not request GPS access.
+The app does not collect GPS location. On Android 8-11, Bluetooth discovery requires foreground location permission; Android 12+ uses Nearby devices permissions instead.
+Live OBD values and ECU source identifiers are held in memory only. The app has no Internet permission, VIN query, persistent telemetry log, or upload implementation.
 
 Databases will be stored in the app's private storage. Backup, export, and retention policies must be explicitly implemented before distribution.
 Allow trips to be exported and deleted; show storage usage and do not delete records pending upload without informing the user.
