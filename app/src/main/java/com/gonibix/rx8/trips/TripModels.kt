@@ -16,6 +16,7 @@ data class TripSession(
     val endReason: String? = null,
     val protocolLabel: String? = null,
     val origin: String = "REAL_OBD",
+    val appVersion: String? = null,
 )
 
 /** Sequence numbers are per trip; elapsed time is monotonic time since its explicit start. */

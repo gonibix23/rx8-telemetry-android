@@ -157,7 +157,7 @@ class VehiclePersistenceTest {
         database.close()
         withContext(Dispatchers.IO) {
             SQLiteDatabase.openDatabase(context.getDatabasePath(databaseName).path, null, SQLiteDatabase.OPEN_READWRITE).use {
-                it.version = 3
+                it.version = 4
             }
         }
         database = openTestDatabase()

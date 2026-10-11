@@ -23,6 +23,7 @@ class TripRecorder(
     private val clock: ObdClock = SystemObdClock,
     private val availableBytes: () -> Long = { Long.MAX_VALUE },
     private val maxQueuedSamples: Int = 512,
+    private val appVersion: String? = null,
 ) {
     private sealed interface Command {
         data class Start(val session: TripSession) : Command
@@ -129,7 +130,10 @@ class TripRecorder(
 
     fun start(vehicle: VehicleProfile, snapshot: ObdSessionSnapshot) = synchronized(lock) {
         if (active != null || snapshot.phase != ObdPhase.LIVE) return@synchronized
-        val session = TripSession(UUID.randomUUID().toString(), vehicle.id, vehicle.alias, clock.epochMillis(), protocolLabel = snapshot.protocolLabel)
+        val session = TripSession(
+            UUID.randomUUID().toString(), vehicle.id, vehicle.alias, clock.epochMillis(),
+            protocolLabel = snapshot.protocolLabel, appVersion = appVersion,
+        )
         // Cached dashboard values predate the button press; they are never backfilled into a trip.
         active = Active(session, clock.monotonicMillis(), snapshot.readings.associate { it.key() to it.fingerprint() }.toMutableMap())
         mutableState.value = TripRecordingState(isStarting = true, revision = mutableState.value.revision)

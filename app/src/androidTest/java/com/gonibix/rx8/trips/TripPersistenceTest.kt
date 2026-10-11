@@ -74,7 +74,7 @@ class TripPersistenceTest {
         assertEquals(before, vehicles().load())
         assertEquals(TripStatus.COMPLETED, repository().find(trip.id)!!.status)
         assertEquals(1, repository().samples(trip.id).size)
-        assertEquals(2, withContext(Dispatchers.IO) { database.openHelper.readableDatabase.version })
+        assertEquals(3, withContext(Dispatchers.IO) { database.openHelper.readableDatabase.version })
     }
 
     @Test
@@ -309,7 +309,7 @@ class TripPersistenceTest {
         sequence * 100L, ObdMetric.SPEED, 25.0, ObdMetric.SPEED.unit, "7E8", ObdReadingStatus.VALID,
     )
     private fun open() = Room.databaseBuilder(context, VehicleDatabase::class.java, name)
-        .addMigrations(VehicleDatabase.MIGRATION_1_2)
+        .addMigrations(VehicleDatabase.MIGRATION_1_2, VehicleDatabase.MIGRATION_2_3)
         .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
         .build()
     private fun reopen() {

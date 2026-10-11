@@ -2,7 +2,7 @@
 
 ## Status
 
-The 0.7.0-dev app adds explicit offline trip recording, saved history, summaries, speed charts, JSON/CSV export, and deletion to the live dashboard, simulator, service-owned OBD acquisition, optional VIN acquisition, and vehicle profiles.
+The 0.8.0-dev app adds versioned API models and a durable local queue to offline trip recording/history/exports, the live dashboard, simulator, service-owned OBD acquisition, optional VIN acquisition, and vehicle profiles. Real uploads remain disabled.
 The Bluetooth screen combines paired devices and nearby discoveries, handles scan and connection permissions separately, and opens a secure RFCOMM socket.
 Device names and MAC addresses are shown locally so the user can identify the OBDII adapter reported in Car Scanner.
 The connection starts without OBD commands. An explicit Read live data action initializes the adapter and starts Mode 01 acquisition, keeping Bluetooth status separate from ECU communication.
@@ -12,8 +12,8 @@ The user reported the simulator app worked after testing on October 10, 2026 and
 The paired-only Bluetooth build failed to list the adapter, which the user finds by searching in Car Scanner with plain Bluetooth selected.
 The user confirmed Bluetooth works and, on October 11, 2026, reported that live readings worked; PR #14 is merged. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed correct readings in 0.5.0-dev. These reports do not establish individual sensors, ECU identifiers, measured rates, sustained lifecycle behavior, VIN retrieval, or profile persistence. Detailed RX8-001/RX8-004 checks remain open.
 
-The diagram includes future synchronization components; recording and local storage are implemented. No API, outbox, upload worker, or remote database is implemented.
-The engine provides six Mode 01 decoders, capability discovery, and an explicit Mode 09 PID 02 VIN request. Room stores profiles, active selection, trips, and samples; SharedPreferences stores app-wide dashboard favorites. Broader settings and API integration remain planned.
+The diagram includes the future API connection. Recording, local storage, outbox preparation, and an isolated synchronization coordinator are implemented; there is no HTTP transport, upload worker, server, or remote database.
+The engine provides six Mode 01 decoders, capability discovery, and an explicit Mode 09 PID 02 VIN request. Room stores profiles, active selection, trips, samples, and pending work; SharedPreferences stores app-wide dashboard favorites. Broader settings and real API integration remain planned.
 See [Development](development.md) for setup and current behavior.
 
 Target: European-market 2004 RX-8 with 231 PS, Samsung A53 running Android 16, and iLC B0BDRHRR22 adapter.
@@ -37,7 +37,7 @@ flowchart LR
 ```
 
 Use Kotlin and Jetpack Compose for the interface, ViewModel/StateFlow for its state, and coroutines for asynchronous work.
-Room currently stores vehicle profiles, active selection, trips, and samples; dashboard favorites use private SharedPreferences. Broader settings and synchronization remain future work.
+Room stores vehicle profiles, active selection, trips, samples, and synchronization preparation; dashboard favorites use private SharedPreferences. Broader settings and real uploads remain future work.
 Components can start as packages; there is no need to create a Gradle module for each component from day one.
 
 ## Transport and OBD engine
@@ -116,7 +116,7 @@ An application-scoped worker serializes writes away from the main thread. State 
 | TelemetrySample | UUID, sequence, timestamps, metric, value, unit, source, and status |
 | OutboxEntry | Pending work, attempts, next execution, and acknowledgments |
 
-Vehicle, active selection, Session, and TelemetrySample are persisted; dashboard display preferences are stored separately. Adapter/capability metadata stays in the live session, with the detected protocol copied into an explicitly started trip. Outbox remains planned. Profile changes never reassign previously stored telemetry.
+Vehicle, active selection, Session, TelemetrySample, and pending work are persisted; dashboard display preferences are stored separately. Adapter/capability metadata stays in the live session, with the detected protocol copied into an explicitly started trip. Profile changes never reassign previously stored telemetry.
 
 Recorded samples are immutable. Sessions use the recording, completed, or interrupted states.
 Each reading carries a UTC timestamp and monotonic elapsed time since the start; sequence determines ordering.
@@ -136,7 +136,7 @@ The Vehicles screen shows saved profiles, selected state, permanent IDs, and mas
 A duplicate VIN points to its existing profile and requires explicit selection. A different VIN cannot overwrite a profile: the user must select the corresponding vehicle or create a separate one. No automatic profile assignment or merging is implemented.
 The adapter MAC address never identifies a vehicle. Starting a trip freezes the selected profile's UUID and alias. Later profile selection or renaming does not relabel that trip or its samples.
 
-Room schema version 2 retains `vehicle_profiles` and the singleton `active_vehicle` reference, and adds `trip_sessions` and `trip_samples`. The explicit migration from version 1 preserves existing profiles and selection. VIN uniqueness and foreign keys protect the stored relationships; a unique trip/sequence index prevents duplicate sample positions.
+Room schema version 3 retains `vehicle_profiles`, `active_vehicle`, `trip_sessions`, and `trip_samples`; it adds metadata revisions, nullable recording app version, `sync_work`, and `sync_samples`. Explicit migrations from 1 to 2 and 2 to 3 preserve profiles, selection, trips, and samples. The 2-to-3 migration inserts pending references for existing samples through SQLite rather than loading all telemetry into memory; metadata is encoded one cursor row at a time. It never marks old data delivered or invents its original app version. VIN uniqueness and foreign keys protect the relationships; a unique trip/sequence index prevents duplicate sample positions.
 The application-scoped `rx8-vehicles.db` lives in private app storage. A failed read or write reports an error rather than replacing profiles with a new empty database. There is no destructive migration fallback; future changes require explicit migrations and schema review.
 Only successful storage results reach the UI as saved. Trip deletion and JSON/CSV export are implemented; profile deletion, importing, and restoring an app database are not.
 Android backups and device transfer are excluded. Clearing app data or reinstalling removes saved profiles and trips. An exported trip can be inspected separately, but cannot currently restore the app's database or vehicle profiles.
@@ -195,20 +195,23 @@ Estimated distance uses trapezoidal integration between adjacent valid, nonnegat
 
 The speed chart holds at most 500 points. Streaming reduction preserves null gap barriers, and rendering breaks the line at those barriers. Reduction affects chart detail only; distance uses the original paged samples. Analysis and export support coroutine cancellation and reject broken page ordering or foreign-trip samples.
 
-## Future synchronization
+## Current API preparation
 
-Define a remote interface, versioned models, and a fake implementation solely for isolated tests.
-The app used with real data keeps uploads disabled until an API and authentication are available.
+RX8-008 introduces pure Kotlin versioned wire models, explicit field/unit/quality mapping, a transport interface, a disabled transport, an isolated coordinator, and a durable Room store. No HTTP client or fake server is packaged in the app. `TripRuntime` exposes a production `RoomSyncStore` only for the Trips status query; it does not create or schedule a coordinator.
 
-Local writes and pending-work creation are atomic.
-The queue references persisted samples without duplicating the entire history.
-A future worker sends batches, observes connectivity requirements, and confirms only records that receive an acknowledgment (ACK).
-A server simulator must never mark the user's real data as uploaded.
-See [the contract](api-contract.md) for details.
+`RoomTripRepository.append` inserts immutable samples and pending sample references in the same transaction. Vehicle create/rename/VIN attachment and trip start/finish/recovery create immutable metadata snapshots in their source transaction. Selection alone is not a metadata revision. A recording session has null wire end/duration; finish/recovery increments its revision so an old retry cannot reopen it. New recordings snapshot their app version. Legacy versions and unconfirmed make/model/year/market/power remain null.
+
+`sync_samples` references original samples instead of duplicating the history. `sync_work` retains immutable JSON for metadata revisions and prepared batches, attempts, retry time, lease identity/expiry, state, and a bounded diagnostic code. Requests are claimed transactionally in vehicle/session/sample dependency order. Batches use configurable sample and UTF-8 byte bounds. A lost response reuses the exact saved payload and identity; partial ACKs or splitting create new batches without editing previously attempted bodies.
+
+An entire response must match its request before any acknowledgment is committed. Only explicit stored/already_stored sample results acknowledge delivery. Rejected samples are blocked; omitted samples remain pending. Expired leases can be reclaimed, and stale or deleted work cannot be acknowledged by a late response. Conflicts/permanent failures preserve local data. The coordinator applies bounded retry delays and supports Retry-After; future HTTP parsing/authentication remains outside this increment.
+
+The disabled transport and the coordinator's non-isolated-store guard return before claiming or mutating work. Fake-server exercises use isolated fixtures only, including persistence/restart tests. There is no Internet permission, endpoint, credential, WorkManager job, upload switch, or route by which these tests mark production samples uploaded.
+
+Trips queries sample-state totals independently of history loading and labels uploads disabled. The count is a last-refresh snapshot, not a per-reading database subscription. Query errors remain explicit without changing the history or manufacturing zero counts. See [the contract](api-contract.md) for wire fields, states, limits, and the future integration boundary.
 
 ## Retention and export
 
-Trips remain stored until explicitly deleted. Deletion requires confirmation and removes that trip and its samples in a transaction; it does not delete vehicle profiles or previously exported files. Database space may be retained for reuse rather than immediately shrinking the file. No upload queue exists yet.
+Trips remain stored until explicitly deleted. Deletion requires confirmation and removes that trip, its samples, and related pending/prepared work in a transaction; it does not delete vehicle profiles or previously exported files. Database space may be retained for reuse rather than immediately shrinking the file. Local deletion is not a request to a future server.
 
 The user chooses a JSON or CSV destination through Android's document picker, without a broad storage permission or automatic upload. Exports stream sequence-ordered pages instead of materializing the full history. Success is reported only after writing, flushing, and closing the destination; a failed or cancelled write may leave a partial file and is not reported as saved.
 

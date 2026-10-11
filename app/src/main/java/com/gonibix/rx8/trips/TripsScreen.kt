@@ -252,6 +252,9 @@ internal fun TripsContent(
                 if (state.isExporting || state.isDeleting) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
         }
+        state.syncStatus?.let { status ->
+            item { TripSyncStatusCard(status, isRecording = recording.session != null) }
+        }
         if (state.selectedTripId != null) {
             item {
                 TextButton(onClick = onCloseDetails, modifier = Modifier.testTag("back_to_trips")) { Text("Back to history") }

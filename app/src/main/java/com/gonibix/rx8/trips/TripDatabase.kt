@@ -1,5 +1,6 @@
 package com.gonibix.rx8.trips
 
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Entity
 import androidx.room.ForeignKey
@@ -32,6 +33,8 @@ data class TripSessionEntity(
     val endReason: String?,
     val protocolLabel: String?,
     val origin: String,
+    @ColumnInfo(defaultValue = "1") val revision: Long = 1,
+    val appVersion: String? = null,
 )
 
 @Entity(

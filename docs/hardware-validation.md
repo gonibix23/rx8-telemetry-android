@@ -12,7 +12,7 @@ The user subsequently confirmed that the Bluetooth connection now works, followi
 Detailed scan/pairing steps, interruptions, reconnection behavior, and physical adapter revision were not supplied. RX8-001 and remaining RX8-003 checks stay open.
 On October 11, 2026, the user reported that live readings worked; PR #14 is merged. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed that 0.5.0-dev reads data correctly. Individual sensors, ECU identifiers, measured response rates, and sustained lifecycle results remain unverified. RX8-004 stays open for those detailed checks. No VIN or saved-profile result has been reported.
 The user also reported screen sleep while idle and loss of connection/readings after backgrounding in 0.5.0-dev, describing this as unpairing. The old policy deliberately disconnected outside Adapter; actual removal of the Android bond is unconfirmed, and the code has no removeBond call.
-The user subsequently confirmed 0.5.1-dev worked, providing broad success evidence for the background/screen fix in merged PR #17. The detailed issue #16 checks below remain unreported: measured background/lock intervals, battery use, notification scenarios, and actual bond-entry observations. The user then confirmed that the 0.6.0-dev dashboard build works perfectly; PR #18 is merged. This broad result does not establish the individual favorite/ECU scenarios below. All new 0.7.0-dev trip checks remain pending.
+The user subsequently confirmed 0.5.1-dev worked, providing broad success evidence for the background/screen fix in merged PR #17. The detailed issue #16 checks below remain unreported: measured background/lock intervals, battery use, notification scenarios, and actual bond-entry observations. The user then confirmed that the 0.6.0-dev dashboard build works perfectly; PR #18 is merged. This broad result does not establish the individual favorite/ECU scenarios below. The user subsequently confirmed that 0.7.0-dev works perfectly, and PR #19 is merged. Detailed trip duration, export-provider, interruption/storage, and battery results remain unreported; the new 0.8.0-dev migration and disabled-upload display still need validation.
 A simulator test and a Bluetooth socket connection are separate from ECU validation.
 
 ## Test record
@@ -133,7 +133,7 @@ Profiles, active selection, dashboard preferences, and explicitly recorded trips
 
 ## Trip recording checklist (RX8-007)
 
-Use 0.7.0-dev on the A53. Automated tests use synthetic data and do not replace these phone/car checks.
+The user broadly confirmed 0.7.0-dev works. Use that version or later on the A53 for the remaining scenarios below; individual results remain unreported. Automated tests use synthetic data and do not replace phone/car checks.
 
 - [ ] Install over the existing app and confirm saved profiles, UUIDs, selection, and favorites remain available.
 - [ ] Select a profile in Vehicles, connect and start real data in Adapter, then choose Start recording in Trips. Confirm the displayed name and increasing saved-sample count. Do not claim unsupported sensors were recorded.
@@ -149,7 +149,20 @@ Use 0.7.0-dev on the A53. Automated tests use synthetic data and do not replace 
 - [ ] Confirm trip deletion removes its saved samples after confirmation and leaves profiles and previously exported copies intact. Active trips must not be deletable/exportable.
 - [ ] Measure database usage during a realistic trip. Test insufficient-storage behavior only on a controlled test device/fixture; it must visibly stop recording rather than claim all readings were saved.
 
-No new trip hardware outcome is claimed until reported. Retain existing issue #16 battery and lifecycle checks where they have not been measured.
+Retain existing issue #16 battery and lifecycle checks where they have not been measured. Broad success does not establish each individual scenario above.
+
+## API preparation upgrade checklist (RX8-008)
+
+Use 0.8.0-dev as an update with existing data intact. These checks are pending; no real server is used.
+
+- [ ] Confirm saved profiles, selected UUID, favorites, trip history, and exports remain available after the Room 2-to-3 upgrade.
+- [ ] Open Trips and Refresh. Confirm Future uploads clearly says Uploads disabled and shows the existing samples waiting locally. No upload or server-configuration action should appear.
+- [ ] Record a short new trip, stop, and refresh history. Confirm its saved readings are included in the local waiting count; restart the app and refresh again to check persistence.
+- [ ] Export an old and a new terminal trip without Internet access. Confirm both formats remain available and the original readings/IDs are preserved. Export does not remove pending work or mark samples uploaded.
+- [ ] On a disposable recorded trip, cancel deletion once, then confirm it. Refresh and verify its samples no longer contribute to the waiting count while other trips/profiles remain.
+- [ ] Confirm recording, background acquisition, history, and exports remain usable with uploads disabled. Report a status-load failure separately from a history or recording failure.
+
+Fake-server ACK, retry, lease, conflict, and oversized-batch behavior is validated in isolated automated fixtures. Do not connect this app to a test server or mark production data uploaded to satisfy these checks.
 
 ## Evidence matrix
 

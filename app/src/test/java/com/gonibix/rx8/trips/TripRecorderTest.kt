@@ -26,7 +26,7 @@ class TripRecorderTest {
 
     @Test fun startRequiresLiveReadingsAndDoesNotBackfillTheDashboard() = runTest {
         val repo = Repository()
-        val recorder = TripRecorder(repo, backgroundScope, clock)
+        val recorder = TripRecorder(repo, backgroundScope, clock, appVersion = "synthetic-version")
         recorder.start(vehicle, snapshot(0, phase = ObdPhase.STOPPED))
         runCurrent()
         assertNull(repo.session)
@@ -39,6 +39,7 @@ class TripRecorderTest {
         runCurrent()
         assertTrue(repo.saved.isEmpty())
         assertEquals(vehicle.id, repo.session!!.vehicleId)
+        assertEquals("synthetic-version", repo.session!!.appVersion)
         assertEquals(1, repo.recoveries)
     }
 

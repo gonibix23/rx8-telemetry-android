@@ -1,18 +1,18 @@
-# Proposed API v1 contract
+# API v1 preparation and local export contract
 
 ## Status and boundaries
 
-Design for preparing the app. No API, live URL, configured authentication, or remote database exists.
-RX8-008 will implement models, an interface, and isolated tests; the backend belongs to a later phase.
+RX8-008 / 0.8.0-dev implements typed version-1 payloads, deterministic JSON serialization, a durable local outbox, a transport interface, and an isolated-test coordinator. No API, live URL, configured authentication, HTTP client, response JSON decoder, worker, or remote database exists.
+The app has no Internet permission and instantiates no coordinator. Its production transport is disabled; there is no setting that enables uploads. Backend implementation, HTTPS transport, authentication, scheduling, and server validation belong to a later phase.
 All examples are synthetic. Fault diagnostics and remote deletion are outside this initial contract.
 
-The 0.7.0-dev app records trips locally and exports files. Those implemented files have the separate contract below; they are not uploads or an implementation of these proposed API routes.
+The app records trips locally and exports files. Those files retain the separate version-1 contract below; they are not uploads or an implementation of the proposed API routes. Trips displays explicitly disabled uploads and last-refreshed sample queue counts. Queue-query failures remain visible without preventing local recording or export.
 
 ## Implemented local trip export
 
-RX8-007 exports completed or interrupted trips through Android's document picker. Stop an active recording first. Export is an explicit local action with no API, authentication, outbox, or synchronization attempt.
+RX8-007 exports completed or interrupted trips through Android's document picker. Stop an active recording first. Export is an explicit local action that does not attempt synchronization or change outbox state.
 Exports preserve the vehicle UUID and alias captured when recording began, the trip/sample UUIDs, sample order, UTC timestamps, monotonic elapsed time, units, ECU sources, and quality. They contain no VIN or Bluetooth address. Selecting another vehicle does not relabel a saved trip.
-The current origin is `REAL_OBD`; simulator preview data is not recorded as a trip. Units are the stored canonical app units: `rpm`, `km/h`, `°C`, and `%`. An eventual API adapter must explicitly map these units and enum names to the proposed wire contract below.
+The current origin is `REAL_OBD`; simulator preview data is not recorded as a trip. Units are the stored canonical app units: `rpm`, `km/h`, `°C`, and `%`. The API mapper separately converts `°C` to `Cel` and enum names to the wire values below. Local export version 1 is unchanged by RX8-008.
 
 ### JSON version 1
 
@@ -48,10 +48,11 @@ The file contains private vehicle/trip information and is shared only through th
 
 ## Conventions
 
-HTTPS/JSON; /v1 routes; schemaVersion equal to 1; UTC ISO 8601 timestamps ending in Z.
+Future transport: HTTPS/JSON and /v1 routes. Implemented payloads use schemaVersion equal to 1 and UTC ISO 8601 timestamps ending in Z.
 Client-generated UUIDs are retained for vehicles, sessions, samples, and batches.
 Explicit canonical units do not depend on the phone's language.
 VIN is optional; neither a VIN nor a UUID is a credential. Authorization must verify ownership of each resource.
+Payloads preserve ECU source addresses but omit Bluetooth MAC addresses. All six current metrics use `obd_standard` and service `01`; this is not evidence of additional sensor support.
 
 ## Planned resources
 
@@ -62,19 +63,20 @@ VIN is optional; neither a VIN nor a UUID is a credential. Authorization must ve
 | POST | /v1/telemetry/batches | Store samples in batches |
 
 Confirm the vehicle first, then the session, and finally the samples.
-Do not make requests until a server is configured.
+These routes are a future server contract. The current app makes no requests.
 
 ## Vehicle and session
 
-Vehicle: vehicleId, revision, nullable vin, vinSource (obd/manual/null), alias, make, model, modelYear, market, and powerCv.
-The user confirms RX-8 metadata; do not assume OBD provides it.
-Adding a VIN preserves vehicleId.
+Vehicle: schemaVersion, vehicleId, revision, nullable vin, vinSource (obd/manual/null), alias, and nullable make, model, modelYear, market, and powerCv.
+The mapper leaves unconfirmed make/model/year/market/power null. The project car's known specifications are not automatically assigned to every stored profile, and OBD is not assumed to supply them.
+Adding a VIN preserves vehicleId and creates a new metadata revision. VIN and provenance are either both present or both null; structural validation does not require a North American check digit.
 
-Session: sessionId, vehicleId, revision, startedAt, nullable endedAt, nullable durationMs, status, appVersion, nullable obdProtocol, and dataOrigin (real/simulated).
+Session: schemaVersion, sessionId, vehicleId, revision, startedAt, nullable endedAt, nullable durationMs, status, nullable appVersion, nullable obdProtocol, and dataOrigin (real/simulated).
 States: recording, completed, interrupted.
 Duration uses a monotonic clock; wall-clock changes must not produce negative durations.
+Recording-session metadata has null endedAt and durationMs. Appending samples does not change that metadata revision; completion or interruption creates the next revision with the saved duration. New recordings capture their actual app version at start. Existing recordings migrated from version 2 have appVersion null, never the version installed during migration.
 
-revision is a positive integer that increases with every change:
+revision is a positive integer that increases with every metadata change. The future server must implement these rules:
 
 - Higher than the stored revision: apply it.
 - Equal with the same content: acknowledge without duplication.
@@ -83,11 +85,12 @@ revision is a positive integer that increases with every change:
 
 This assumes a single writer per vehicle; concurrent editing across devices is a later extension.
 Closing a session increases revision so an old retry cannot reopen a trip.
+Each metadata revision freezes its complete JSON inside the local mutation transaction. Retrying an old revision cannot silently read the latest profile or session instead.
 
 ## Telemetry batch
 
-A batch belongs to a single vehicle and session. Its body becomes immutable when an upload is attempted.
-The Idempotency-Key header must match batchId.
+A batch belongs to a single vehicle and session. Its JSON body and member sample IDs are frozen before it is leased and remain immutable across retries.
+The future Idempotency-Key header must match batchId. Metadata uses its resource UUID and revision instead.
 
 ```json
 {
@@ -116,7 +119,7 @@ The Idempotency-Key header must match batchId.
 
 sampleId is unique; sequence increases within the session and is preserved across retries.
 Each sample has its own timestamp. service, pid, and ecuAddress are optional.
-status accepts ok, timeout, unsupported, and parse_error. If it is not ok, value is null.
+status accepts ok, timeout, unsupported, parse_error, no_data, and adapter_error. If it is not ok, value is null. A valid zero remains zero; an ok value must be finite and present.
 A stale reading is a display state, not a new sample containing the last value.
 
 source accepts obd_standard, obd_vendor, adapter, and derived.
@@ -129,16 +132,21 @@ Voltage measured by the adapter uses a different metric from voltage reported by
 | Vehicle speed | km/h |
 | Temperature | Cel |
 | Percentage | % |
-| Pressure | kPa |
-| Air mass flow | g/s |
-| Voltage | V |
 
-The maximum batch size will be defined and tested with the backend. It must be configurable and support splitting.
+Current metric IDs are `engine_rpm`, `speed`, `coolant_temperature`, `intake_temperature`, `throttle_position`, and `engine_load`. Other metrics require a future contract extension.
+Default limits are 100 samples and 256 KiB of UTF-8 JSON, including the envelope. Configurable hard bounds are 1-500 samples and 1 byte-1 MiB. A singleton exceeding the configured byte ceiling is blocked visibly in queue state. Batch preparation reads at most 500 sample rows at once and does not copy the full trip history into a payload.
+JSON field ordering and numeric formatting are deterministic. Quotes, backslashes, controls, and UTF-16 surrogate code units are escaped; non-finite values, inconsistent units, foreign-trip samples, duplicate IDs, and non-increasing sequences are rejected.
 Do not upload simulated data as real sessions.
 
 ## Acknowledgments and duplicates
 
-Proposed HTTP 200 response:
+The future HTTP decoder must produce the typed acknowledgments validated by the local coordinator and store. Metadata acknowledgment has exactly the matching schemaVersion, resourceId, and revision:
+
+```json
+{"schemaVersion":1,"resourceId":"17ca18ac-8df9-4af1-8d78-b44759c6e993","revision":2}
+```
+
+Proposed batch HTTP 200 response:
 
 ```json
 {
@@ -153,7 +161,7 @@ Proposed HTTP 200 response:
 }
 ```
 
-Per-sample states: stored, already_stored, or rejected. A rejection adds code and message.
+Per-sample states: stored, already_stored, or rejected. A rejection requires a bounded machine-readable code (`[A-Za-z0-9_.-]{1,64}`); free-form server messages are not stored or shown.
 Only stored and already_stored acknowledge durable persistence. HTTP 200 without those results does not acknowledge the batch.
 
 The server deduplicates by sampleId within the authorized scope, including across different batches.
@@ -162,35 +170,37 @@ Never overwrite an existing sample because of a retry.
 
 If the response is lost, resend the same immutable batch.
 For a partial ACK, store acknowledgments atomically and create a new batch containing pending samples eligible for retry.
-Do not blindly accept unknown or repeated sampleId values in a response.
+Validate the entire response before any mutation: schema version, acknowledgment kind, matching resource/revision or batch ID, nonempty results, unique known sample IDs, and rejection codes. A malformed or mismatched ACK causes a retry of the original immutable request with no partial ACK writes.
 An omitted sample remains pending; a permanent rejection is blocked for review.
+An acknowledged or partially resolved batch is retired without rewriting its attempted body. Partial-ACK remainder and split batches receive new UUIDs. Attempted bodies remain locally available until their trip is deleted.
 
 ## Local queue
 
-States: pending, sending, acknowledged, blocked.
-Save a sample and its pending work in the same transaction.
-Record attempts, the latest error, the next attempt, and a temporary lease to prevent duplicate workers.
-An expired lease after process termination allows work stuck in sending to be recovered.
+Room schema version 3 migrates version 2 explicitly, preserving profiles, selection, and trips. Existing samples receive pending references and existing vehicle/session metadata receives revision-1 snapshots; migration never fabricates historical app versions.
+Sample states are pending, sending, acknowledged, and blocked. The four UI counters count samples only, not vehicle/session metadata or retired batches.
+Save a sample and its pending reference in the same transaction. Vehicle/session mutations also save their immutable revision snapshots atomically. Unbatched pending data uses sample references; payloads are prepared in bounded batches when claimed.
+The store records attempts, a safe error code, the next attempt time, and a temporary lease. Default coordinator timing is a 30-second lease and a 10-second remote-call timeout. The store validates token, expiry, request identity, membership, and exact body inside the ACK transaction. Stale, expired, replaced, or deleted leases cannot acknowledge data.
+An expired lease can be reclaimed with a new token while retaining the same request ID/body. Cancellation leaves recovery to lease expiry. A transport becoming disabled after claiming releases the lease without an ACK or artificial error. Metadata dependencies enforce vehicle before session before samples.
 
-Until a server exists, synchronization is shown as disabled and does not generate connection attempts.
-Tests use isolated storage; their ACKs do not modify real records.
+`SyncCoordinator.runOnce()` checks both transport availability and `SyncStore.isIsolatedTestStore` before leasing or mutating anything. The real Room store defaults to false. Only isolated fixture stores opt in, and fake transports exist only in test sources. The app constructs no runner, so neither fixture ACKs nor accidental coordinator construction can mark real records uploaded.
 
 ## Errors and retention
 
 | Case | Action |
 | --- | --- |
-| Offline, timeout, 5xx | Increasing delay with random jitter and retry |
-| 429 | Respect Retry-After when present |
-| 401/403 | Pause until authentication or access is resolved |
-| 409 | Preserve data and resolve the conflict |
-| 413 | Create smaller batches with new batchId values |
+| Offline, timeout, 408, 5xx | Increasing delay with random jitter and retry |
+| 429 | Retry with bounded policy and respect Retry-After when present |
+| 401/403 | Block until future authentication/access recovery is implemented |
+| 409 | Block and preserve the conflicting data/body |
+| 413 | Halve sample count, preserve the configured byte ceiling, create new batchId values; a rejected singleton is blocked |
 | Permanent validation error | Block the affected sample and retain it locally |
 
 Synchronization does not delete local history.
 Exports include pending and blocked records.
 Local deletion removes work referencing those records and does not imply deletion from a future server.
+Retry policy uses exponential backoff from one second with ±20% jitter, capped at one hour, and at most eight attempts before blocking. A nonnegative Retry-After up to 24 hours is honored if longer than the computed delay. Larger hints block for review rather than retrying earlier than the server requested. Timestamp addition is overflow-safe. No background scheduling or unblocking UI is implemented yet.
 
-## Planned verification
+## Verification and remaining work
 
-Identical resend; lost response; partial ACK; the same sample in another batch; conflicts; recovery from sending; VIN added later; old revision; interrupted session; authorization errors; export without a server.
-These tests are pending implementation in RX8-008.
+Isolated JVM and Room tests cover DTO mapping/escaping, null versus zero, disabled and real-store guards, lost-response retry, partial/malformed ACKs, conflicts, lease recovery, VIN metadata revisions, migration, deletion, bounded batches, 413 splitting, and retry/cancellation policy. See the PR validation results for checks actually executed.
+These tests do not validate a remote service. A later increment must implement and verify HTTPS/authentication, response decoding, server-side authorization/deduplication/revision rules, scheduling and recovery controls, then explicitly authorize real synchronization.
