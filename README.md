@@ -24,7 +24,7 @@ On October 10, 2026, the user reported that the app worked after testing the sim
 The user confirmed that the Samsung A53 runs Android 16. The paired-only Bluetooth build failed to list the adapter.
 The user reports that Car Scanner finds it through an in-app search with plain Bluetooth selected, displaying OBDII and its MAC address.
 The user subsequently confirmed Bluetooth works. On October 11, 2026, the user reported that live readings worked, and PR #14 is merged.
-That report does not identify the protocol, confirm all six sensors, measure rates, or validate sustained lifecycle behavior. RX8-001, RX8-004, and the remaining hardware checks stay open; VIN retrieval and profile persistence still need device validation.
+The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed that 0.5.0-dev reads data correctly. These reports do not confirm all six sensors, ECU identifiers, measured rates, or sustained lifecycle behavior. RX8-001, RX8-004, and the remaining hardware checks stay open; VIN retrieval and profile persistence still need device validation.
 There are no published APK releases or deployed APIs.
 
 ## Reference vehicle and equipment

@@ -99,7 +99,7 @@ The application package is `com.gonibix.rx8`.
 On October 10, 2026, the user reported that the app worked after testing the simulator foundation.
 The user confirmed that the Samsung A53 runs Android 16, completing RX8-002. The paired-only Bluetooth build failed to list the adapter.
 Car Scanner reportedly finds it through in-app search with plain Bluetooth selected, showing OBDII and its MAC address.
-The user confirmed Bluetooth and reported live readings worked on October 11, 2026; PR #14 is merged. Protocol, individual sensor support, rates, and sustained lifecycle checks remain unreported.
+The user confirmed Bluetooth and reported live readings worked on October 11, 2026; PR #14 is merged. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed correct readings in 0.5.0-dev. Individual sensor support, ECU identifiers, measured rates, and sustained lifecycle checks remain unverified; the report does not validate profiles or VIN retrieval.
 
 ## Finding and connecting the Bluetooth adapter
 
@@ -189,7 +189,7 @@ These checks validate documentation formatting separately from Android checks.
 
 ## Validation still required
 
-The user has confirmed the simulator, Bluetooth connection, and general live readings on the A53. The live-reading report on October 11, 2026 does not establish detailed protocol/sensor/rate results or sustained lifecycle behavior. Profile persistence and VIN retrieval still need device checks.
+The user has confirmed the simulator, Bluetooth connection, and general live readings on the A53. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and correct readings in 0.5.0-dev. Individual sensor results, ECU identifiers, measured rates, and sustained lifecycle behavior still need detailed evidence. Profile persistence and VIN retrieval still need device checks.
 
 - [RX8-001](https://github.com/gonibix23/rx8-telemetry-android/issues/1): test the real adapter and RX-8, including ECU communication, supported PIDs, VIN availability, stability, and reconnection.
 - [RX8-003](https://github.com/gonibix23/rx8-telemetry-android/issues/3): validate scan and connection permissions, nearby discovery, pairing, connection, cancellation, disconnection, and manual reconnection with the actual adapter.

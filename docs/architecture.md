@@ -10,7 +10,7 @@ The connection starts without OBD commands. An explicit Read live data action in
 Acquisition is foreground-only: simulation pauses when its tab is hidden, and leaving Adapter for Vehicles, Simulator, or the background closes the connection and requires manual reconnection. Saved profiles remain available without a connection.
 The user reported the simulator app worked after testing on October 10, 2026 and confirmed the Samsung A53 runs Android 16.
 The paired-only Bluetooth build failed to list the adapter, which the user finds by searching in Car Scanner with plain Bluetooth selected.
-The user confirmed Bluetooth works and, on October 11, 2026, reported that live readings worked; PR #14 is merged. The report does not identify the protocol, individual sensors, rates, or sustained lifecycle behavior. Detailed RX8-001/RX8-004 checks remain open.
+The user confirmed Bluetooth works and, on October 11, 2026, reported that live readings worked; PR #14 is merged. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed correct readings in 0.5.0-dev. These reports do not establish individual sensors, ECU identifiers, measured rates, sustained lifecycle behavior, VIN retrieval, or profile persistence. Detailed RX8-001/RX8-004 checks remain open.
 
 The diagram and recording/synchronization sections describe the **target MVP architecture**. The profile storage and identity sections below describe the implemented RX8-005 boundary.
 The engine provides six Mode 01 decoders, capability discovery, and an explicit Mode 09 PID 02 VIN request. Room stores profiles and active selection; saved trips, telemetry persistence, DataStore settings, and API integration remain planned.

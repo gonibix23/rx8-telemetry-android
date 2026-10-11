@@ -86,7 +86,7 @@ Do not add tests that merely repeat the implementation.
 
 A task is done when it meets its criteria, preserves existing history, documents its behavior, has sufficient verification, and its changes are merged.
 Changes that depend on the vehicle must explicitly state if they were tested only with a simulator.
-The user reported simulator/Bluetooth success on October 10, 2026 and live-reading success on October 11, 2026 on the A53 running Android 16. PRs #12, #13, and #14 are merged. Do not infer protocol, individual sensor support, rates, or sustained lifecycle behavior from the general report. RX8-001/RX8-004 and remaining hardware checks stay open; RX8-005 adds profile/VIN software with device validation pending. Use `Refs #N` while any criteria remain pending.
+The user reported simulator/Bluetooth success on October 10, 2026 and live-reading success on October 11, 2026 on the A53 running Android 16. PRs #12, #13, and #14 are merged. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed correct readings in 0.5.0-dev. Do not infer individual sensor support, ECU identifiers, measured rates, or sustained lifecycle behavior from these reports. RX8-001/RX8-004 and remaining hardware checks stay open; RX8-005 adds profile/VIN software with device validation pending. Use `Refs #N` while any criteria remain pending.
 Actual adapter and ECU compatibility is tracked separately in RX8-001.
 
 ## Decisions and releases

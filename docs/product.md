@@ -7,7 +7,7 @@ User's adapter: iLC OBD2 Bluetooth, ASIN B0BDRHRR22.
 Selected priority: live data and trip recording. Prepare for a future API without developing it yet.
 The user reported a successful simulator app test on October 10, 2026. The paired-only Bluetooth build failed to list the adapter.
 Car Scanner reportedly finds OBDII and its MAC address through in-app search with plain Bluetooth selected.
-The user confirmed Bluetooth works and reported successful live readings on October 11, 2026; PR #14 is merged. The protocol, individual sensors, rates, and sustained lifecycle behavior were not specified.
+The user confirmed Bluetooth works and reported successful live readings on October 11, 2026; PR #14 is merged. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed correct readings in 0.5.0-dev. Individual sensors, ECU identifiers, measured rates, sustained lifecycle behavior, VIN retrieval, and profile persistence remain unverified.
 The 0.5.0-dev increment adds saved vehicle profiles and optional manual/OBD VINs to the existing six Mode 01 decoders, capability discovery, and per-ECU readings. RX8-004 stays open for detailed hardware checks.
 
 ## Current vehicle profiles

@@ -10,7 +10,7 @@ The user confirmed Android 16 on the A53, completing RX8-002. The paired-only Bl
 The user reports that Car Scanner searches inside the app with plain Bluetooth selected and displays OBDII with its MAC address.
 The user subsequently confirmed that the Bluetooth connection now works, following delivery of the discovery APK. PR #13 is merged.
 Detailed scan/pairing steps, interruptions, reconnection behavior, and physical adapter revision were not supplied. RX8-001 and remaining RX8-003 checks stay open.
-On October 11, 2026, the user reported that live readings worked; PR #14 is merged. The report did not identify the protocol, individual sensors, response rates, or sustained lifecycle results. RX8-004 stays open for those detailed checks. No VIN or saved-profile result has been reported.
+On October 11, 2026, the user reported that live readings worked; PR #14 is merged. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed that 0.5.0-dev reads data correctly. Individual sensors, ECU identifiers, measured response rates, and sustained lifecycle results remain unverified. RX8-004 stays open for those detailed checks. No VIN or saved-profile result has been reported.
 A simulator test and a Bluetooth socket connection are separate from ECU validation.
 
 ## Test record
