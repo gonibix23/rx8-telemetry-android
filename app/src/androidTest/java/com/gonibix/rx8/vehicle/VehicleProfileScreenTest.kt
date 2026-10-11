@@ -12,12 +12,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -32,7 +36,6 @@ import com.gonibix.rx8.ui.theme.Rx8Theme
 import java.io.File
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -264,13 +267,27 @@ class VehicleProfileScreenTest {
     )
 
     private fun captureVehicleScreen() {
+        compose.onNodeWithText("UI TEST FIXTURE · FAKE VEHICLE").assertIsDisplayed()
+        compose.onNodeWithTag("vehicle_vin_$ID").assertIsDisplayed().assertTextEquals(MASKED_VIN)
+        compose.onNodeWithText(VIN).assertDoesNotExist()
         compose.waitForIdle()
+        // Capture the Compose root, not the emulator's currently presented system window.
+        // Semantic readiness alone does not prove that a screenshot contains rendered pixels.
+        var rendered: Bitmap? = null
+        compose.waitUntil(timeoutMillis = 5_000L) {
+            val candidate = compose.onRoot().captureToImage().asAndroidBitmap()
+            if (hasRenderedFixtureContent(candidate)) {
+                rendered = candidate
+                true
+            } else {
+                candidate.recycle()
+                false
+            }
+        }
+        val captured = requireNotNull(rendered) { "The vehicle fixture must render before screenshot export." }
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val directory = File(instrumentation.targetContext.getExternalFilesDir(null), "screenshots")
         assertTrue(directory.isDirectory || directory.mkdirs())
-        val screenshot = instrumentation.uiAutomation.takeScreenshot()
-        assertNotNull("The emulator must capture the masked vehicle fixture", screenshot)
-        val captured = requireNotNull(screenshot)
         try {
             val source = File(directory, "vehicle.png")
             source.outputStream().use { output -> assertTrue(captured.compress(Bitmap.CompressFormat.PNG, 100, output)) }
@@ -286,6 +303,26 @@ class VehicleProfileScreenTest {
         } finally {
             captured.recycle()
         }
+    }
+
+    private fun hasRenderedFixtureContent(bitmap: Bitmap): Boolean {
+        if (bitmap.width == 0 || bitmap.height == 0) return false
+        var samples = 0
+        var darkPixels = 0
+        var lightPixels = 0
+        // Coarse contrast checks reject blank white/transparent windows and solid backgrounds.
+        // They do not depend on exact font rasterization, dimensions, or theme color values.
+        for (y in 0 until bitmap.height step (bitmap.height / 96).coerceAtLeast(1)) {
+            for (x in 0 until bitmap.width step (bitmap.width / 96).coerceAtLeast(1)) {
+                val pixel = bitmap.getPixel(x, y)
+                val alpha = pixel ushr 24 and 0xff
+                val brightness = ((pixel ushr 16 and 0xff) + (pixel ushr 8 and 0xff) + (pixel and 0xff)) / 3
+                samples++
+                if (alpha >= 128 && brightness < 96) darkPixels++
+                if (alpha >= 128 && brightness > 160) lightPixels++
+            }
+        }
+        return darkPixels > samples / 10 && lightPixels >= 8
     }
 
     private companion object {
