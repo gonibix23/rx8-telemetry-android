@@ -80,7 +80,7 @@ class CapabilityReportExportActionsTest {
         lateinit var original: CapabilityReportViewModel
         compose.activityRule.scenario.onActivity { activity ->
             original = model(activity.viewModelStore)
-            activity.setContent { Harness(original, registry, true) }
+            installActivityHarness(activity, original, registry)
             assertTrue(original.capture(snapshot()))
         }
         compose.onNodeWithTag("launch_report_export").performClick()
@@ -92,7 +92,7 @@ class CapabilityReportExportActionsTest {
             assertSame(original, retained)
             assertSame(report, retained.uiState.value.report)
             assertTrue(retained.uiState.value.isAwaitingDestination)
-            activity.setContent { Harness(retained, registry, true) }
+            installActivityHarness(activity, retained, registry)
         }
         compose.onNodeWithTag("report_picker_state").assertTextEquals("Picker pending")
         assertEquals(fileName, registry.fileName)
@@ -100,8 +100,10 @@ class CapabilityReportExportActionsTest {
         compose.runOnIdle {
             assertFalse(original.capture(snapshot().copy(elapsedMillis = 4_000)))
             assertTrue(registry.dispatchResult(registry.request, Activity.RESULT_OK, unavailableProvider()))
+            // Registry acceptance alone can mean a buffered result with no matching callback.
+            assertFalse("The restored launcher must consume the pending destination.", original.uiState.value.isAwaitingDestination)
         }
-        compose.waitUntil(5_000) { !original.uiState.value.isExporting && !original.uiState.value.isAwaitingDestination }
+        compose.waitUntil(5_000) { !original.uiState.value.isExporting }
         assertSame(report, original.uiState.value.report)
         assertTrue(original.uiState.value.error!!.contains("Export could not be completed"))
         assertNull(original.uiState.value.message)
@@ -164,6 +166,16 @@ class CapabilityReportExportActionsTest {
         assertEquals(1, registry.launches)
         assertTrue(model.uiState.value.isAwaitingDestination)
         compose.runOnIdle { assertTrue(registry.dispatchResult(registry.request, Activity.RESULT_CANCELED, null)) }
+    }
+
+    private fun installActivityHarness(
+        activity: ComponentActivity,
+        model: CapabilityReportViewModel,
+        registry: ControlledRegistry,
+    ) {
+        // Keep the same composition position across recreation, as MainActivity.onCreate does.
+        // Separate setContent lambda call sites give rememberSaveable a different launcher key.
+        activity.setContent { Harness(model, registry, true) }
     }
 
     @Composable

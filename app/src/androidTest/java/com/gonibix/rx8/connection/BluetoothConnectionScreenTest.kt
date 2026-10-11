@@ -8,13 +8,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -27,7 +30,6 @@ import com.gonibix.rx8.obd.ObdSessionSnapshot
 import com.gonibix.rx8.ui.theme.Rx8Theme
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -380,13 +382,23 @@ class BluetoothConnectionScreenTest {
 
     private fun captureDiscoveryScreen() {
         compose.waitForIdle()
+        // Capture Compose content, not the emulator window before its frame is presented.
+        var rendered: Bitmap? = null
+        compose.waitUntil(5_000L) {
+            val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
+            if (hasDiscoveryContent(bitmap)) {
+                rendered = bitmap
+                true
+            } else {
+                bitmap.recycle()
+                false
+            }
+        }
+        val captured = requireNotNull(rendered)
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val directory = File(instrumentation.targetContext.getExternalFilesDir(null), "screenshots")
-        assertTrue(directory.isDirectory || directory.mkdirs())
-        val screenshot = instrumentation.uiAutomation.takeScreenshot()
-        assertNotNull("The emulator must capture the discovered adapter screen", screenshot)
-        val captured = requireNotNull(screenshot)
         try {
+            assertTrue(directory.isDirectory || directory.mkdirs())
             val source = File(directory, "discovery.png")
             source.outputStream().use { output ->
                 assertTrue(captured.compress(Bitmap.CompressFormat.PNG, 100, output))
@@ -404,6 +416,22 @@ class BluetoothConnectionScreenTest {
         } finally {
             captured.recycle()
         }
+    }
+
+    private fun hasDiscoveryContent(bitmap: Bitmap): Boolean {
+        var dark = 0
+        var light = 0
+        var samples = 0
+        for (y in 0 until bitmap.height step (bitmap.height / 96).coerceAtLeast(1)) {
+            for (x in 0 until bitmap.width step (bitmap.width / 96).coerceAtLeast(1)) {
+                val pixel = bitmap.getPixel(x, y)
+                val brightness = ((pixel ushr 16 and 255) + (pixel ushr 8 and 255) + (pixel and 255)) / 3
+                samples++
+                if ((pixel ushr 24 and 255) > 127 && brightness < 96) dark++
+                if ((pixel ushr 24 and 255) > 127 && brightness > 160) light++
+            }
+        }
+        return samples > 0 && dark > samples / 10 && light >= 8
     }
 
 

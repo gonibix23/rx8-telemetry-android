@@ -211,7 +211,7 @@ private fun MetricSnapshot(ecuAddress: String, metric: CapabilityMetric, retaine
     }
 }
 
-private val CaptureTime = DateTimeFormatter.ofPattern("dd MMM yyyy, HH:mm:ss 'UTC'", Locale.ROOT).withZone(ZoneOffset.UTC)
+private val CaptureTime = DateTimeFormatter.ofPattern("dd MMM yyyy, HH:mm:ss 'UTC'", Locale.ENGLISH).withZone(ZoneOffset.UTC)
 private fun formatDuration(millis: Long): String {
     val seconds = millis.coerceAtLeast(0) / 1_000
     return String.format(Locale.ROOT, "%d min %02d s", seconds / 60, seconds % 60)
