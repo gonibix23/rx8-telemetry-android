@@ -11,7 +11,8 @@ The user reported screen sleep and background disconnection in 0.5.0-dev. Actual
 
 The user confirmed that 0.6.0-dev works perfectly, and [PR #18](https://github.com/gonibix23/rx8-telemetry-android/pull/18) is merged. Its dashboard/favorites have broad user confirmation; individual scenario results remain unreported.
 The user subsequently confirmed that 0.7.0-dev works perfectly, and [PR #19](https://github.com/gonibix23/rx8-telemetry-android/pull/19) is merged at `d855c99`. RX8-007 provides manual recording for a fixed vehicle UUID, local session/sample storage, interruption recovery, offline history, charts, estimates, exports, and deletion. Detailed measured recording, provider, storage/interruption, and battery checks remain open.
-The current 0.8.0-dev increment (version code 9) implements RX8-008 API preparation: versioned DTOs, a durable sample-reference queue with migration/backfill, metadata revisions, immutable requests, validated ACK/retry handling in isolated tests, and a read-only Uploads disabled status. No backend, HTTP transport, production upload worker, or enabled upload configuration is added.
+The user confirmed 0.8.0-dev worked correctly, and [PR #20](https://github.com/gonibix23/rx8-telemetry-android/pull/20) is merged at `bba3e61`. RX8-008 API preparation is complete: versioned DTOs, a durable sample-reference queue with migration/backfill, metadata revisions, immutable requests, isolated ACK/retry handling, and a read-only Uploads disabled status. This does not validate a real server or every individual phone scenario.
+The current 0.9.0-dev increment (version code 10) implements RX8-010: a per-ECU capabilities view and explicit JSON snapshot report. It helps collect evidence for additional sensor work using existing discovery and display state only. No extra OBD request, backend, HTTP transport, production upload worker, or enabled upload configuration is added.
 
 ## Milestones and issues
 
@@ -24,8 +25,9 @@ The current 0.8.0-dev increment (version code 9) implements RX8-008 API preparat
 | [RX8-005](https://github.com/gonibix23/rx8-telemetry-android/issues/5) | Permanent vehicle identity | M2 - Live data and trips | RX8-004 |
 | [RX8-006](https://github.com/gonibix23/rx8-telemetry-android/issues/6) | Live data dashboard | M2 - Live data and trips | RX8-004, RX8-005 |
 | [RX8-007](https://github.com/gonibix23/rx8-telemetry-android/issues/7) | Local trip recording and history | M2 - Live data and trips | RX8-005, RX8-006 |
-| [RX8-008](https://github.com/gonibix23/rx8-telemetry-android/issues/8) | Contract and synchronization preparation | M3 - API preparation | RX8-007 |
+| [RX8-008](https://github.com/gonibix23/rx8-telemetry-android/issues/8) | Contract and synchronization preparation (complete) | M3 - API preparation | RX8-007 |
 | [RX8-009](https://github.com/gonibix23/rx8-telemetry-android/issues/9) | Investigate Mazda sensors | Later - Mazda extensions | RX8-001, RX8-004 |
+| [RX8-010](https://github.com/gonibix23/rx8-telemetry-android/issues/21) | View capabilities and export a snapshot | Hardware evidence support | RX8-004 software |
 
 [Project issues](https://github.com/gonibix23/rx8-telemetry-android/issues) and [milestones](https://github.com/gonibix23/rx8-telemetry-android/milestones) are the operational tracker.
 RX8-xxx codes remain stable even if an issue number changes. The focused [lifecycle fix, issue #16](https://github.com/gonibix23/rx8-telemetry-android/issues/16), supports acquisition without completing RX8-007 trip recording.
@@ -40,6 +42,7 @@ The reported live-reading and 0.5.1-dev success allow dashboard development to p
 - Fixed supported RPM/speed/coolant cards, optional intake/throttle/load favorites saved in app-wide SharedPreferences, separate ECU groups, honest unavailable/stale states, and a synthetic simulator preview using the same cards.
 - Explicit manual trip recording through the existing foreground service; ordered bounded writes to Room v2 with a non-destructive v1 migration. Latest 100 trips are available offline with terminal summaries, a bounded speed chart, JSON/CSV document exports, and confirmed deletion. Process recovery preserves committed readings and marks unfinished sessions interrupted. No GPS, simulated-trip recording, or uploads.
 - Room v3 adds atomic pending work for new and previously recorded samples, immutable metadata revisions/prepared requests, bounded batches, leases, per-sample ACKs, and retry/conflict/split handling. Production uses only disabled status/counts; fake-server exercises are isolated from real records. Explicit 1-to-2 and 2-to-3 migrations preserve stored data.
+- Vehicle capabilities captures advertised PID lists and the latest display state into an immutable, allowlisted preview. Explicit JSON export excludes VINs, MACs, profiles, trip identifiers, raw logs, and free-form adapter/errors. It adds no requests and does not claim sustained measurement evidence or new sensor support.
 - Explicit vehicle creation/selection/rename, stable UUIDs, optional VINs and provenance, and Room persistence. Duplicate or different VINs never silently reassign a profile.
 - Optional, user-started Mode 09 PID 02 acquisition during LIVE; limited CAN/legacy VIN reconstruction, masked candidates, and explicit review in Vehicles before saving. No general ISO-TP support or automatic vehicle assignment.
 - Non-exported connected-device foreground service owning an explicitly started session; background/lock/recreation continuity, notification Stop/open-Adapter, visible acquisition screen-awake behavior, and bounded partial wake-lock renewal. No automatic reconnect or process-death recovery; discovery and simulation retain their foreground limits.
@@ -56,11 +59,11 @@ The reported live-reading and 0.5.1-dev success allow dashboard development to p
 - Supported PIDs and sustained sampling rate with this adapter.
 - A53 trip recording across lock/background, notification Stop, Bluetooth loss, storage interruption, upgrade preservation, and JSON/CSV document-provider behavior. Retention is manual deletion; real storage growth remains to be measured.
 - Authentication, hosting, and database engine for the future server.
-- A53 0.8.0-dev upgrade preservation, persistent waiting counts, local export/deletion continuity, and disabled-upload display.
+- Individual A53 0.8.0-dev upgrade, count, export/deletion scenarios beyond the broad successful test; new 0.9.0-dev capability/report workflow.
 - Distribution license.
 
 ## Next verifiable outcome
 
-Install 0.8.0-dev over the existing app on the A53. Confirm saved profiles/trips remain, then open Trips and Refresh: uploads must be disabled, with existing samples waiting locally. Record a short trip and refresh again; restart the app, review old/new trips, and test an export plus confirmed deletion of a disposable trip.
-Follow the [hardware checklist](hardware-validation.md) for the upgrade checks and remaining trip, lifecycle/battery, VIN/profile, sensor, ECU identifier, rate, and reconnection evidence. Enabling real uploads requires a separately configured and authenticated backend in a later increment.
+Install 0.9.0-dev over the existing app on the A53. Connect and start live acquisition, open Vehicle capabilities in Adapter, and review the advertised PID lists and latest display states. Export JSON to a chosen destination, verify the frozen report, and confirm normal live/trip operation continues. After stopping, capture retained state and check that historical values are not shown as current.
+Follow the [hardware checklist](hardware-validation.md) for report validation and remaining trip, lifecycle/battery, VIN/profile, sensor, ECU identifier, rate, and reconnection evidence. The snapshot does not validate sustained behavior or undocumented Mazda commands. Enabling real uploads requires a separately configured and authenticated backend in a later increment.
 No backend is required.

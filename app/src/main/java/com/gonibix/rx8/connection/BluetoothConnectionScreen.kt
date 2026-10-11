@@ -65,6 +65,7 @@ fun BluetoothConnectionScreen(
     onReviewVin: (VinResponse) -> Unit = {},
     canReviewVin: Boolean = true,
     notificationsAllowed: Boolean = true,
+    onOpenCapabilities: () -> Unit = {},
 ) {
     Column(
         modifier = modifier
@@ -99,6 +100,12 @@ fun BluetoothConnectionScreen(
                 }
             }
             ConnectionStatus(state)
+            if (state.obd.ecus.isNotEmpty() && state.obd.phase in setOf(ObdPhase.LIVE, ObdPhase.STOPPED, ObdPhase.ERROR)) {
+                OutlinedButton(
+                    onClick = onOpenCapabilities,
+                    modifier = Modifier.fillMaxWidth().testTag("open_capabilities"),
+                ) { Text("Vehicle capabilities") }
+            }
             if (!notificationsAllowed && state.phase != BluetoothConnectionPhase.DISCONNECTED) {
                 Text(
                     "Session notifications are disabled. You can still read data and disconnect here. Enable notifications to see the Stop action outside the app.",

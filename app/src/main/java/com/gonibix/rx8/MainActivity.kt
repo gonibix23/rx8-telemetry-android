@@ -15,6 +15,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
@@ -43,6 +44,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gonibix.rx8.connection.BluetoothConnectionScreen
 import com.gonibix.rx8.connection.BluetoothConnectionPhase
 import com.gonibix.rx8.connection.BluetoothSessionService
+import com.gonibix.rx8.capabilities.CapabilityReportViewModel
+import com.gonibix.rx8.capabilities.CapabilityReportScreen
+import com.gonibix.rx8.capabilities.CapabilityReports
+import com.gonibix.rx8.capabilities.rememberCapabilityReportExportAction
 import com.gonibix.rx8.dashboard.DashboardPreferencesViewModel
 import com.gonibix.rx8.dashboard.LiveDashboard
 import com.gonibix.rx8.ui.KeepScreenAwake
@@ -80,6 +85,15 @@ class MainActivity : ComponentActivity() {
         ViewModelProvider(this)[DashboardPreferencesViewModel::class.java]
     }
     private val tripRuntime by lazy { TripRuntime.get(applicationContext) }
+    private val capabilityReportViewModel by lazy {
+        ViewModelProvider(this, object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                require(modelClass == CapabilityReportViewModel::class.java)
+                return CapabilityReportViewModel(BuildConfig.VERSION_NAME, Build.VERSION.SDK_INT) as T
+            }
+        })[CapabilityReportViewModel::class.java]
+    }
     private val tripsViewModel by lazy {
         ViewModelProvider(this, object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
@@ -92,6 +106,7 @@ class MainActivity : ComponentActivity() {
     private var sessionBinder by mutableStateOf<BluetoothSessionService.LocalBinder?>(null)
     private var serviceBound = false
     private var selectedTab by mutableStateOf("adapter")
+    private var showCapabilityReport by mutableStateOf(false)
     private var connectAfterPermission by mutableStateOf(false)
     private var notificationsAllowed by mutableStateOf(true)
     private val serviceConnection = object : ServiceConnection {
@@ -127,6 +142,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         scanAfterPermission = savedInstanceState?.getBoolean("scan_after_permission") ?: false
         selectedTab = savedInstanceState?.getString("selected_tab") ?: "adapter"
+        showCapabilityReport = savedInstanceState?.getBoolean("show_capability_report") ?: false
         if (savedInstanceState == null && intent.action == BluetoothSessionService.ACTION_OPEN_SESSION) {
             selectedTab = "adapter"
         }
@@ -149,14 +165,18 @@ class MainActivity : ComponentActivity() {
                 val recording by tripRuntime.recorder.state.collectAsStateWithLifecycle()
                 // Document results must survive navigation to Adapter from the session notification.
                 val tripExportActions = rememberTripExportActions(tripsViewModel)
+                val capabilityState by capabilityReportViewModel.uiState.collectAsStateWithLifecycle()
+                // Keep document registration stable while tabs change or the Activity is recreated.
+                val capabilityExport = rememberCapabilityReportExportAction(capabilityReportViewModel)
+                BackHandler(enabled = showBluetooth && showCapabilityReport) { showCapabilityReport = false }
                 // One owner for the shared View flag avoids competing effects when tabs change.
                 KeepScreenAwake(
-                    selectedTab in setOf("adapter", "dashboard") && sessionState?.obd?.phase in setOf(
+                    (showBluetooth && !showCapabilityReport || selectedTab == "dashboard") && sessionState?.obd?.phase in setOf(
                         ObdPhase.INITIALIZING, ObdPhase.DISCOVERING, ObdPhase.LIVE,
                     ),
                 )
-                LaunchedEffect(showBluetooth, scanAfterPermission, connectAfterPermission) {
-                    if (!showBluetooth) {
+                LaunchedEffect(showBluetooth, showCapabilityReport, scanAfterPermission, connectAfterPermission) {
+                    if (!showBluetooth || showCapabilityReport) {
                         scanAfterPermission = false
                         connectAfterPermission = false
                     }
@@ -172,7 +192,7 @@ class MainActivity : ComponentActivity() {
                                 selected = showBluetooth,
                                 selectedContentColor = AccentColor,
                                 unselectedContentColor = MutedColor,
-                                onClick = { selectedTab = "adapter" },
+                                onClick = { selectedTab = "adapter"; showCapabilityReport = false },
                                 text = { Text("Adapter", style = MaterialTheme.typography.labelMedium) },
                                 modifier = Modifier.weight(1f).testTag("adapter_tab"),
                             )
@@ -221,7 +241,16 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         Box(Modifier.weight(1f)) {
-                            if (showBluetooth) {
+                            if (showBluetooth && showCapabilityReport) {
+                                val currentSnapshot = sessionState?.obd ?: ObdSessionSnapshot()
+                                CapabilityReportScreen(
+                                    state = capabilityState,
+                                    canCaptureLatest = CapabilityReports.canCapture(currentSnapshot),
+                                    onCaptureLatest = { capabilityReportViewModel.capture(currentSnapshot) },
+                                    onExport = capabilityExport,
+                                    onBack = { showCapabilityReport = false },
+                                )
+                            } else if (showBluetooth) {
                                 if (controller == null || sessionState == null) {
                                     Text("Preparing Bluetooth controls…")
                                 } else {
@@ -258,6 +287,10 @@ class MainActivity : ComponentActivity() {
                                         onConnect = ::requestSessionConnection,
                                         onDisconnect = controller::disconnect,
                                         onStartObd = controller::startObd,
+                                        onOpenCapabilities = {
+                                            capabilityReportViewModel.capture(controller.uiState.value.obd)
+                                            showCapabilityReport = true
+                                        },
                                         onReadVin = controller::readVin,
                                         notificationsAllowed = notificationsAllowed,
                                         canReviewVin = !vehicles.isLoading && !vehicles.isSaving,
@@ -283,7 +316,7 @@ class MainActivity : ComponentActivity() {
                                     snapshot = snapshot,
                                     favorites = favorites,
                                     onToggleFavorite = dashboardPreferences::toggleFavorite,
-                                    onOpenAdapter = { selectedTab = "adapter" },
+                                    onOpenAdapter = { selectedTab = "adapter"; showCapabilityReport = false },
                                     connectionStatus = when (state?.phase) {
                                         BluetoothConnectionPhase.CONNECTED -> "Bluetooth connected"
                                         BluetoothConnectionPhase.CONNECTING -> "Connecting Bluetooth"
@@ -302,7 +335,7 @@ class MainActivity : ComponentActivity() {
                                         if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) binder?.startTrip(vehicle)
                                     },
                                     onStop = { tripRuntime.recorder.stop() },
-                                    onOpenAdapter = { selectedTab = "adapter" },
+                                    onOpenAdapter = { selectedTab = "adapter"; showCapabilityReport = false },
                                     onOpenVehicles = { selectedTab = "vehicles" },
                                 )
                             } else if (selectedTab == "vehicles") {
@@ -368,12 +401,16 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (intent.action == BluetoothSessionService.ACTION_OPEN_SESSION) selectedTab = "adapter"
+        if (intent.action == BluetoothSessionService.ACTION_OPEN_SESSION) {
+            selectedTab = "adapter"
+            showCapabilityReport = false
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean("scan_after_permission", scanAfterPermission)
         outState.putString("selected_tab", selectedTab)
+        outState.putBoolean("show_capability_report", showCapabilityReport)
         super.onSaveInstanceState(outState)
     }
 

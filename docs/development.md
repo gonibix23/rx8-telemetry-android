@@ -2,7 +2,7 @@
 
 ## Current implementation
 
-The 0.8.0-dev iteration (version code 9) adds local API models, a persistent queue, and an Uploads disabled status in Trips. Recording, history, summaries, charts, JSON/CSV export, and deletion remain offline. Its five tabs are Adapter, Live, Trips, Vehicles, and Simulator:
+The 0.9.0-dev iteration (version code 10) adds Vehicle capabilities inside Adapter and explicit JSON snapshot export. The user confirmed 0.8.0-dev worked, and PR #20 is merged. Local API preparation stays disabled; recording, history, summaries, charts, and exports remain offline. Its five tabs are Adapter, Live, Trips, Vehicles, and Simulator:
 
 | Module | Responsibility |
 | --- | --- |
@@ -214,7 +214,15 @@ The user broadly confirmed 0.7.0-dev worked, and PR #19 is merged. Detailed meas
 
 There is no upload button, server URL, account, Internet permission, HTTP client, or scheduled worker. `TripRuntime` exposes only a default non-isolated `RoomSyncStore` to the UI. Do not opt the real database into test synchronization. `SyncCoordinator` refuses a non-isolated store or disabled transport before leasing work; fake-server tests use isolated in-memory or disposable file-backed databases.
 
-The isolated verification covers immutable retries after lost responses, partial/rejected ACKs, malformed/foreign ACKs, 409 conflicts, 413 splits, metadata revisions, expired leases, deletion, restart recovery, and disabled operation. Authentication/HTTPS configuration remains documented future work in [the contract](api-contract.md), with no credentials or deployable endpoint. The [upgrade checklist](hardware-validation.md#api-preparation-upgrade-checklist-rx8-008) remains pending until the A53 result is reported.
+The isolated verification covers immutable retries after lost responses, partial/rejected ACKs, malformed/foreign ACKs, 409 conflicts, 413 splits, metadata revisions, expired leases, deletion, restart recovery, and disabled operation. Authentication/HTTPS configuration remains documented future work in [the contract](api-contract.md), with no credentials or deployable endpoint. The user broadly confirmed 0.8.0-dev worked; individual [upgrade checklist](hardware-validation.md#api-preparation-upgrade-checklist-rx8-008) scenarios were not separately reported.
+
+## Capturing capabilities without extra requests
+
+After real capability discovery, open Vehicle capabilities in Adapter. Review the capture time, protocol, elapsed acquisition time, successful ECU-response rate, advertised PIDs per ECU, and latest display states. Use Capture latest to refresh deliberately. Advertised PIDs beyond the six implemented metrics must remain numbers, without fabricated readings or decoder support.
+
+Choose Save JSON report and a destination. While the picker is open, switch tabs or recreate the Activity and verify that the original captured report is written. Cancel once and test a provider failure on a disposable destination; neither may show success. After stopping acquisition, capture retained data and check historical/stale labeling. A process restart loses the in-memory report and must not fabricate a replacement.
+
+The report excludes VINs, MACs, profile/trip IDs, aliases, raw logs, adapter identity, and free-form status text. It still contains capture time and latest values. Inspect only synthetic fixtures in source control. See [the report contract](capability-report.md) and [the phone checklist](hardware-validation.md#capability-report-checklist-rx8-010). No new OBD command, persistent report history, Room migration, API enablement, or screen-awake owner is added.
 
 ## Using the simulator
 
@@ -254,6 +262,7 @@ The user has confirmed the simulator, Bluetooth connection, and general live rea
 - [RX8-006](https://github.com/gonibix23/rx8-telemetry-android/issues/6): validate the dashboard layout, favorite persistence/unavailability, ECU separation, simulator preview, and navigation on the A53.
 - [RX8-007](https://github.com/gonibix23/rx8-telemetry-android/issues/7): validate explicit recording, screen lock/background, committed-data recovery, gaps, summaries, document exports, deletion, and storage errors on the A53.
 - [RX8-008](https://github.com/gonibix23/rx8-telemetry-android/issues/8): verify the 0.8.0-dev upgrade, preserved history, local queue counts, exports/deletion, and uploads-disabled behavior on the A53. Real API integration remains a later task.
+- [RX8-010](https://github.com/gonibix23/rx8-telemetry-android/issues/21): validate capability preview, frozen JSON export, retained stopped state, and continued live/trip operation on the A53.
 
 Keep issues open while required evidence is missing. PR #14 is merged, but RX8-004 remains open for detailed hardware checks. RX8-005 software does not close RX8-001 or prove VIN compatibility.
 There are no published APK releases.

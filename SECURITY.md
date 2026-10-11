@@ -5,7 +5,7 @@
 VINs, trips, and complete logs can identify a vehicle or its usage patterns.
 Use synthetic data in examples, simulators, issues, and tests. Remove VINs, Bluetooth MAC addresses, and locations from shared logs.
 The app does not collect GPS location. On Android 8-11, Bluetooth discovery requires foreground location permission; Android 12+ uses Nearby devices permissions instead.
-Live OBD values remain in memory unless the user explicitly starts trip recording. Read VIN explicitly requests Mode 09 PID 02 after live acquisition starts; candidates remain temporary until the user reviews and saves one.
+Live OBD values remain in memory unless the user explicitly starts trip recording or exports a capability snapshot. Read VIN explicitly requests Mode 09 PID 02 after live acquisition starts; candidates remain temporary until the user reviews and saves one.
 Vehicle profiles persist a UUID, alias, optional VIN, manual/OBD provenance, optional ECU source, and creation timestamp in the app's private Room database. The active profile selection is also saved. Dashboard favorites store only stable metric IDs in private app-wide SharedPreferences, without vehicle, ECU, VIN, adapter, or reading values.
 VINs are masked by default, with an explicit show/hide action. Masking is a display control, not database encryption. The app has no Internet permission, configured server, HTTP transport, or enabled uploads.
 
@@ -13,6 +13,14 @@ Explicit recording stores trip/vehicle/sample UUIDs, a snapshot of the vehicle n
 Android backup and device transfer are disabled/excluded for app data. Clearing app data or reinstalling removes profiles, UUIDs, and trips. There is no import/restore workflow. No profile deletion action is available in this increment.
 JSON/CSV exports require an explicit action and Android document-picker destination. Exports omit stored VINs and Bluetooth addresses, but include vehicle IDs/names, times, sources, and readings. A name typed by the user can itself contain sensitive information. A chosen document provider may synchronize the file externally under its own settings. The app does not initiate an upload or retain the export URI. CSV text is escaped against spreadsheet formulas; JSON preserves original text. Deleting a trip does not delete exported copies. An export write failure is reported and can leave an incomplete chosen document.
 Storage writes reserve at least 10 MiB of free space and stop recording visibly on failure or backlog overflow; already committed data is preserved. Process recovery marks unfinished trips interrupted at the last saved sample, without claiming an exact process-termination time. These controls do not guarantee survival of unwritten samples after a process kill.
+
+## Capability snapshot export
+
+The capability report uses a dedicated allowlist rather than serializing Bluetooth or OBD UI state. It excludes VINs/candidates, Bluetooth names/MACs, vehicle/profile/trip identifiers and aliases, raw command/response logs, adapter identity, and free-form error text. Only recognized protocol descriptions and validated ECU bus addresses are retained. Report IDs are newly generated and unrelated to saved vehicle or trip IDs.
+
+Reports still contain a UTC capture time, latest sensor values/quality, elapsed acquisition time, response rate, and ECU capabilities. They are not guaranteed anonymous. Preview the report and choose the JSON destination explicitly. Document providers may synchronize files according to their own settings. No direct network request, automatic sharing, broad storage permission, persistent export URI, or upload is added.
+
+The frozen preview and pending export body stay only in the Activity's ViewModel until process exit. A pending picker survives Activity recreation; a result after process death cannot recreate the report and must not produce an empty successful export. Success requires writing, flushing, and closing the destination. Errors can leave a partial file. Reports do not mutate saved trips or delivery state.
 
 ## Active sessions and device power
 

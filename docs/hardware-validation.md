@@ -153,7 +153,7 @@ Retain existing issue #16 battery and lifecycle checks where they have not been 
 
 ## API preparation upgrade checklist (RX8-008)
 
-Use 0.8.0-dev as an update with existing data intact. These checks are pending; no real server is used.
+The user broadly confirmed 0.8.0-dev worked correctly, and PR #20 is merged. Individual scenarios below were not separately reported. No real server is used.
 
 - [ ] Confirm saved profiles, selected UUID, favorites, trip history, and exports remain available after the Room 2-to-3 upgrade.
 - [ ] Open Trips and Refresh. Confirm Future uploads clearly says Uploads disabled and shows the existing samples waiting locally. No upload or server-configuration action should appear.
@@ -163,6 +163,20 @@ Use 0.8.0-dev as an update with existing data intact. These checks are pending; 
 - [ ] Confirm recording, background acquisition, history, and exports remain usable with uploads disabled. Report a status-load failure separately from a history or recording failure.
 
 Fake-server ACK, retry, lease, conflict, and oversized-batch behavior is validated in isolated automated fixtures. Do not connect this app to a test server or mark production data uploaded to satisfy these checks.
+
+## Capability report checklist (RX8-010)
+
+Use 0.9.0-dev as an update with existing data intact. These new checks remain pending until the user reports them.
+
+- [ ] Start real live data in Adapter and wait for discovery. Open Vehicle capabilities without selecting a profile or starting a trip; confirm the protocol and separate ECU PID lists appear.
+- [ ] Distinguish an advertised PID from an implemented decoder and a valid reading. Confirm valid zero, missing/error, and stale states remain visibly different. Unimplemented PIDs must not gain invented readings.
+- [ ] Capture a report and leave live acquisition running. Confirm the preview's time/values stay fixed until Capture latest is chosen; existing acquisition/recording continues.
+- [ ] Choose Save JSON report and a document destination. Confirm the report's capture time, protocol, PIDs, units, values/quality, and ages match the preview. It must omit VINs/candidates, Bluetooth names/MACs, profile/trip IDs/aliases, and raw/free-form logs.
+- [ ] Cancel the picker once and confirm no success message. Recreate the Activity or navigate away while a destination is pending; verify the intended frozen report survives. After process loss, an unmatched result must report that a new capture is needed rather than create an empty report.
+- [ ] Stop acquisition and capture the retained snapshot. Confirm stopped/error data is identified as historical and not current. A new connection must not mix the earlier report with fresh discovery.
+- [ ] Check Back, Adapter tab navigation, and notification open/Stop. Existing saved profiles, trips, exports, and disabled-upload queue must remain usable.
+
+The snapshot uses the latest displayed state, not request counts or a sensor trace. Initial no-data states may predate a query. A report helps fill in the evidence matrix but is not proof of a 10-minute sustained session, background continuity, accuracy, battery behavior, or proprietary Mazda compatibility. Report engine conditions and test duration separately when providing hardware evidence.
 
 ## Evidence matrix
 

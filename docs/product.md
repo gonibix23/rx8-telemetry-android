@@ -8,7 +8,15 @@ Selected priority: live data and trip recording. Prepare for a future API withou
 The user reported a successful simulator app test on October 10, 2026. The paired-only Bluetooth build failed to list the adapter.
 Car Scanner reportedly finds OBDII and its MAC address through in-app search with plain Bluetooth selected.
 The user confirmed Bluetooth works and reported successful live readings on October 11, 2026; PR #14 is merged. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed correct readings in 0.5.0-dev. Individual sensors, ECU identifiers, measured rates, sustained lifecycle behavior, VIN retrieval, and profile persistence remain unverified.
-The user broadly confirmed that 0.6.0-dev worked on October 11, 2026, and PR #18 is merged. This does not establish individual sensor results, every favorite-persistence scenario, or measured session duration/battery use. The user subsequently confirmed that 0.7.0-dev worked perfectly, and PR #19 is merged. It provides local trip recording, history, summaries, charts, exports, and deletion; detailed provider, interruption, storage, and duration checks remain open. The current 0.8.0-dev increment (version code 9) prepares the future API with local pending work and uploads disabled.
+The user broadly confirmed that 0.6.0-dev worked on October 11, 2026, and PR #18 is merged. This does not establish individual sensor results, every favorite-persistence scenario, or measured session duration/battery use. The user subsequently confirmed that 0.7.0-dev worked perfectly, and PR #19 is merged. It provides local trip recording, history, summaries, charts, exports, and deletion; detailed provider, interruption, storage, and duration checks remain open. The user also confirmed 0.8.0-dev worked correctly, and PR #20 is merged with API uploads disabled. The current 0.9.0-dev increment (version code 10) adds a capabilities view and explicit JSON snapshot export.
+
+## Current capability reports
+
+After successful discovery, Adapter offers Vehicle capabilities. It captures the current real acquisition snapshot, including retained stopped/error data, without requiring a saved profile or recording a trip. Each ECU lists its advertised Mode 01 PIDs and the latest displayed states of the six implemented metrics. Other advertised PIDs are visible as unimplemented; they are never queried or given invented names/values.
+
+A report is frozen at capture time. Capture latest snapshot explicitly replaces the preview, while exporting retains the exact selected report across the document picker and Activity recreation. The view is temporary until exported; process death clears it. Export errors and cancellation do not become success messages.
+
+Reports contain capture time, acquisition state, recognized protocol, duration/rate from the existing snapshot, ECU addresses, advertised PIDs, and latest sensor values/quality. They exclude VINs, Bluetooth names/MACs, profile/trip identifiers, free-form adapter/error text, and raw logs. This is a snapshot of displayed state, which may include initial no-data placeholders; it does not count request outcomes or establish sustained sampling, battery, or sensor accuracy. See [Capability reports](capability-report.md).
 
 ## Current live dashboard
 
@@ -68,6 +76,7 @@ Local exports remain version 1 and are available regardless of a reading's queue
 | Screen | Contents |
 | --- | --- |
 | Adapter (implemented) | Discovery, permissions, Bluetooth/ECU status, live readings, optional VIN request |
+| Vehicle capabilities (inside Adapter) | Explicitly captured per-ECU capabilities, latest display states, and JSON report export |
 | Vehicles (implemented) | Saved profiles, selection, permanent UUID, alias, optional VIN and source |
 | Simulator (implemented) | Clearly synthetic dashboard preview and failure scenarios |
 | Live (implemented) | Supported RPM, speed, coolant, extra favorites, per-ECU status and reading age |
