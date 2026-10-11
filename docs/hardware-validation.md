@@ -149,7 +149,7 @@ The user broadly confirmed 0.7.0-dev works. Use that version or later on the A53
 - [ ] Confirm trip deletion removes its saved samples after confirmation and leaves profiles and previously exported copies intact. Active trips must not be deletable/exportable.
 - [ ] Measure database usage during a realistic trip. Test insufficient-storage behavior only on a controlled test device/fixture; it must visibly stop recording rather than claim all readings were saved.
 
-Retain existing issue #16 battery and lifecycle checks where they have not been measured. Broad success does not establish each individual scenario above.
+Issue #16 is closed at the user's explicit request with its acceptance checkboxes complete. Detailed measurements were not supplied; broader compatibility and recording evidence remains tracked here without reopening that completed fix. Broad success does not establish each individual scenario above.
 
 ## API preparation upgrade checklist (RX8-008)
 
@@ -180,7 +180,7 @@ The snapshot uses the latest displayed state, not request counts or a sensor tra
 
 ## Trip sensor review checklist (RX8-012)
 
-Use 0.10.0-dev or newer with existing app data intact. These phone checks are deferred at the user's request; synthetic automated fixtures do not complete them.
+Use 0.10.0-dev or newer with existing app data intact. On October 11, 2026, the user reported that this version works well, and PR #25 is merged. The individual scenarios below were not described and remain deferred at the user's request; synthetic automated fixtures do not complete them.
 
 - [ ] Open an existing completed or interrupted trip offline without an adapter. Confirm recorded sensor/ECU choices appear even if the current profile or favorites differ.
 - [ ] Switch between recorded metrics and, where present, ECU sources. Check the unit, valid/sample count, observed minimum/maximum, and coverage. Sources must remain separate; unavailable or failed readings must not become zero.
