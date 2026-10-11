@@ -41,6 +41,7 @@ fun SimulatorDashboard(
     onToggleSimulation: () -> Unit,
     onReset: () -> Unit,
     onScenarioSelected: (SimulationScenario) -> Unit,
+    onOpenDashboard: (() -> Unit)? = null,
 ) {
     val connected = snapshot.connection == ConnectionState.CONNECTED
     Scaffold(containerColor = CanvasColor) { insets ->
@@ -70,6 +71,11 @@ fun SimulatorDashboard(
                     )
                 }
                 SimulationControls(connected, onToggleSimulation, onReset)
+                if (onOpenDashboard != null) {
+                    OutlinedButton(onClick = onOpenDashboard, modifier = Modifier.testTag("preview_dashboard")) {
+                        Text("Preview dashboard")
+                    }
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,

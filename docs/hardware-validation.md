@@ -12,7 +12,7 @@ The user subsequently confirmed that the Bluetooth connection now works, followi
 Detailed scan/pairing steps, interruptions, reconnection behavior, and physical adapter revision were not supplied. RX8-001 and remaining RX8-003 checks stay open.
 On October 11, 2026, the user reported that live readings worked; PR #14 is merged. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed that 0.5.0-dev reads data correctly. Individual sensors, ECU identifiers, measured response rates, and sustained lifecycle results remain unverified. RX8-004 stays open for those detailed checks. No VIN or saved-profile result has been reported.
 The user also reported screen sleep while idle and loss of connection/readings after backgrounding in 0.5.0-dev, describing this as unpairing. The old policy deliberately disconnected outside Adapter; actual removal of the Android bond is unconfirmed, and the code has no removeBond call.
-Issue #16 / 0.5.1-dev changes the lifecycle policy. Background/lock continuity, screen-awake behavior, notifications, and battery use still need the checks below.
+The user subsequently confirmed 0.5.1-dev worked, providing broad success evidence for the background/screen fix in merged PR #17. The detailed issue #16 checks below remain unreported: measured background/lock intervals, battery use, notification scenarios, and actual bond-entry observations. RX8-006 / 0.6.0-dev adds the dashboard and saved favorites; no dashboard hardware result has been reported.
 A simulator test and a Bluetooth socket connection are separate from ECU validation.
 
 ## Test record
@@ -44,7 +44,7 @@ Use the actual adapter with the vehicle stationary. Disconnect Car Scanner befor
 - [ ] Confirm that a successful socket connection is labelled separately from ECU communication, which remains not checked.
 - [ ] Cancel a connection attempt and disconnect a connected session; confirm the controls allow another manual attempt.
 - [ ] Turn Bluetooth off or remove adapter power and record the observed response, both before and during live acquisition. A connected idle socket has no separate ECU heartbeat; live requests have deadlines.
-- [ ] Switch to Vehicles or Simulator, leave the app, and lock the screen in separate checks. Discovery must stop; an explicitly started connection/acquisition session must continue. Returning to Adapter must observe the same session without another connect attempt.
+- [ ] Switch to Dashboard, Vehicles, or Simulator, leave the app, and lock the screen in separate checks. Discovery must stop; an explicitly started connection/acquisition session must continue. Returning to Adapter must observe the same session without another connect attempt.
 - [ ] Reconnect repeatedly and record failures or signs of duplicate connections.
 - [ ] Repeat with Internet connectivity disabled and verify the simulator remains a separate synthetic-data screen.
 
@@ -54,7 +54,7 @@ The Classic/SPP connection and general live readings have successful user report
 
 ## ECU validation sequence (RX8-001 and RX8-004)
 
-Use Read live data in 0.5.1-dev for Mode 01 checks, or an appropriate diagnostic tool for separate RX8-001 evidence.
+Use Read live data in 0.6.0-dev for Mode 01 checks, or an appropriate diagnostic tool for separate RX8-001 evidence.
 Record the exact app version and operating conditions. No real-car readings are established by automated parser or UI tests.
 
 1. With the vehicle stationary and ignition on, connect Bluetooth and choose Read live data. Distinguish adapter initialization from an actual ECU reply.
@@ -67,18 +67,19 @@ Record the exact app version and operating conditions. No real-car readings are 
 8. Follow the optional VIN/profile checklist below. Do not publish the full VIN or treat a valid-looking response as proof of vehicle ownership.
 
 Screen-locked live acquisition is part of issue #16. Saved recording continuity remains a separate RX8-007 check after telemetry persistence and recording controls are implemented.
-To validate speed while moving, use an already running recording or a passenger; review results afterward.
+For moving-vehicle speed checks, have a passenger observe the live data. Saved-trip review remains planned.
 
 ## Background session and screen-awake checklist (issue #16)
 
-Use 0.5.1-dev on the A53 with the actual adapter and vehicle stationary. These checks remain pending; the successful 0.5.0-dev live-reading report does not validate this lifecycle change.
+Use the current 0.6.0-dev build on the A53 with the actual adapter and vehicle stationary. The user broadly confirmed that 0.5.1-dev worked, but the detailed scenarios below were not individually reported. This increment extends visible screen-awake behavior to Dashboard while retaining the same session policy.
 Record duration, battery change, engine conditions, actual timestamps/rates, and observed failures without sharing VINs or MAC addresses.
 
+- [x] User broadly confirmed that the 0.5.1-dev background/screen fix worked; this does not assert a measured duration or the individual checks below.
 - [ ] Connect explicitly from Adapter. Confirm the ongoing session notification appears when notification permission is granted and no OBD requests start until Read live data is chosen.
 - [ ] On Android 13+, test denied notification permission. Connection must remain usable, recovery guidance must appear, and Disconnect in Adapter must stop the session.
-- [ ] During initialization, protocol/capability discovery, and live acquisition, leave Adapter visible beyond the configured display timeout; confirm it stays awake.
+- [ ] During initialization, protocol/capability discovery, and live acquisition, leave Adapter and then Dashboard visible beyond the configured display timeout; confirm each stays awake.
 - [ ] Before acquisition or after stopping, confirm the app no longer holds the display awake. Switching to Vehicles/Simulator must also release the Adapter screen-on flag.
-- [ ] While reading, switch to Vehicles and Simulator, then return. Confirm the same connection and advancing real-sample timestamps, with no automatic second session.
+- [ ] While reading, switch between Adapter, Dashboard, Vehicles, and Simulator, then return. Confirm the same connection and advancing real-sample timestamps, with no automatic second session.
 - [ ] Open another app and separately lock the screen for a measured interval. Return and confirm acquisition continued, rather than merely redisplaying old values.
 - [ ] Recreate the Activity, for example by rotating the screen; confirm the same session continues without duplicate sockets or polling loops.
 - [ ] While a connection attempt is pending, background and return; verify it can complete or reach its normal deadline without an extra attempt.
@@ -91,6 +92,23 @@ Record duration, battery change, engine conditions, actual timestamps/rates, and
 - [ ] If unpairing is suspected, separately inspect Android's paired-device entry before and after the interruption. Record socket disconnection and actual bond removal as different outcomes.
 
 No trip or telemetry history is saved by these checks. The service is non-sticky and cannot promise survival after process termination or all device power policies. The simulator remains foreground-only.
+
+## Dashboard and favorites checklist (RX8-006)
+
+Use 0.6.0-dev on the A53. These dashboard-specific checks are pending; the earlier live-data and lifecycle confirmations do not validate the new layout or preference storage.
+
+- [ ] Open Dashboard before connecting. Confirm it shows the actual connection/acquisition state without fabricated values or an automatic connection.
+- [ ] Connect and start live acquisition in Adapter, then open Dashboard. Confirm the same session continues, with no duplicate connection or polling loop.
+- [ ] Compare RPM, speed, and coolant cards with the ECU's known capabilities. Unsupported primary metrics must not appear as working sensors. Keep valid stationary zero speed distinct from missing/error data.
+- [ ] If several ECUs respond, compare their groups and source identifiers. Do not treat values as averaged or assume an ECU's role from its identifier.
+- [ ] Verify readable units, reading age, quality, and adapter/session metadata on the A53, including larger text settings and scrolling.
+- [ ] Open Choose sensors; add and remove supported intake temperature, throttle position, and engine load. Primary metrics remain fixed. Record only actually supported choices.
+- [ ] Restart the app and change selected vehicle profiles. Confirm saved favorites are restored app-wide without changing a vehicle UUID or assigning telemetry to a profile.
+- [ ] With a controlled simulator/test fixture or an actual different capability set, verify a previously selected favorite stays explicitly unavailable and removable. Do not claim a synthetic capability change was tested on the RX-8.
+- [ ] Stop or interrupt acquisition. Confirm old values are stale, age is identified as Age at stop, and missing/error readings never become zero.
+- [ ] Use the Simulator dashboard preview in normal, timeout, and missing-data modes. Confirm the synthetic label/source remains visible and no real reading is replaced by a simulated one.
+- [ ] Navigate Adapter/Dashboard/Vehicles/Simulator and background/lock the app. Confirm the real session policy remains unchanged, only visible real acquisition screens stay awake, and simulator sampling pauses when hidden.
+- [ ] Confirm favorites work without Internet and no trip, sample history, or upload is created. Record any visible preference-save failure instead of assuming persistence succeeded.
 
 ## Vehicle identity and VIN checklist (RX8-005)
 
@@ -111,7 +129,7 @@ These checks are pending; a general live-reading success does not establish them
 - [ ] Confirm no-VIN/no-data operation remains usable and profiles can be managed without Internet access.
 
 A structurally valid VIN is not proof of the car's identity. The implemented parser accepts the specific CAN 20-byte VIN message and five numbered legacy packets; this does not establish compatibility with every adapter or response layout.
-Only profiles are stored. No trip history exists to test for continuity yet. Backups/device transfer are disabled and there is no export/restore feature; clearing app data or reinstalling loses saved IDs. Do not clear a user's data as a routine validation step.
+Profiles, active selection, and dashboard preferences are stored. No trip history exists to test for continuity yet. Backups/device transfer are disabled and there is no export/restore feature; clearing app data or reinstalling loses saved IDs. Do not clear a user's data as a routine validation step.
 
 ## Evidence matrix
 

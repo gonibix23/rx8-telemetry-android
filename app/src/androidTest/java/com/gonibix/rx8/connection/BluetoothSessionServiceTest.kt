@@ -9,6 +9,12 @@ import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.os.IBinder
 import android.os.SystemClock
+import android.view.View
+import android.view.ViewGroup
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -39,6 +45,7 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -46,6 +53,8 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 @SdkSuppress(minSdkVersion = 31)
 class BluetoothSessionServiceTest {
+    @get:Rule
+    val compose = createEmptyComposeRule()
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.targetContext
     private val serviceIntent get() = Intent(context, BluetoothSessionService::class.java)
@@ -107,6 +116,38 @@ class BluetoothSessionServiceTest {
             BluetoothSessionService.dependenciesFactory = originalFactory
             instrumentation.uiAutomation.dropShellPermissionIdentity()
         }
+    }
+
+    @Test
+    fun dashboardKeepsTheSameSessionAndOnlyVisibleLiveScreensStayAwake() {
+        val binding = bind()
+        connect(binding)
+        main { binding.binder.controller.startObd() }
+        awaitMain { binding.binder.hasAcquisitionWakeLock && screenRequestsAwake() }
+
+        compose.onNodeWithTag("dashboard_tab").performClick()
+        compose.onNodeWithTag("dashboard_tab").assertIsSelected()
+        awaitMain { screenRequestsAwake() && !binding.binder.controller.uiState.value.isForeground }
+        val elapsed = binding.binder.controller.uiState.value.obd.elapsedMillis
+        awaitMain { binding.binder.controller.uiState.value.obd.elapsedMillis > elapsed }
+        scenario!!.recreate()
+        compose.onNodeWithTag("dashboard_tab").assertIsSelected()
+        awaitMain { screenRequestsAwake() }
+        assertEquals(1, gateway.connections.size)
+
+        compose.onNodeWithTag("vehicles_tab").performClick()
+        awaitMain { !screenRequestsAwake() }
+        assertFalse(gateway.connections.single().closed)
+        compose.onNodeWithTag("dashboard_tab").performClick()
+        awaitMain { screenRequestsAwake() }
+        scenario!!.moveToState(Lifecycle.State.CREATED)
+        awaitMain { !screenRequestsAwake() }
+        assertFalse(gateway.connections.single().closed)
+        scenario!!.moveToState(Lifecycle.State.RESUMED)
+        awaitMain { screenRequestsAwake() }
+        main { binding.binder.controller.disconnect() }
+        awaitMain { !screenRequestsAwake() && !binding.binder.hasAcquisitionWakeLock }
+        assertTrue(gateway.connections.single().closed)
     }
 
     @Test
@@ -301,6 +342,15 @@ class BluetoothSessionServiceTest {
     }
 
     private fun main(block: () -> Unit) = instrumentation.runOnMainSync { block() }
+
+    private fun screenRequestsAwake(): Boolean {
+        var awake = false
+        scenario!!.onActivity { activity -> awake = activity.window.decorView.requestsAwake() }
+        return awake
+    }
+
+    private fun View.requestsAwake(): Boolean = keepScreenOn ||
+        (this is ViewGroup && (0 until childCount).any { getChildAt(it).requestsAwake() })
 
     private fun awaitMain(condition: () -> Boolean) {
         val deadline = SystemClock.elapsedRealtime() + 5_000L

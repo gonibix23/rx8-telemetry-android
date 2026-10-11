@@ -31,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -40,10 +41,15 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gonibix.rx8.connection.BluetoothConnectionScreen
+import com.gonibix.rx8.connection.BluetoothConnectionPhase
 import com.gonibix.rx8.connection.BluetoothSessionService
+import com.gonibix.rx8.dashboard.DashboardPreferencesViewModel
+import com.gonibix.rx8.dashboard.LiveDashboard
 import com.gonibix.rx8.ui.KeepScreenAwake
 import com.gonibix.rx8.ui.SimulatorDashboard
+import com.gonibix.rx8.ui.SimulatorDashboardPreview
 import com.gonibix.rx8.obd.ObdPhase
+import com.gonibix.rx8.obd.ObdSessionSnapshot
 import com.gonibix.rx8.obd.ObdVinStatus
 import com.gonibix.rx8.vehicle.RoomVehicleRepository
 import com.gonibix.rx8.vehicle.VehicleDatabase
@@ -65,6 +71,9 @@ class MainActivity : ComponentActivity() {
     }
     private val simulatorViewModel by lazy {
         ViewModelProvider(this)[SimulatorViewModel::class.java]
+    }
+    private val dashboardPreferences by lazy {
+        ViewModelProvider(this)[DashboardPreferencesViewModel::class.java]
     }
     private var sessionBinder by mutableStateOf<BluetoothSessionService.LocalBinder?>(null)
     private var serviceBound = false
@@ -114,7 +123,12 @@ class MainActivity : ComponentActivity() {
         setContent {
             Rx8Theme {
                 val showBluetooth = selectedTab == "adapter"
+                var previewDashboard by rememberSaveable { mutableStateOf(false) }
                 val vehicles by vehicleViewModel.uiState.collectAsStateWithLifecycle()
+                val favorites by dashboardPreferences.favorites.collectAsStateWithLifecycle()
+                val favoritesError by dashboardPreferences.error.collectAsStateWithLifecycle()
+                val favoritesLoading by dashboardPreferences.isLoading.collectAsStateWithLifecycle()
+                val favoritesSaving by dashboardPreferences.isSaving.collectAsStateWithLifecycle()
                 LaunchedEffect(showBluetooth, scanAfterPermission, connectAfterPermission) {
                     if (!showBluetooth) {
                         scanAfterPermission = false
@@ -133,15 +147,23 @@ class MainActivity : ComponentActivity() {
                                 selectedContentColor = AccentColor,
                                 unselectedContentColor = MutedColor,
                                 onClick = { selectedTab = "adapter" },
-                                text = { Text("Adapter") },
+                                text = { Text("Adapter", style = MaterialTheme.typography.labelMedium) },
                                 modifier = Modifier.weight(1f).testTag("adapter_tab"),
+                            )
+                            Tab(
+                                selected = selectedTab == "dashboard",
+                                selectedContentColor = AccentColor,
+                                unselectedContentColor = MutedColor,
+                                onClick = { selectedTab = "dashboard" },
+                                text = { Text("Dashboard", style = MaterialTheme.typography.labelMedium) },
+                                modifier = Modifier.weight(1f).testTag("dashboard_tab"),
                             )
                             Tab(
                                 selected = selectedTab == "vehicles",
                                 selectedContentColor = AccentColor,
                                 unselectedContentColor = MutedColor,
                                 onClick = { selectedTab = "vehicles" },
-                                text = { Text("Vehicles") },
+                                text = { Text("Vehicles", style = MaterialTheme.typography.labelMedium) },
                                 modifier = Modifier.weight(1f).testTag("vehicles_tab"),
                             )
                             Tab(
@@ -149,9 +171,20 @@ class MainActivity : ComponentActivity() {
                                 selectedContentColor = AccentColor,
                                 unselectedContentColor = MutedColor,
                                 onClick = { selectedTab = "simulator" },
-                                text = { Text("Simulator") },
+                                text = { Text("Simulator", style = MaterialTheme.typography.labelMedium) },
                                 modifier = Modifier.weight(1f).testTag("simulator_tab"),
                             )
+                        }
+                        if (selectedTab == "dashboard" || selectedTab == "simulator" && previewDashboard) {
+                            if (favoritesError != null) {
+                                Text(requireNotNull(favoritesError), color = MaterialTheme.colorScheme.error)
+                            } else if (favoritesLoading || favoritesSaving) {
+                                Text(
+                                    if (favoritesLoading) "Loading favorites…" else "Saving favorites…",
+                                    color = MutedColor,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
                         }
                         Box(Modifier.weight(1f)) {
                             if (showBluetooth) {
@@ -212,6 +245,27 @@ class MainActivity : ComponentActivity() {
                                         },
                                     )
                                 }
+                            } else if (selectedTab == "dashboard") {
+                                val controller = sessionBinder?.controller
+                                val state = controller?.uiState?.collectAsStateWithLifecycle()?.value
+                                val snapshot = state?.obd ?: ObdSessionSnapshot(
+                                    statusMessage = "Open Adapter to connect and start live data.",
+                                )
+                                KeepScreenAwake(snapshot.phase in setOf(
+                                    ObdPhase.INITIALIZING, ObdPhase.DISCOVERING, ObdPhase.LIVE,
+                                ))
+                                LiveDashboard(
+                                    snapshot = snapshot,
+                                    favorites = favorites,
+                                    onToggleFavorite = dashboardPreferences::toggleFavorite,
+                                    onOpenAdapter = { selectedTab = "adapter" },
+                                    connectionStatus = when (state?.phase) {
+                                        BluetoothConnectionPhase.CONNECTED -> "Bluetooth connected"
+                                        BluetoothConnectionPhase.CONNECTING -> "Connecting Bluetooth"
+                                        BluetoothConnectionPhase.DISCONNECTED -> "Bluetooth disconnected"
+                                        null -> "Preparing Bluetooth controls"
+                                    },
+                                )
                             } else if (selectedTab == "vehicles") {
                                 LaunchedEffect(Unit) { vehicleViewModel.reload() }
                                 VehicleProfileScreen(
@@ -235,12 +289,24 @@ class MainActivity : ComponentActivity() {
                                     simulatorViewModel.setActive(true)
                                     onStopOrDispose { simulatorViewModel.setActive(false) }
                                 }
-                                SimulatorDashboard(
-                                    snapshot = state,
-                                    onToggleSimulation = simulatorViewModel::toggleSimulation,
-                                    onReset = simulatorViewModel::resetSimulation,
-                                    onScenarioSelected = simulatorViewModel::selectScenario,
-                                )
+                                if (previewDashboard) {
+                                    SimulatorDashboardPreview(
+                                        snapshot = state,
+                                        favorites = favorites,
+                                        onToggleFavorite = dashboardPreferences::toggleFavorite,
+                                        onToggleSimulation = simulatorViewModel::toggleSimulation,
+                                        onScenarioSelected = simulatorViewModel::selectScenario,
+                                        onBack = { previewDashboard = false },
+                                    )
+                                } else {
+                                    SimulatorDashboard(
+                                        snapshot = state,
+                                        onToggleSimulation = simulatorViewModel::toggleSimulation,
+                                        onReset = simulatorViewModel::resetSimulation,
+                                        onScenarioSelected = simulatorViewModel::selectScenario,
+                                        onOpenDashboard = { previewDashboard = true },
+                                    )
+                                }
                             }
                         }
                     }

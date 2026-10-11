@@ -6,7 +6,7 @@ VINs, trips, and complete logs can identify a vehicle or its usage patterns.
 Use synthetic data in examples, simulators, issues, and tests. Remove VINs, Bluetooth MAC addresses, and locations from shared logs.
 The app does not collect GPS location. On Android 8-11, Bluetooth discovery requires foreground location permission; Android 12+ uses Nearby devices permissions instead.
 Live OBD values remain in memory only. Read VIN explicitly requests Mode 09 PID 02 after live acquisition starts; candidates remain temporary until the user reviews and saves one.
-Vehicle profiles persist a UUID, alias, optional VIN, manual/OBD provenance, optional ECU source, and creation timestamp in the app's private Room database. The active profile selection is also saved.
+Vehicle profiles persist a UUID, alias, optional VIN, manual/OBD provenance, optional ECU source, and creation timestamp in the app's private Room database. The active profile selection is also saved. Dashboard favorites store only stable metric IDs in private app-wide SharedPreferences, without vehicle, ECU, VIN, adapter, or reading values.
 VINs are masked by default, with an explicit show/hide action. Masking is a display control, not database encryption. The app has no Internet permission, persistent telemetry log, trip history, or upload implementation.
 
 Android backup and device transfer are disabled/excluded for app data. Clearing app data or reinstalling removes the profiles and UUIDs. No export or restore feature is implemented; recovery is not promised.
@@ -19,7 +19,7 @@ Connect explicitly starts a non-exported connectedDevice foreground service; Rea
 The ongoing notification offers Stop and opens Adapter. It contains no VIN, MAC address, profile UUID, or raw readings. On Android 13+, notification permission is requested on the first Connect action; denial does not block the service, and the app provides guidance for notification settings and in-app disconnection.
 A foreground-service notification is still created when permission is denied, although Android can withhold it from the notification drawer. See [Android notification permission behavior](https://developer.android.com/develop/ui/compose/notifications/notification-permission).
 
-The service uses foreground-service/connected-device and wake-lock permissions. A bounded partial wake lock is renewed only while acquisition is active, and the visible Adapter screen stays awake during initialization/live acquisition.
+The service uses foreground-service/connected-device and wake-lock permissions. A bounded partial wake lock is renewed only while acquisition is active, and the visible Adapter or real Dashboard screen stays awake during initialization/live acquisition. Simulator previews do not hold the display awake.
 These behaviors consume battery; stop the session when finished. The app does not request a battery-optimization exemption. Stop, errors, and service cleanup release session resources and the wake lock even while the UI remains bound.
 Process death does not restore a connection or in-memory readings; there is no automatic reconnect or sticky restart.
 
