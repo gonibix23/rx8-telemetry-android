@@ -28,6 +28,8 @@ import androidx.compose.ui.unit.dp
 import com.gonibix.rx8.obd.ObdMetric
 import com.gonibix.rx8.obd.ObdPhase
 import com.gonibix.rx8.obd.ObdReadingStatus
+import com.gonibix.rx8.telemetry.obd.ObdPid
+import com.gonibix.rx8.telemetry.obd.ObdPollingGroup
 import com.gonibix.rx8.ui.theme.AccentColor
 import com.gonibix.rx8.ui.theme.CardColor
 import com.gonibix.rx8.ui.theme.MintColor
@@ -71,7 +73,7 @@ fun CapabilityReportScreen(
             }
             if (!canCaptureLatest) {
                 Text(
-                    if (report == null) "No completed vehicle discovery is available. Return to Adapter and choose Read live data."
+                    if (report == null) "No completed vehicle discovery is available. Connect in Adapter and wait for automatic discovery."
                     else "A new capture is unavailable. The captured preview below is unchanged.",
                     color = MutedColor,
                     style = MaterialTheme.typography.bodySmall,
@@ -151,7 +153,13 @@ private fun EcuCapabilities(ecu: CapabilityEcu) {
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.testTag("capability_pids_${ecu.address}"),
         )
-        val otherPids = ecu.advertisedPids.filter { pid -> ObdMetric.entries.none { it.pid == pid } }
+        val metadataPids = ecu.advertisedPids.filter { pid -> ObdPid.entries.any { it.pid == pid && it.pollingGroup == ObdPollingGroup.METADATA } }
+        if (metadataPids.isNotEmpty()) {
+            Text("Scaling metadata: ${metadataPids.joinToString(", ") { String.format(Locale.ROOT, "%02X", it) }}.",
+                color = MutedColor, style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.testTag("capability_metadata_pids_${ecu.address}"))
+        }
+        val otherPids = ecu.advertisedPids.filter { pid -> pid !in metadataPids && ObdMetric.entries.none { it.pid == pid } }
         if (otherPids.isNotEmpty()) {
             Text(
                 "Advertised but not decoded by this app: ${otherPids.joinToString(", ") { String.format(Locale.ROOT, "%02X", it) }}.",
@@ -160,7 +168,7 @@ private fun EcuCapabilities(ecu: CapabilityEcu) {
                 modifier = Modifier.testTag("capability_other_pids_${ecu.address}"),
             )
         }
-        Text("Six implemented metrics · latest displayed state", color = MutedColor, style = MaterialTheme.typography.labelMedium)
+        Text("${ObdMetric.entries.size} implemented scalar metrics · latest displayed state", color = MutedColor, style = MaterialTheme.typography.labelMedium)
     }
 }
 
@@ -217,7 +225,7 @@ private fun formatDuration(millis: Long): String {
     return String.format(Locale.ROOT, "%d min %02d s", seconds / 60, seconds % 60)
 }
 private fun formatValue(metric: ObdMetric, value: Double): String =
-    String.format(Locale.ROOT, if (metric == ObdMetric.THROTTLE_POSITION || metric == ObdMetric.ENGINE_LOAD) "%.1f" else "%.0f", value)
+    String.format(Locale.ROOT, "%.${metric.displayDecimals}f", value)
 private fun ObdPhase.captureLabel(): String = when (this) {
     ObdPhase.LIVE -> "Live acquisition at capture"
     ObdPhase.STOPPED -> "Acquisition stopped · retained readings"

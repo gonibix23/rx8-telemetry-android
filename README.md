@@ -2,40 +2,30 @@
 
 Android app in development for viewing live vehicle data and recording trips without an Internet connection.
 
-**Current implementation (0.11.0-dev): browse older saved trips and filter history by vehicle, alongside recorded-sensor charts, capability reports, offline recording/exports, live data, Bluetooth discovery, background acquisition, saved vehicles, API preparation, and a separate simulator. Uploads remain disabled.**
+**Current implementation (0.12.0-dev): automatic connection, reading and telemetry journeys; a much broader standard OBD sensor catalog; a real RPM dashboard; and paged trip history with vehicle filters. Uploads remain disabled.**
 
-The simulator uses deterministic synthetic readings and supports normal operation, timeouts, and missing data.
-Connect, disconnect, and reset controls make demonstrations repeatable.
-Sampling runs only while the Simulator tab is visible in the foreground; this foundation does not record in the background.
+The four tabs are **Adapter**, **Live**, **Trips**, and **Vehicles**, with single-line labels. The Simulator tab has been removed; its RPM dial now displays real per-ECU readings in Live. Synthetic data remains confined to development fixtures.
 
-The Bluetooth screen searches for nearby devices, displays names and MAC addresses, and allows selection of paired or newly discovered Classic devices.
-It attempts a secure RFCOMM/SPP connection; Android can request pairing during connection.
-After connecting, choose **Read live data** to initialize the adapter, detect its protocol, and discover supported parameters.
-The first six decoded parameters are engine speed, vehicle speed, coolant and intake air temperatures, throttle position, and engine load, when reported as supported.
-Readings retain their ECU source and timestamp. Missing, malformed, unsupported, and stale readings are distinct from valid zero values.
-After discovery, open **Vehicle capabilities** in Adapter to capture a report of the advertised PIDs per ECU and the latest displayed state of the six implemented sensors. The report distinguishes advertised support from a successfully decoded reading. Preview it, capture a newer snapshot if needed, and explicitly export JSON to a document destination. This adds no vehicle requests. Reports exclude VINs, Bluetooth names/addresses, profile and trip identifiers, and raw logs; they still contain the capture time and latest sensor values. See [Capability reports](docs/capability-report.md).
-A connection started with **Connect** continues across tabs, backgrounding, screen lock, and Activity recreation. **Read live data** still starts acquisition explicitly; discovery stops when leaving Adapter.
-The visible Adapter and Dashboard screens stay awake during real initialization and live acquisition. Use **Disconnect** in the app or **Stop** in the ongoing session notification to end the session. Opening the notification returns to Adapter.
-On Android 13+, notification access is requested on the first Connect action. Denial does not block connecting; the app explains how to enable the notification or stop from Adapter.
-Active acquisition uses additional battery, including while the screen is locked. No battery-optimization exemption is requested. A stopped, failed, or process-terminated session requires a new manual connection.
+On a new app process, the visible app attempts the last successfully connected Bluetooth Classic adapter once when Bluetooth permission and the radio are available. Adapter still offers nearby discovery, manual selection, Connect and Disconnect. Android may request pairing. An explicit Stop, failed attempt or disconnect does not start a reconnect loop. Opening a new app process can make a new attempt; the background service does not restore a killed session.
 
-In **Live**, RPM, speed, and coolant temperature occupy fixed primary positions when the ECU reports them as supported. Choose favorites from intake temperature, throttle position, and engine load. Each ECU keeps its own readings, units, age, and status.
-Favorite choices are saved for the app, independent of the selected vehicle and ECU. A saved favorite unavailable in the current session stays identified as unavailable instead of becoming zero or silently disappearing. The Simulator tab previews the same cards with an explicit synthetic-data label.
+Once the socket connects, initialization, automatic protocol detection and supported-PID discovery start directly. Bluetooth connected remains distinct from successful ECU communication. Only advertised, implemented read-only parameters are queried. The expanded catalog includes fuel trims, airflow, ignition timing, pressures, oxygen-sensor values, temperatures, counters and other standard scalar readings. Actual RX-8 coverage depends on its responses; proprietary and unimplemented parameters remain clearly identified. Missing, malformed and stale readings are never fabricated zeros.
 
-In **Vehicles**, explicitly create a named profile with a permanent UUID, select a saved profile, or rename it. The profile and selection are saved locally in Room.
-A VIN is optional: enter it manually or choose **Read VIN** after live acquisition starts, then review a detected candidate before saving it. VINs are masked by default and retain their manual or OBD source.
-Adding a VIN keeps the UUID. A matching VIN requires explicit profile selection; a different VIN cannot overwrite an existing profile. The adapter's MAC address never identifies the car.
-In **Trips**, choose **Start recording** after selecting a vehicle and starting real live data. The trip keeps that vehicle's UUID and name even if you change profiles. Only new readings are saved, with their source, unit, quality, UTC timestamp, sequence number, and monotonic elapsed time. Recording continues with the screen locked through the existing foreground service.
-**Stop recording** saves the trip while live readings continue. **Disconnect** or notification **Stop** saves the trip and closes the connection. A lost connection ends an interrupted trip; reconnect manually and explicitly start a new one. After process termination, the next launch marks unfinished trips interrupted at their last saved reading.
-History shows up to 50 trips at a time offline, with Newer and Older controls to reach all saved journeys. Filter by vehicle without changing the profile used for recording. Refresh reloads the current page; Newest returns to the latest matching trips. Returning from details, another tab, or Activity recreation retains the browsing context. Filter choices use current profile names, while each trip keeps its recorded name. Finished trips include selectable charts for each recorded sensor and ECU, with valid ranges, sample counts, and coverage. Negative temperatures and valid zero readings are retained; missing or invalid data breaks the chart line. The trip overview keeps its identified speed source, estimated distance, peak readings, and uncovered time. Distance is not an odometer reading. Export JSON/CSV to a location you choose, or confirm deletion of a trip and its samples.
-Trips also shows **Future uploads**, with an explicit **Uploads disabled** label and the last refreshed counts of samples waiting locally or needing attention. Saved samples and pending work commit together. Upgrading includes existing recorded samples in the local queue; it does not send them anywhere. There is no server configuration, upload button, network permission, or scheduled upload worker.
-Profiles, selection, favorites, and explicitly recorded trips are persisted. VIN candidates remain temporary until explicitly saved. Backups and device transfer are disabled. Exports omit VIN and Bluetooth address but contain vehicle IDs, names, timestamps, and readings; export is not a restore feature. Clearing app data or reinstalling loses locally saved data and IDs.
+Select the intended vehicle in **Vehicles** once. Its permanent UUID works without a VIN; an optional VIN can be entered manually or explicitly read and reviewed later. The adapter never identifies the car. The selection persists, and subsequent connections automatically start telemetry journeys for that profile. The trip freezes its UUID and name and includes connection/initialization time. Initial display placeholders are not samples; the first actual reading is retained. If no profile is selected, live reading can continue and the app explains that a profile is needed; recording begins when selected, without backfilling earlier data.
 
+**Stop recording** saves the journey while live readings continue, and suppresses automatic recording for that connection. The manual start control can resume with a new journey. **Disconnect** or notification **Stop** completes the active trip and closes the session; a lost connection or acquisition failure interrupts it. A new connection begins a new journey. Startup recovery marks unfinished trips interrupted at their last saved sample, without inventing a process-kill time.
+
+Acquisition and recording continue across tabs, backgrounding, screen lock and Activity recreation through the foreground service. The visible Adapter and Live screens stay awake during real acquisition. Notification permission denial does not prevent connecting; the app provides recovery guidance. Active acquisition consumes battery, and no battery-optimization exemption is requested.
+
+**Live** keeps each ECU separate, with the real RPM dial, speed, coolant and selectable supported extra sensors. Cards preserve units, age, quality, valid zero and unavailable favorites. Favorite choices persist for the app. **Vehicle capabilities** inside Adapter captures the existing discovery and displayed readings into an explicit JSON report without extra vehicle queries; see [Capability reports](docs/capability-report.md).
+
+**Trips** records every fresh supported reading, independently of visible cards or favorite choices. History shows up to 50 trips per page, with Newer/Older/Newest controls and a vehicle filter independent of recording selection. Refresh, details, tabs and Activity recreation preserve browsing context. Finished trips provide metric/ECU charts, full-stream statistics, estimated distance, JSON/CSV export to a chosen document destination, and confirmed deletion. Distance is an estimate, not an odometer reading.
+
+Everything stays local: no GPS, Internet permission, backend or uploads. Future API models and pending work are prepared, with uploads visibly disabled. Exports omit VIN/MAC but include vehicle IDs/names, timestamps and readings. Profiles, selections, favorites and trips persist; backups/device transfer and import/restore are not implemented. Clearing app data or reinstalling loses saved data.
 On October 10, 2026, the user reported that the app worked after testing the simulator foundation.
 The user confirmed that the Samsung A53 runs Android 16. The paired-only Bluetooth build failed to list the adapter.
 The user reports that Car Scanner finds it through an in-app search with plain Bluetooth selected, displaying OBDII and its MAC address.
 The user subsequently confirmed Bluetooth works. On October 11, 2026, the user reported that live readings worked, and PR #14 is merged.
-The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed that 0.5.0-dev reads data correctly. These reports do not confirm all six sensors, ECU identifiers, measured rates, or sustained lifecycle behavior. RX8-001, RX8-004, and the remaining hardware checks stay open; VIN retrieval and profile persistence still need device validation.
+The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed that 0.5.0-dev reads data correctly. These reports do not confirm each of the original six sensors, ECU identifiers, measured rates, or sustained lifecycle behavior. RX8-001, RX8-004, and the remaining hardware checks stay open; VIN retrieval and profile persistence still need device validation.
 The user also reported the screen sleeping when idle and readings disconnecting after backgrounding in 0.5.0-dev. That matched the previous foreground-only connection policy; actual Bluetooth bond removal was not confirmed.
 The user subsequently confirmed that 0.5.1-dev worked, providing broad confirmation of the background/screen fix in merged [PR #17](https://github.com/gonibix23/rx8-telemetry-android/pull/17). The separate [hardware checklist](docs/hardware-validation.md) tracks broader evidence; measured durations, battery use, notification scenarios, and actual bond removal are not established by that report. There are no published APK releases or deployed APIs.
 The user also confirmed that 0.6.0-dev works perfectly; [PR #18](https://github.com/gonibix23/rx8-telemetry-android/pull/18) is merged. This is broad dashboard-build confirmation, not a report of each favorite/ECU scenario. The user subsequently confirmed that 0.7.0-dev works perfectly, and [PR #19](https://github.com/gonibix23/rx8-telemetry-android/pull/19) is merged. The user also confirmed that 0.8.0-dev worked correctly, and [PR #20](https://github.com/gonibix23/rx8-telemetry-android/pull/20) is merged. [Issue #16](https://github.com/gonibix23/rx8-telemetry-android/issues/16) is closed at the user's request with all checks complete. Measured durations, individual upgrade/export/storage scenarios, and battery use remain unreported. [PR #22](https://github.com/gonibix23/rx8-telemetry-android/pull/22) is merged for 0.9.0-dev; the user explicitly deferred its phone validation and requested continued development. Capability reports and the new 0.10.0-dev trip charts retain their pending phone checklists.
@@ -50,16 +40,17 @@ The user also confirmed that 0.6.0-dev works perfectly; [PR #18](https://github.
 The goal is to display **all available and verified data** from this vehicle. OBD2 does not guarantee access to every module or sensor.
 A working simulator does not prove that the adapter or car supports any particular parameter.
 
-## Planned MVP
+## MVP scope
 
-- Connect the adapter and discover the supported protocol and parameters.
-- Live dashboard with units and the status of each reading.
+- Attempt the last successful adapter once per visible app process, with manual connection and retry available.
+- Automatically discover the protocol and supported parameters, then read the implemented sensors.
+- Real per-ECU dashboard with an RPM dial, supported favorites, units, age, and reading quality.
 - Vehicle profile with a permanent ID and an optional vehicle identification number (VIN).
-- Manual trip start and stop, local storage, history, charts, and export.
-- Recording with the screen locked, managed as an explicit session.
+- Automatic journeys for the selected vehicle, with Stop recording, manual resume, local history, charts, and export.
+- Service-owned acquisition and recording through screen lock, with explicit Disconnect and notification Stop controls.
 - Data models and a queue for a future API, with uploads disabled.
 
-These features describe the target MVP. Opening a Bluetooth socket alone does not start vehicle acquisition; use Read live data explicitly.
+These features describe the implemented MVP scope; detailed phone checks remain pending.
 Fault diagnostics, Mazda-specific sensors, GPS/maps, and a server are deferred to later phases.
 The first version does not include actuator control, ECU reprogramming, or clearing fault codes.
 
@@ -68,14 +59,14 @@ The first version does not include actuator control, ECU reprogramming, or clear
 Open the repository in Android Studio with JDK 17 or 21 and Android SDK Platform 36.
 The project contains the Android `:app` module and the pure Kotlin `:core:telemetry` module.
 
-See [Development](docs/development.md) for pinned tool versions, SDK setup, Bluetooth and simulator behavior, build commands, and pending device checks.
+See [Development](docs/development.md) for pinned tool versions, SDK setup, automatic session behavior, build commands, and pending device checks.
 Build and test results belong in the relevant PR; setup instructions alone are not evidence that checks passed.
 
 ## Documentation
 
 | Document | Contents |
 | --- | --- |
-| [Development](docs/development.md) | Android setup, simulator, commands, and device validation |
+| [Development](docs/development.md) | Android setup, automatic sessions, commands, and device validation |
 | [Product](docs/product.md) | Target scope, screens, and acceptance criteria |
 | [Architecture](docs/architecture.md) | Transport, OBD, local profiles/trips, pending work, and future upload boundaries |
 | [API contract](docs/api-contract.md) | Future integration design; not an existing service |
@@ -103,7 +94,8 @@ Each issue has a scope and acceptance criteria. Implementation changes go throug
 [RX8-008](https://github.com/gonibix23/rx8-telemetry-android/issues/8) tracks versioned API models, the persistent queue, and isolated retry/ACK tests. No backend is deployed or contacted.
 [RX8-010](https://github.com/gonibix23/rx8-telemetry-android/issues/21) adds the capabilities view and report to help collect evidence for future sensor work.
 [RX8-012](https://github.com/gonibix23/rx8-telemetry-android/issues/24) adds offline trip charts selectable by recorded metric and ECU.
-[RX8-014](https://github.com/gonibix23/rx8-telemetry-android/issues/28) adds bounded history pages, an independent vehicle filter, and an index-only Room 3-to-4 upgrade. Existing saved trips and pending work remain local.
+[RX8-014](https://github.com/gonibix23/rx8-telemetry-android/issues/28) adds bounded history pages, an independent vehicle filter, and an index-only Room 3-to-4 upgrade in merged [PR #30](https://github.com/gonibix23/rx8-telemetry-android/pull/30). Existing saved trips and pending work remain local.
+[RX8-015](https://github.com/gonibix23/rx8-telemetry-android/issues/29) is the current 0.12.0-dev increment: automatic connection, acquisition and journeys, broader standard readings, the real RPM dial, and four single-line tabs.
 [PR #25](https://github.com/gonibix23/rx8-telemetry-android/pull/25) is merged after the user reported that 0.10.0-dev works well. This is broad build confirmation; individual phone scenarios remain tracked in RX8-012. [RX8-011](https://github.com/gonibix23/rx8-telemetry-android/issues/23) maintains the automated build/test environment without changing the app version.
 [RX8-001](https://github.com/gonibix23/rx8-telemetry-android/issues/1) tracks separate validation with the real car and adapter.
 

@@ -2,17 +2,14 @@
 
 ## Current implementation
 
-The 0.11.0-dev iteration (version code 12) adds history pages and a vehicle filter to the saved-trip charts introduced in 0.10.0-dev. The user reported the earlier version works well, and PR #25 is merged. Individual scenarios remain tracked separately; the user permits continued development with remaining phone validation deferred. Local API preparation stays disabled; recording, history, summaries, charts, and exports remain offline. Its five tabs are Adapter, Live, Trips, Vehicles, and Simulator:
+Version 0.12.0-dev (code 13) adds automatic connection/read/recording, a broad standard scalar OBD catalog and the real RPM dial. The four tabs are Adapter, Live, Trips and Vehicles. History pages and independent vehicle filtering from 0.11.0-dev remain available. Phone validation is deferred at the user's request; record actual software outcomes in each PR.
 
 | Module | Responsibility |
 | --- | --- |
-| `:app` | Compose screens, favorites, service-owned Bluetooth/OBD and recording, Room profiles/trips/pending work, API models, isolated retry logic, summaries, and document exports |
-| `:core:telemetry` | Pure Kotlin Mode 01/VIN parsing, VIN validation, telemetry types, and deterministic simulation |
+| `:app` | Compose screens, foreground Bluetooth/OBD, automatic journeys, Room records, offline charts/exports and disabled API preparation |
+| `:core:telemetry` | Pure standard OBD/VIN parsing, verified metric definitions, VIN validation and deterministic test telemetry |
 
-The simulator is identified in the interface and supplies synthetic engine speed, vehicle speed, coolant temperature, intake air temperature, throttle position, and engine load readings.
-The simulator stays separate from real acquisition and is never recorded as a trip. Vehicles stores explicit profiles and active selection; Trips stores only explicitly started real sessions. No screen uploads data.
-Bluetooth connection alone opens a socket. Read live data explicitly starts ELM initialization and read-only Mode 01 queries.
-The architecture and API documents describe later implementation work unless explicitly marked as implemented.
+Synthetic fixtures have no production navigation destination and never feed the recorder. No GPS, Internet permission, upload worker or backend is included.
 
 ## Toolchain
 
@@ -129,82 +126,41 @@ The user broadly confirmed 0.6.0-dev and later 0.7.0-dev worked on October 11, 2
 
 ## Finding and connecting the Bluetooth adapter
 
-1. Power the adapter, enable phone Bluetooth, and disconnect other apps such as Car Scanner from the adapter.
-2. Open the Adapter tab and choose Scan nearby. On Android 12/API 31 or later, allow Nearby devices access.
-3. On Android 8-11/API 26-30 only, grant the location permission required for discovery and enable location services. No location is collected.
-4. Select OBDII, comparing its MAC address with the device shown by Car Scanner. Unnamed nearby devices also show an address. Already-paired devices remain available.
-5. Connect and complete Android's pairing prompt if it appears. A successful result means a Bluetooth socket is open; ECU communication remains unchecked until Read live data succeeds.
-6. The connection continues across tabs, backgrounding, screen lock, and Activity recreation. Use Disconnect in Adapter or Stop in the ongoing notification to close it. Reconnect manually after an explicit stop or terminal error.
+1. Power the adapter and enable Bluetooth. Disconnect other diagnostic apps from it.
+2. For initial setup, open Adapter, choose Scan nearby, grant Nearby devices access, select OBDII by its displayed address and connect. Android handles any pairing prompt. API 26–30 additionally needs foreground location permission for discovery; GPS is not collected.
+3. The last successful adapter is saved privately. On a new app process, the visible app attempts it once when permission and Bluetooth are available. No permission prompt or connection starts from a background receiver. Manual discovery/selection remains available.
+4. After connection, read-only ELM initialization, protocol detection and capability discovery begin automatically. Wait for actual ECU readings; socket success alone does not prove compatibility.
+5. On Android 13+, allow notification access if desired for Stop/open-Adapter controls. Denial does not block connecting. Disconnect or notification Stop ends the session; failures and explicit stops do not cause reconnect loops.
 
-This is a provisional secure RFCOMM/SPP connection. Discovery is bounded and stops before connection or when leaving the Adapter tab.
-The scan lasts up to 15 seconds, with up to two seconds beforehand to stop an existing inquiry. Connection attempts allow 15 seconds for a paired device or 45 seconds for an unpaired device so Android can request pairing.
-Names do not determine compatibility; the app does not filter results to OBDII. If no adapter appears, confirm power, disconnect other diagnostic apps, and scan again.
-BLE-only devices are outside the current transport scope, consistent with the user's plain Bluetooth setting in Car Scanner.
-On API 31+, scan and connection permissions are separate; a paired adapter can be connected without scan access. Location permission is limited to API 26-30.
-Android's [permissions](https://developer.android.com/develop/connectivity/bluetooth/bt-permissions) and [device discovery guidance](https://developer.android.com/develop/connectivity/bluetooth/find-bluetooth-devices) describe these requirements.
+Discovery is bounded to 15 seconds and stops before connection or when Adapter is hidden. Secure Classic/SPP attempts allow 15 seconds for paired devices or 45 seconds for pairing. There is no BLE transport. Bluetooth permissions follow [Android guidance](https://developer.android.com/develop/connectivity/bluetooth/bt-permissions).
 
-The connection action sends no application bytes. Read live data uses the transport's bounded byte read/write operations for OBD commands.
-There is no automatic reconnection. An explicitly started live session can continue in the background; it is saved only after Start recording is chosen in Trips. The user-reported successful Bluetooth connection does not establish sensor support.
-Use the [hardware checklist](hardware-validation.md#bluetooth-transport-checklist-rx8-003) to record actual behavior.
+### Reading and viewing real data
 
-## Reading live OBD data
+The engine polls every implemented scalar parameter advertised by the responding ECUs, regardless of favorites. See the catalog in [Architecture](architecture.md#current-read-only-obd-engine). RPM/speed retain priority, and bounded serialized exchanges prevent a backlog. A supported PID is not proof of a valid response; unknown/proprietary fields remain explicitly unimplemented. Real rates require measurement with the car and adapter.
 
-1. With the vehicle stationary and ignition on, connect the adapter and select Read live data.
-2. Wait for adapter initialization, automatic protocol detection, and supported-parameter discovery. Initialization failures remain separate from a successful Bluetooth connection.
-3. Inspect the protocol, responding ECU identifiers, and six parameter cards. Each ECU is shown separately when more than one responds.
-4. Confirm engine speed, stationary vehicle speed, and coolant temperature against the actual operating conditions. A valid zero value is allowed; a missing reading must show its status instead.
-5. Observe the timestamps, stale markers, and measured response rate. A parameter appearing in the capability bitmap does not guarantee a valid reading on every request.
-6. Use Disconnect or notification Stop to stop polling. Leaving Adapter/the app keeps acquisition running. After a stop or terminal error, reconnect and choose Read live data again for a fresh session.
+Live presents separate ECU groups, the real RPM dial, speed/coolant and selectable extra favorites. Values retain their unit, quality and age; valid zero and negative values are not missing data. Freshness depends on polling class. Disconnection marks retained values historical. No session average or unmeasured value is inferred from a latest snapshot.
 
-The current decoders cover engine speed (rpm), vehicle speed (km/h), coolant and intake temperatures (°C), throttle position (%), and engine load (%).
-The engine only requests metrics reported as supported. Mode 01 capability bitmaps can report additional parameters that this build does not yet decode.
-Missing replies, unsupported parameters, adapter errors, malformed frames, and stale cached values have distinct states. Failed readings are never represented by a fabricated zero.
-Values older than five seconds are marked stale. Disconnecting marks retained valid readings stale immediately; selecting another adapter clears the previous readings.
+Favorites affect display only and persist as stable metric IDs, independently of vehicles/ECUs. Unavailable favorites remain removable. The four menu labels stay on one line; larger text can scroll horizontally. Test fixtures exercise synthetic scenarios without exposing a Simulator tab.
 
-The engine serializes all exchanges, assembles Bluetooth fragments through the ELM prompt, and limits command time and reply size.
-Losing prompt framing closes the connection and requires a manual reconnect, preventing delayed responses from being mistaken for new readings.
-RPM and speed receive priority; measured latency and errors slow requests instead of allowing a backlog. Actual rates still require a real-car test.
+### Keeping a session active
 
-This build sends read-only Mode 01 diagnostics and, only when requested, Mode 09 PID 02 for VIN. It does not clear faults or control actuators. Trip recording is a separate explicit action in Trips.
-Mode 01 replies fit a single CAN frame. VIN support is limited to its 20-byte CAN message or five numbered legacy packets; general ISO-TP support is not implemented.
-Read [Architecture](architecture.md#current-read-only-obd-engine) for the separation between transport, parser, session, and UI.
+The visible app promotes the connected-device foreground service before a connection attempt. Automatic reading continues that authorized connection even if the app backgrounds before the socket opens. Tabs, screen lock and Activity recreation keep the same service-owned session. Adapter and Live stay awake only while real acquisition is visible; a bounded renewed partial wake lock supports background acquisition.
 
-## Using the dashboard and favorites
-
-1. Connect and start Read live data in Adapter, then open Live. Navigation reuses the same service-owned session; opening Live alone does not connect or start acquisition.
-2. Inspect RPM, speed, and coolant where the responding ECU reports support. Each ECU stays separate, and every value shows its unit, quality, and age.
-3. Open Choose sensors to add intake temperature, throttle position, or engine load when available. Primary metrics stay fixed; the extra favorites are optional and initially empty.
-4. Change the favorites, restart the app, and verify they remain selected. They are app-wide preferences, independent of vehicle and ECU selection. A saved favorite unavailable in a later session stays listed as unavailable and can be removed.
-5. Distinguish ECU-reported values from adapter/session metadata. A valid zero must remain visible; missing/failed results cannot become zero. After a stop or terminal error, retained values are stale and the frozen age is identified as Age at stop.
-6. In Simulator, open the dashboard preview to use the same cards with clearly labeled synthetic data. Normal, timeout, and missing-data scenarios remain available. This preview does not replace or stop a real background session.
-
-Favorites change presentation only; they do not change supported sensors or polling priority. The private SharedPreferences store contains stable metric IDs, not vehicle identifiers or readings. Saving failures must remain visible instead of claiming the choice was saved.
-The user broadly confirmed the 0.6.0-dev dashboard build worked; detailed layout and favorite-persistence checks remain open. Live does not start recording or estimate sensor values. Saved-trip summaries and recording controls are in Trips; uploads remain unimplemented.
-
-## Keeping a session active
-
-Connect from the visible app starts the connected-device foreground service. On Android 13+, the first Connect action requests notification permission; allow it to see the session notification and its Stop/open-Adapter controls. Denial does not block connection. Follow the in-app guidance to enable notifications, or stop from Adapter.
-Read live data is still a separate explicit action. During initialization, protocol/capability discovery, and live acquisition, the visible Adapter or real Live screen stays awake. Switching to Trips, Vehicles, or Simulator, using another app, or locking the screen releases that screen-on flag but leaves acquisition running.
-A bounded, renewed partial wake lock supports acquisition while the screen is off. Active acquisition consumes battery; use Disconnect or notification Stop when finished. The app does not request a battery-optimization exemption.
-Discovery stops when Adapter is hidden. The simulator remains foreground-only and does not share the real session's background behavior.
-
-Stop/disconnect and terminal failures release session resources even while the UI stays bound. The service does not restart automatically (`START_NOT_STICKY`), reconnect, or restore a session after process death. Profiles, selected vehicle, dashboard favorites, and committed trip samples persist. In-memory live readings become trip history only after explicit recording; startup recovery marks an unfinished saved trip interrupted without reconnecting or restarting it.
-The user's 0.5.0-dev screen-sleep/background-disconnection report matched the old lifecycle policy. The reported protocol remains `ISO 15765-CAN (11 bit, 500 kbaud)`; actual removal of the Android Bluetooth bond is not confirmed and the code has no `removeBond` call.
-The user subsequently confirmed 0.5.1-dev worked and PR #17 is merged, providing broad success evidence for the fix. The [issue #16 hardware checklist](hardware-validation.md#background-session-and-screen-awake-checklist-issue-16) retains detailed scenarios: measured durations, battery use, notification behavior, and bond-entry checks were not supplied. Automated tests alone do not establish these hardware results.
+Stop/disconnect releases resources after the trip's final writes. `START_NOT_STICKY` prevents background process-death restoration. A later new app process can attempt a fresh connection and create a separate journey; it does not append across the missing interval. Explicit stops and failed attempts are not immediately retried. No battery-optimization exemption is requested. Actual A53 battery use and continuity remain hardware checks.
 
 ## Saved vehicles and optional VINs
 
 1. Open Vehicles and choose Create vehicle. Enter a name with 1-60 characters. A VIN is optional; leaving it empty still creates a permanent UUID.
 2. Select a saved profile explicitly. Rename changes its alias; Add VIN is available only for a profile without one. A manual VIN requires 17 letters/numbers excluding I, O, and Q.
 3. Restart the app and verify the profile and selected ID remain. The database is local; no Internet or account is required.
-4. To try OBD VIN retrieval, return to Adapter. If there is no active session, connect and choose Read live data. Once acquisition is live, choose Read VIN. It runs between sensor requests, which resume afterward.
+4. To try OBD VIN retrieval, return to Adapter. If there is no active session, connect and wait for automatic live acquisition. Once acquisition is live, choose Read VIN. It runs between sensor requests, which resume afterward.
 5. Review the masked candidates and ECU sources. Choosing a candidate opens Vehicles while the Bluetooth/acquisition session continues. This does not save the candidate automatically.
 6. Explicitly attach it to the selected VIN-less profile, select the profile already holding that VIN, or create a separate vehicle. A different VIN cannot replace the selected profile's VIN or ID.
 7. Use Show VIN only when needed and Hide VIN afterward. Screenshots and issues must contain fake identifiers or redacted values.
 
 VIN support on the actual car remains unverified. NO DATA, unsupported, or malformed complete replies allow sensor polling to continue; a timeout or missing prompt closes the link and requires manual reconnection.
 VIN validation checks format, not ownership, check digit, or vehicle specifications. A Bluetooth MAC is never a vehicle ID.
-Profiles, their active selection, dashboard favorites, and explicitly recorded trips/samples are saved. Finished-trip export and deletion are available in Trips. Profile deletion, uploads, and app import/restore remain unimplemented.
+Profiles, their active selection, dashboard favorites, and recorded trips/samples are saved. Finished-trip export and deletion are available in Trips. Profile deletion, uploads, and app import/restore remain unimplemented.
 Backups/device transfer are disabled. Clearing app data or reinstalling removes the saved UUIDs, with no current recovery workflow.
 
 Room schema version 3 adds API metadata revisions, recording app version, and pending work through an explicit 2-to-3 migration. Version 4 adds only two composite history indexes through a 3-to-4 migration. The complete 1-to-2-to-3-to-4 chain is retained. Existing profiles, selection, trips, samples, metadata revisions, and queue state survive the index upgrade. Legacy samples become pending during the earlier 2-to-3 migration, and old recording app versions remain unknown. Exported schemas remain under `app/schemas`. Future database changes need explicit migrations; destructive migration fallback is prohibited.
@@ -214,16 +170,16 @@ Instrumented checks include database close/reopen and Compose identity flows. Wi
 
 Use the current update with existing app data intact; do not clear the user's database as a routine test. The Room 1-to-2-to-3-to-4 migration chain must retain saved vehicle UUIDs, selected profile, existing trip data, and pending work.
 
-1. In Vehicles, create or explicitly select the intended profile. A VIN is optional. In Adapter, connect and choose Read live data; wait for real ECU acquisition to reach LIVE.
-2. Open Trips and choose Start recording. Check that the recorded vehicle name matches the selected profile and the saved-sample count begins advancing. Opening a tab, connecting Bluetooth, or opening Live never starts a trip automatically.
-3. Change tabs, background the app, and lock the A53 for a measured interval. The same explicit recording should continue through the service. Changing the selected profile must not change the active trip's frozen UUID/name. Record actual duration, saved count, and failures without publishing identifiers.
-4. Choose Stop recording in Trips. Wait until the terminal write is confirmed and the trip appears in history. Live acquisition remains running. Separately test notification Stop: it closes live acquisition and completes the active trip after queued writes are saved.
+1. In Vehicles, create or explicitly select the intended profile. A VIN is optional. In Adapter, connect; initialization and real reading start automatically.
+2. Open Trips and confirm automatic recording uses the selected vehicle and saved samples advance. The journey starts at connection time; initialization placeholders are not samples. With no selected profile, follow the visible guidance and select one; recording begins then without backfilling earlier values.
+3. Change tabs, background the app, and lock the A53 for a measured interval. The same recording should continue through the service. Changing the selected profile must not change the active trip's frozen UUID/name. Record actual duration, saved count, and failures without publishing identifiers.
+4. Choose Stop recording in Trips. Wait until the terminal write is confirmed and the trip appears in history. Live acquisition remains running, and recording must not restart on its own in that connection. The manual start control can begin a new journey. Separately test notification Stop: it closes live acquisition and completes the active trip after queued writes are saved.
 5. Open a finished trip without Internet access. Review sample/valid counts, duration, peak recorded RPM, peak speed, and identified speed ECU. Select another recorded sensor/ECU and review its chart, canonical unit, full-stream min/max, valid count, and coverage. Valid zero and negative temperatures remain readings; missing/failed data and gaps must not become zero measurements or connecting chart lines. The trip overview stays unchanged when selecting a chart. Rapid switches, returning to a previous trip, and rotation must retain the intended selection without older results replacing it.
 6. Treat estimated distance as covered valid speed intervals only, never as the odometer. Speed analysis uses one deterministic ECU and integrates only adjacent valid intervals of at most five seconds. Check the displayed covered/uncovered duration; RPM peak can come from any valid RPM source.
 7. Choose Export JSON or Export CSV, then select the destination in Android's document picker. The screen retains the intended trip/format across Activity recreation. Canceling the picker creates no success message. Success must appear only after the output is written, flushed, and closed; provider/write failures remain visible and may leave an incomplete document.
 8. Inspect an anonymized export: JSON uses schemaVersion 1 with trip metadata and samples; CSV uses schema_version 1, one sample per row and a metadata row for an empty trip. IDs, sequence, timestamps, units, ECU sources, quality, and null/error values remain available. Spreadsheet-sensitive text in CSV is escaped for safe display. No VIN, Bluetooth MAC, GPS, or upload is included.
 9. Choose Delete on a finished trip, cancel once, then confirm on a disposable test fixture. Confirm only that trip and its samples disappear. Existing exported files remain; active recording cannot be deleted or exported. The app-database byte count covers shared storage, and deletion can make space reusable without immediately shrinking the file.
-10. In a controlled hardware check, interrupt the connection or acquisition, and separately end the app process. Committed samples must remain; the trip becomes interrupted, and a fresh connection and new recording require explicit actions. Do not infer physical A53 process/lock behavior from synthetic tests.
+10. In a controlled hardware check, interrupt the connection or acquisition, and separately end the app process. Committed samples must remain; the trip becomes interrupted, and a new connection creates a separate journey. A new app process may attempt the saved adapter once; an explicit stop in the current process must not be immediately undone. Do not infer physical A53 process/lock behavior from synthetic tests.
 
 History shows one page of up to 50 sessions, ordered newest first by start time and trip ID. Choose Older or Newer to browse, or Newest to return to the latest matching trips. Refresh reloads the current page and refreshes storage/queue information independently. The vehicle filter defaults to All vehicles and uses stable IDs; it does not change the selected recording profile. Filter choices use current names and distinguish identities, while existing trips keep their recorded names. A filter with no matches is different from a load failure; Retry repeats a failed history request. Same-filter failures retain the confirmed page, and obsolete requests cannot replace a newer filter or page.
 
@@ -244,26 +200,15 @@ The isolated verification covers immutable retries after lost responses, partial
 
 ## Capturing capabilities without extra requests
 
-After real capability discovery, open Vehicle capabilities in Adapter. Review the capture time, protocol, elapsed acquisition time, successful ECU-response rate, advertised PIDs per ECU, and latest display states. Use Capture latest to refresh deliberately. Advertised PIDs beyond the six implemented metrics must remain numbers, without fabricated readings or decoder support.
+After real capability discovery, open Vehicle capabilities in Adapter. Review the capture time, protocol, elapsed acquisition time, successful ECU-response rate, advertised PIDs per ECU, and latest display states. Use Capture latest to refresh deliberately. Advertised PIDs outside the implemented scalar catalog must remain clearly undecoded, without fabricated readings or support claims.
 
 Choose Save JSON report and a destination. While the picker is open, switch tabs or recreate the Activity and verify that the original captured report is written. Cancel once and test a provider failure on a disposable destination; neither may show success. After stopping acquisition, capture retained data and check historical/stale labeling. A process restart loses the in-memory report and must not fabricate a replacement.
 
 The report excludes VINs, MACs, profile/trip IDs, aliases, raw logs, adapter identity, and free-form status text. It still contains capture time and latest values. Inspect only synthetic fixtures in source control. See [the report contract](capability-report.md) and [the phone checklist](hardware-validation.md#capability-report-checklist-rx8-010). No new OBD command, persistent report history, Room migration, API enablement, or screen-awake owner is added.
 
-## Using the simulator
+## Internal synthetic fixtures
 
-- Connect to start generating synthetic sensor readings; disconnect to stop.
-- Select normal mode for valid deterministic readings.
-- Select timeout mode to make all readings report a timeout.
-- Select missing-data mode to make coolant and intake air temperatures unavailable while the other readings continue.
-- Reset to return to normal mode, disconnect, and reset simulated time to zero; reconnect to repeat the sequence.
-
-Missing or failed readings must remain visibly distinct from numerical zero.
-All readings in Simulator and its dashboard preview are synthetic; they are not measurements from the RX-8.
-
-Sampling runs only while the Simulator tab is visible in the foreground. Switching to Adapter, Live, Trips, or Vehicles, or moving the app to the background, pauses sampling; returning to Simulator allows a connected simulation to resume.
-The pause does not represent a saved trip, background service, or continuous recording.
-Only real acquisition can be recorded in Trips. Screen-locked recording and interruption recovery still need RX8-007 hardware validation.
+Synthetic telemetry remains available to isolated JVM/Compose fixtures. It covers valid, zero, missing, timeout and stale states, clearly labelled in screenshot evidence. It is not a production tab, background session or saved trip. The real dashboard must never substitute fixture values when the car is unavailable.
 
 ## Documentation checks
 

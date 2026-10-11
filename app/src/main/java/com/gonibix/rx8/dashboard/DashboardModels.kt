@@ -9,13 +9,12 @@ import com.gonibix.rx8.obd.ObdSessionSnapshot
 import com.gonibix.rx8.telemetry.ConnectionState
 import com.gonibix.rx8.telemetry.ReadingStatus
 import com.gonibix.rx8.telemetry.TelemetrySnapshot
+import com.gonibix.rx8.telemetry.TelemetryMetric
 
 internal val primaryDashboardMetrics = listOf(
     ObdMetric.ENGINE_RPM, ObdMetric.SPEED, ObdMetric.COOLANT_TEMPERATURE,
 )
-internal val extraDashboardMetrics = listOf(
-    ObdMetric.INTAKE_TEMPERATURE, ObdMetric.THROTTLE_POSITION, ObdMetric.ENGINE_LOAD,
-)
+internal val extraDashboardMetrics = ObdMetric.entries.filterNot { it in primaryDashboardMetrics }
 
 internal data class DashboardReading(
     val metric: ObdMetric,
@@ -46,18 +45,20 @@ internal fun dashboardModel(snapshot: ObdSessionSnapshot, favorites: Set<ObdMetr
     val knownPids = capabilities.values.flatten().toSet()
     val availableExtras = extraDashboardMetrics.filter { it.pid in knownPids }.toSet()
     val stopped = snapshot.phase == ObdPhase.STOPPED || snapshot.phase == ObdPhase.ERROR
+    val readingsBySource = snapshot.readings.groupBy { it.ecuId to it.metric }
     val ecus = capabilities.map { (ecuId, pids) ->
         val visible = primaryDashboardMetrics + extraDashboardMetrics.filter { it in selectedExtras }
         DashboardEcu(ecuId, visible.filter { it.pid in pids }.map { metric ->
-            val reading = snapshot.readings.firstOrNull { it.ecuId == ecuId && it.metric == metric }
-            val age = reading?.let { (snapshot.elapsedMillis - it.elapsedMillis).coerceAtLeast(0L) }
+            val reading = readingsBySource[ecuId to metric]?.singleOrNull()
+            val age = reading?.takeIf { it.elapsedMillis >= 0L && snapshot.elapsedMillis >= it.elapsedMillis }
+                ?.let { snapshot.elapsedMillis - it.elapsedMillis }
             val status = when {
-                reading?.status == ObdReadingStatus.VALID && reading.value?.isFinite() != true -> ObdReadingStatus.NO_DATA
-                reading?.status == ObdReadingStatus.VALID && (stopped || (age ?: 0L) >= 5_000L) -> ObdReadingStatus.STALE
+                reading?.status == ObdReadingStatus.VALID && reading.value?.let(metric::isValueInRange) != true -> ObdReadingStatus.NO_DATA
+                reading?.status == ObdReadingStatus.VALID && (stopped || age == null || age >= metric.freshnessMillis) -> ObdReadingStatus.STALE
                 else -> reading?.status
             }
             val value = reading?.value?.takeIf {
-                it.isFinite() && (status == ObdReadingStatus.VALID || status == ObdReadingStatus.STALE)
+                metric.isValueInRange(it) && (status == ObdReadingStatus.VALID || status == ObdReadingStatus.STALE)
             }
             DashboardReading(metric, ecuId, value, status, age, metric in selectedExtras)
         })
@@ -75,11 +76,12 @@ internal fun dashboardModel(snapshot: ObdSessionSnapshot, favorites: Set<ObdMetr
 /** Synthetic capabilities are known from the demo, never inferred for the real vehicle. */
 fun simulatorDashboardSnapshot(snapshot: TelemetrySnapshot): ObdSessionSnapshot {
     val connected = snapshot.connection == ConnectionState.CONNECTED
+    val fixturePids = ObdMetric.entries.filter { metric -> TelemetryMetric.entries.any { it.name == metric.name } }.map { it.pid }.toSet()
     return ObdSessionSnapshot(
         phase = if (connected) ObdPhase.LIVE else ObdPhase.STOPPED,
         statusMessage = if (connected) "Synthetic sensor values. No vehicle is queried." else
-            "Simulation disconnected. Return to Simulator to generate new values.",
-        ecus = listOf(ObdEcuCapabilities("SIMULATOR", ObdMetric.entries.map { it.pid }.toSet())),
+            "Synthetic fixture disconnected. No current measurements are available.",
+        ecus = listOf(ObdEcuCapabilities("SIMULATOR", fixturePids)),
         readings = snapshot.readings.map { reading ->
             val status = when (reading.status) {
                 ReadingStatus.VALID -> if (connected) ObdReadingStatus.VALID else ObdReadingStatus.STALE
@@ -95,7 +97,7 @@ fun simulatorDashboardSnapshot(snapshot: TelemetrySnapshot): ObdSessionSnapshot 
                 elapsedMillis = reading.elapsedMs,
             )
         },
-        supportedPidCount = ObdMetric.entries.size,
+        supportedPidCount = fixturePids.size,
         elapsedMillis = snapshot.elapsedMs,
     )
 }

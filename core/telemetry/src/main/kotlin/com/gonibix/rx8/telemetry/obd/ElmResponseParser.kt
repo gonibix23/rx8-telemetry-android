@@ -83,7 +83,7 @@ object ElmResponseParser {
                     ecu,
                 )
             }
-            if (payload.size != expectedBytes + 2 || payload[0] != 0x41 || payload[1] != pid) {
+            if (payload.size - 2 !in expectedBytes || payload[0] != 0x41 || payload[1] != pid) {
                 malformed("Unexpected service, PID, or data length in ECU $ecu response to $command.", ecu)
             }
             val response = ObdResponse(ecu, pid, payload.drop(2))
@@ -92,6 +92,7 @@ object ElmResponseParser {
                 malformed("Conflicting responses from ECU $ecu to $command.", ecu)
             }
             byEcu[ecu] = response
+            if (byEcu.size > 32) malformed("Too many ECU sources in one response.")
         }
         return byEcu.values.toList()
     }
@@ -157,8 +158,9 @@ object ElmResponseParser {
         return tokens.map { it.toInt(16) }
     }
 
-    private fun expectedDataBytes(pid: Int): Int =
-        if (isCapabilityPid(pid)) 4 else ObdPid.entries.singleOrNull { it.pid == pid }?.dataBytes
+    private fun expectedDataBytes(pid: Int): IntRange =
+        if (isCapabilityPid(pid)) 4..4 else ObdPid.entries.singleOrNull { it.pid == pid }
+            ?.let { it.minimumDataBytes..it.dataBytes }
             ?: malformed("This Mode 01 PID is outside the implemented decoder set.")
 
     private fun isCapabilityPid(pid: Int): Boolean = pid in 0..0xE0 && pid % 0x20 == 0

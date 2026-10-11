@@ -42,6 +42,9 @@ data class BluetoothConnectionUiState(
     val hasScanned: Boolean = false,
     val discoveryMessage: String? = null,
     val obd: ObdSessionSnapshot = ObdSessionSnapshot(),
+    val automaticConnectionReady: Boolean = false,
+    val isAwaitingVehicle: Boolean = false,
+    val automaticMessage: String? = null,
 )
 
 /** Service-owned link and acquisition state. Call actions on the owner dispatcher (Main in the app). */
@@ -52,6 +55,8 @@ class BluetoothSessionController(
     private val obdSessionFactory: ObdSessionFactory = ObdSessionFactory { Elm327Session(it) },
     private val onObdSnapshot: (ObdSessionSnapshot) -> Unit = {},
     private val onSessionEnded: (completed: Boolean) -> Unit = {},
+    private val autoStartObd: Boolean = false,
+    private val onConnected: suspend (AdapterDevice) -> Unit = {},
 ) {
     private val closed = AtomicBoolean(false)
     private val mutableState = MutableStateFlow(BluetoothConnectionUiState())
@@ -225,11 +230,30 @@ class BluetoothSessionController(
         )
     }
 
+    /** Only the private last-success preference can enter here; UI selection remains list-based. */
+    internal fun selectRememberedDevice(address: String): Boolean {
+        if (closed.get() || mutableState.value.phase != BluetoothConnectionPhase.DISCONNECTED) return false
+        val normalized = normalizedAdapterAddress(address) ?: return false
+        refresh()
+        if (mutableState.value.availability != BluetoothAvailability.READY) return false
+        val listed = mutableState.value.devices.firstOrNull { it.address.sameAddress(normalized) }
+        if (listed == null) {
+            discovered[normalized] = AdapterDevice(normalized, "Last connected adapter", isPaired = false)
+            publishDevices()
+        }
+        selectDevice(listed ?: AdapterDevice(normalized, "Last connected adapter", isPaired = false))
+        return mutableState.value.selectedDevice?.address?.equals(normalized, ignoreCase = true) == true
+    }
+
     fun connect() {
+        if (!mutableState.value.isForeground) return
+        connectFromVisibleApp()
+    }
+
+    /** The service verifies Activity visibility before authorizing this independent of the selected tab. */
+    internal fun connectFromVisibleApp() {
         if (closed.get()) return
-        if (!mutableState.value.isForeground ||
-            mutableState.value.phase != BluetoothConnectionPhase.DISCONNECTED
-        ) return
+        if (mutableState.value.phase != BluetoothConnectionPhase.DISCONNECTED) return
         refresh()
         val device = mutableState.value.selectedDevice ?: return
         if (mutableState.value.availability != BluetoothAvailability.READY) return
@@ -256,13 +280,22 @@ class BluetoothSessionController(
                 mutableState.value = mutableState.value.copy(
                     phase = BluetoothConnectionPhase.CONNECTED,
                     message = null,
-                    obd = ObdSessionSnapshot(),
+                    obd = if (autoStartObd) ObdSessionSnapshot(
+                        phase = ObdPhase.INITIALIZING, statusMessage = "Preparing automatic vehicle readings…",
+                    ) else ObdSessionSnapshot(),
                 )
+                // Profile lookup/recording preparation precedes the first ECU request. A tab change
+                // or screen lock must not revoke this continuation of an already authorized link.
+                if (!isActive || sessionGeneration != generation || connection !== opened) return@launch
+                onConnected(device)
+                if (autoStartObd && isActive && sessionGeneration == generation && connection === opened) {
+                    startOwnedObd()
+                }
             } catch (_: TimeoutCancellationException) {
                 failCurrentSession(sessionGeneration, "Connection timed out. Disconnect Car Scanner, check the adapter, and reconnect manually.")
             } catch (cancelled: CancellationException) {
                 if (sessionGeneration == generation) {
-                    sessionAddress = null
+                    endSession()
                     mutableState.value = mutableState.value.copy(phase = BluetoothConnectionPhase.DISCONNECTED)
                 }
                 throw cancelled
@@ -286,13 +319,17 @@ class BluetoothSessionController(
     }
 
     fun startObd() {
+        if (!mutableState.value.isForeground) return
+        startOwnedObd()
+    }
+
+    private fun startOwnedObd() {
         if (closed.get()) return
         val current = mutableState.value
         val ownedConnection = connection ?: return
-        if (!current.isForeground || current.phase != BluetoothConnectionPhase.CONNECTED || obdJob?.isActive == true) return
+        if (current.phase != BluetoothConnectionPhase.CONNECTED || obdJob?.isActive == true) return
         val sessionGeneration = generation
         mutableState.value = current.copy(
-            message = null,
             obd = ObdSessionSnapshot(phase = ObdPhase.INITIALIZING, statusMessage = "Preparing the adapter…"),
         )
         obdJob = scope.launch(dispatcher) {
@@ -407,7 +444,7 @@ class BluetoothSessionController(
 
     private fun failCurrentSession(expectedGeneration: Long, message: String) {
         if (expectedGeneration != generation) return
-        sessionAddress = null
+        endSession()
         mutableState.value = mutableState.value.copy(phase = BluetoothConnectionPhase.DISCONNECTED)
         refresh()
         if (mutableState.value.availability == BluetoothAvailability.READY) {
@@ -462,6 +499,20 @@ class BluetoothSessionController(
         cancelScan()
         endSession()
         mutableState.value = mutableState.value.copy(phase = BluetoothConnectionPhase.DISCONNECTED, message = message)
+    }
+
+    internal fun setAutomaticConnectionReady(ready: Boolean) {
+        if (!closed.get()) mutableState.value = mutableState.value.copy(automaticConnectionReady = ready)
+    }
+
+    internal fun setConnectionMessage(message: String) {
+        if (!closed.get()) mutableState.value = mutableState.value.copy(message = message)
+    }
+
+    internal fun setAutomaticGuidance(awaitingVehicle: Boolean, message: String?) {
+        if (!closed.get()) mutableState.value = mutableState.value.copy(
+            isAwaitingVehicle = awaitingVehicle, automaticMessage = message,
+        )
     }
 
     /** Terminal, idempotent owner cleanup, also invoked when the injected scope completes. */

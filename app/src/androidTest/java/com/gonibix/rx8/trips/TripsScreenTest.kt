@@ -56,12 +56,25 @@ class TripsScreenTest {
         compose.onNodeWithTag("start_recording").assertIsNotEnabled()
     }
 
-    @Test fun recordingStartsOnlyOnClickForTheSelectedProfile() {
+    @Test fun manualResumeDelegatesSelectedProfileOnlyOnClick() {
         val starts = mutableListOf<VehicleProfile>()
         show(canStart = true, onStart = { starts += it })
         assertTrue(starts.isEmpty())
         compose.onNodeWithTag("start_recording").assertIsEnabled().performClick()
         assertEquals(listOf(vehicle), starts)
+    }
+
+    @Test fun automaticSessionGuidanceDoesNotInventARecording() {
+        show(selected = null, automaticMessage = "Choose a saved vehicle to begin recording.")
+        compose.onNodeWithTag("trip_automatic_message").assertTextEquals("Choose a saved vehicle to begin recording.")
+        compose.onNodeWithTag("recording_vehicle").assertDoesNotExist()
+        compose.onNodeWithTag("start_recording").assertIsNotEnabled()
+    }
+
+    @Test fun activeRecordingStopWaitsForServiceRebinding() {
+        show(recording = TripRecordingState(session = trip.copy(status = TripStatus.RECORDING)), canStop = false)
+        compose.onNodeWithTag("recording_vehicle").assertTextEquals("Recording for Fixture RX-8")
+        compose.onNodeWithTag("stop_recording").assertIsNotEnabled()
     }
 
     @Test fun activeRecordingKeepsItsOriginalVehicleAndHasExplicitStop() {
@@ -220,13 +233,16 @@ class TripsScreenTest {
         onExport: (TripSession, TripExportFormat) -> Unit = { _, _ -> },
         fixtureBanner: Boolean = false,
         fixtureLabel: String = "UI TEST FIXTURE · FAKE TRIP",
+        automaticMessage: String? = null,
+        canStop: Boolean = true,
     ) {
         compose.setContent {
             Rx8Theme {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onBackground) {
                     Column(Modifier.safeDrawingPadding()) {
                         if (fixtureBanner) Text(fixtureLabel)
-                        TripsContent(state, selected, recording, canStart, onStart, onStop, {}, {}, {}, {}, {}, onDelete, onExport, Modifier.weight(1f))
+                        TripsContent(state, selected, recording, canStart, onStart, onStop, {}, {}, {}, {}, {}, onDelete, onExport, Modifier.weight(1f),
+                            automaticMessage = automaticMessage, canStop = canStop)
                     }
                 }
             }

@@ -29,6 +29,17 @@ class RoomTripRepository(private val database: VehicleDatabase) : TripRepository
         database.sync().enqueueSession(entity)
     }
 
+    override suspend fun updateProtocol(tripId: String, protocolLabel: String) = database.withTransaction {
+        require(protocolLabel.isNotBlank())
+        val session = requireNotNull(dao.find(tripId)) { "Trip not found" }
+        check(session.status == TripStatus.RECORDING.name) { "Trip is not recording" }
+        if (session.protocolLabel == protocolLabel) return@withTransaction
+        check(session.protocolLabel == null) { "A trip's discovered protocol cannot be reassigned" }
+        val updated = session.copy(protocolLabel = protocolLabel, revision = Math.addExact(session.revision, 1L))
+        dao.updateSession(updated)
+        database.sync().enqueueSession(updated)
+    }
+
     override suspend fun append(tripId: String, samples: List<TripSample>) = database.withTransaction {
         val session = requireNotNull(dao.find(tripId)) { "Trip not found" }
         check(session.status == TripStatus.RECORDING.name) { "Trip is not recording" }

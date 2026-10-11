@@ -20,23 +20,24 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
+import androidx.compose.material3.PrimaryScrollableTabRow
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -52,8 +53,6 @@ import com.gonibix.rx8.capabilities.rememberCapabilityReportExportAction
 import com.gonibix.rx8.dashboard.DashboardPreferencesViewModel
 import com.gonibix.rx8.dashboard.LiveDashboard
 import com.gonibix.rx8.ui.KeepScreenAwake
-import com.gonibix.rx8.ui.SimulatorDashboard
-import com.gonibix.rx8.ui.SimulatorDashboardPreview
 import com.gonibix.rx8.obd.ObdPhase
 import com.gonibix.rx8.obd.ObdSessionSnapshot
 import com.gonibix.rx8.obd.ObdVinStatus
@@ -78,9 +77,6 @@ class MainActivity : ComponentActivity() {
                 return VehicleProfileViewModel(RoomVehicleRepository(VehicleDatabase.open(applicationContext))) as T
             }
         })[VehicleProfileViewModel::class.java]
-    }
-    private val simulatorViewModel by lazy {
-        ViewModelProvider(this)[SimulatorViewModel::class.java]
     }
     private val dashboardPreferences by lazy {
         ViewModelProvider(this)[DashboardPreferencesViewModel::class.java]
@@ -108,11 +104,13 @@ class MainActivity : ComponentActivity() {
     private var serviceBound = false
     private var selectedTab by mutableStateOf("adapter")
     private var showCapabilityReport by mutableStateOf(false)
-    private var connectAfterPermission by mutableStateOf(false)
+    private var pendingConnection by mutableStateOf<String?>(null)
+    private var notificationPermissionPending by mutableStateOf(false)
+    private var appForeground by mutableStateOf(false)
     private var notificationsAllowed by mutableStateOf(true)
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, service: IBinder) {
-            sessionBinder = service as BluetoothSessionService.LocalBinder
+            sessionBinder = (service as BluetoothSessionService.LocalBinder).also { it.setAppForeground(appForeground) }
         }
 
         override fun onServiceDisconnected(name: ComponentName) {
@@ -127,7 +125,7 @@ class MainActivity : ComponentActivity() {
     ) { allowed ->
         notificationsAllowed = allowed
         // Denial hides the drawer notification, but does not prevent a foreground service.
-        connectAfterPermission = selectedTab == "adapter"
+        notificationPermissionPending = false
     }
     private var scanAfterPermission by mutableStateOf(false)
     private val discoveryPermissions = registerForActivityResult(
@@ -142,7 +140,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         scanAfterPermission = savedInstanceState?.getBoolean("scan_after_permission") ?: false
-        selectedTab = savedInstanceState?.getString("selected_tab") ?: "adapter"
+        pendingConnection = savedInstanceState?.getString("pending_connection")?.takeIf { it == "manual" || it == "automatic" }
+        notificationPermissionPending = savedInstanceState?.getBoolean("notification_permission_pending") ?: false
+        selectedTab = restoredMainDestination(savedInstanceState?.getString("selected_tab"))
         showCapabilityReport = savedInstanceState?.getBoolean("show_capability_report") ?: false
         if (savedInstanceState == null && intent.action == BluetoothSessionService.ACTION_OPEN_SESSION) {
             selectedTab = "adapter"
@@ -154,7 +154,6 @@ class MainActivity : ComponentActivity() {
         setContent {
             Rx8Theme {
                 val showBluetooth = selectedTab == "adapter"
-                var previewDashboard by rememberSaveable { mutableStateOf(false) }
                 val vehicles by vehicleViewModel.uiState.collectAsStateWithLifecycle()
                 val favorites by dashboardPreferences.favorites.collectAsStateWithLifecycle()
                 val favoritesError by dashboardPreferences.error.collectAsStateWithLifecycle()
@@ -170,6 +169,24 @@ class MainActivity : ComponentActivity() {
                 val capabilityState by capabilityReportViewModel.uiState.collectAsStateWithLifecycle()
                 // Keep document registration stable while tabs change or the Activity is recreated.
                 val capabilityExport = rememberCapabilityReportExportAction(capabilityReportViewModel)
+                LaunchedEffect(binder, appForeground, sessionState?.automaticConnectionReady, pendingConnection, notificationPermissionPending) {
+                    if (binder != null && appForeground) {
+                        if (pendingConnection == null && sessionState?.automaticConnectionReady == true) {
+                            requestSessionConnection(automatic = true)
+                        }
+                        if (!notificationPermissionPending) {
+                            val request = pendingConnection
+                            pendingConnection = null
+                            when (request) {
+                                "automatic" -> binder.tryAutomaticConnection()
+                                "manual" -> binder.connect()
+                            }
+                        }
+                    }
+                }
+                LaunchedEffect(binder, vehicles.isLoading, vehicles.vehicles.activeVehicleId) {
+                    if (!vehicles.isLoading) binder?.refreshSelectedVehicle()
+                }
                 BackHandler(enabled = showBluetooth && showCapabilityReport) { showCapabilityReport = false }
                 // One owner for the shared View flag avoids competing effects when tabs change.
                 KeepScreenAwake(
@@ -177,10 +194,9 @@ class MainActivity : ComponentActivity() {
                         ObdPhase.INITIALIZING, ObdPhase.DISCOVERING, ObdPhase.LIVE,
                     ),
                 )
-                LaunchedEffect(showBluetooth, showCapabilityReport, scanAfterPermission, connectAfterPermission) {
+                LaunchedEffect(showBluetooth, showCapabilityReport, scanAfterPermission) {
                     if (!showBluetooth || showCapabilityReport) {
                         scanAfterPermission = false
-                        connectAfterPermission = false
                     }
                 }
                 Surface(
@@ -189,49 +205,11 @@ class MainActivity : ComponentActivity() {
                     contentColor = MaterialTheme.colorScheme.onBackground,
                 ) {
                     Column(Modifier.fillMaxSize().safeDrawingPadding()) {
-                        Row(Modifier.fillMaxWidth().selectableGroup()) {
-                            Tab(
-                                selected = showBluetooth,
-                                selectedContentColor = AccentColor,
-                                unselectedContentColor = MutedColor,
-                                onClick = { selectedTab = "adapter"; showCapabilityReport = false },
-                                text = { Text("Adapter", style = MaterialTheme.typography.labelMedium) },
-                                modifier = Modifier.weight(1f).testTag("adapter_tab"),
-                            )
-                            Tab(
-                                selected = selectedTab == "dashboard",
-                                selectedContentColor = AccentColor,
-                                unselectedContentColor = MutedColor,
-                                onClick = { selectedTab = "dashboard" },
-                                text = { Text("Live", style = MaterialTheme.typography.labelMedium) },
-                                modifier = Modifier.weight(0.75f).testTag("dashboard_tab"),
-                            )
-                            Tab(
-                                selected = selectedTab == "trips",
-                                selectedContentColor = AccentColor,
-                                unselectedContentColor = MutedColor,
-                                onClick = { selectedTab = "trips" },
-                                text = { Text("Trips", style = MaterialTheme.typography.labelMedium) },
-                                modifier = Modifier.weight(1f).testTag("trips_tab"),
-                            )
-                            Tab(
-                                selected = selectedTab == "vehicles",
-                                selectedContentColor = AccentColor,
-                                unselectedContentColor = MutedColor,
-                                onClick = { selectedTab = "vehicles" },
-                                text = { Text("Vehicles", style = MaterialTheme.typography.labelMedium) },
-                                modifier = Modifier.weight(1f).testTag("vehicles_tab"),
-                            )
-                            Tab(
-                                selected = selectedTab == "simulator",
-                                selectedContentColor = AccentColor,
-                                unselectedContentColor = MutedColor,
-                                onClick = { selectedTab = "simulator" },
-                                text = { Text("Simulator", style = MaterialTheme.typography.labelMedium) },
-                                modifier = Modifier.weight(1.25f).testTag("simulator_tab"),
-                            )
-                        }
-                        if (selectedTab == "dashboard" || selectedTab == "simulator" && previewDashboard) {
+                        MainNavigationTabs(selectedTab, onSelect = { destination ->
+                            selectedTab = destination
+                            if (destination == "adapter") showCapabilityReport = false
+                        })
+                        if (selectedTab == "dashboard") {
                             if (favoritesError != null) {
                                 Text(requireNotNull(favoritesError), color = MaterialTheme.colorScheme.error)
                             } else if (favoritesLoading || favoritesSaving) {
@@ -267,12 +245,6 @@ class MainActivity : ComponentActivity() {
                                             controller.startDiscovery()
                                         }
                                     }
-                                    LaunchedEffect(state.isForeground, connectAfterPermission) {
-                                        if (state.isForeground && connectAfterPermission) {
-                                            connectAfterPermission = false
-                                            binder.connect()
-                                        }
-                                    }
                                     BluetoothConnectionScreen(
                                         state = state,
                                         onRefresh = controller::refresh,
@@ -286,9 +258,9 @@ class MainActivity : ComponentActivity() {
                                             })
                                         },
                                         onSelectDevice = controller::selectDevice,
-                                        onConnect = ::requestSessionConnection,
-                                        onDisconnect = controller::disconnect,
-                                        onStartObd = controller::startObd,
+                                        onConnect = { requestSessionConnection() },
+                                        onDisconnect = { binder?.disconnect() },
+                                        onOpenVehicles = { selectedTab = "vehicles" },
                                         onOpenCapabilities = {
                                             capabilityReportViewModel.capture(controller.uiState.value.obd)
                                             showCapabilityReport = true
@@ -312,7 +284,7 @@ class MainActivity : ComponentActivity() {
                             } else if (selectedTab == "dashboard") {
                                 val state = sessionState
                                 val snapshot = state?.obd ?: ObdSessionSnapshot(
-                                    statusMessage = "Open Adapter to connect and start live data.",
+                                    statusMessage = "Open Adapter to connect. Live readings start automatically.",
                                 )
                                 LiveDashboard(
                                     snapshot = snapshot,
@@ -337,10 +309,12 @@ class MainActivity : ComponentActivity() {
                                         onStart = { vehicle ->
                                             if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) binder?.startTrip(vehicle)
                                         },
-                                        onStop = { tripRuntime.recorder.stop() },
+                                        onStop = { binder?.stopTrip() },
                                         onOpenAdapter = { selectedTab = "adapter"; showCapabilityReport = false },
                                         onOpenVehicles = { selectedTab = "vehicles" },
                                         historyVehicles = vehicles.vehicles.profiles,
+                                        automaticMessage = sessionState?.automaticMessage,
+                                        canStop = binder != null,
                                     )
                                 }
                             } else if (selectedTab == "vehicles") {
@@ -360,30 +334,7 @@ class MainActivity : ComponentActivity() {
                                     onCreateDetectedVehicle = vehicleViewModel::createDetectedVehicle,
                                     onDismissDetectedVin = vehicleViewModel::dismissDetectedVin,
                                 )
-                            } else {
-                                val state by simulatorViewModel.uiState.collectAsStateWithLifecycle()
-                                LifecycleStartEffect(simulatorViewModel) {
-                                    simulatorViewModel.setActive(true)
-                                    onStopOrDispose { simulatorViewModel.setActive(false) }
-                                }
-                                if (previewDashboard) {
-                                    SimulatorDashboardPreview(
-                                        snapshot = state,
-                                        favorites = favorites,
-                                        onToggleFavorite = dashboardPreferences::toggleFavorite,
-                                        onToggleSimulation = simulatorViewModel::toggleSimulation,
-                                        onScenarioSelected = simulatorViewModel::selectScenario,
-                                        onBack = { previewDashboard = false },
-                                    )
-                                } else {
-                                    SimulatorDashboard(
-                                        snapshot = state,
-                                        onToggleSimulation = simulatorViewModel::toggleSimulation,
-                                        onReset = simulatorViewModel::resetSimulation,
-                                        onScenarioSelected = simulatorViewModel::selectScenario,
-                                        onOpenDashboard = { previewDashboard = true },
-                                    )
-                                }
+
                             }
                         }
                     }
@@ -394,6 +345,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        appForeground = true
+        sessionBinder?.setAppForeground(true)
         notificationsAllowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         if (!serviceBound) {
@@ -414,13 +367,16 @@ class MainActivity : ComponentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean("scan_after_permission", scanAfterPermission)
+        outState.putString("pending_connection", pendingConnection)
+        outState.putBoolean("notification_permission_pending", notificationPermissionPending)
         outState.putString("selected_tab", selectedTab)
         outState.putBoolean("show_capability_report", showCapabilityReport)
         super.onSaveInstanceState(outState)
     }
 
     override fun onStop() {
-        connectAfterPermission = false
+        appForeground = false
+        sessionBinder?.setAppForeground(false)
         sessionBinder?.controller?.setForeground(false)
         if (serviceBound) {
             unbindService(serviceConnection)
@@ -442,15 +398,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun requestSessionConnection() {
+    private fun requestSessionConnection(automatic: Boolean = false) {
+        if (pendingConnection != null || notificationPermissionPending) return
+        pendingConnection = if (automatic) "automatic" else "manual"
         val preferences = getSharedPreferences("session_ui", Context.MODE_PRIVATE)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !notificationsAllowed &&
             !preferences.getBoolean("notifications_requested", false)
         ) {
             preferences.edit { putBoolean("notifications_requested", true) }
+            notificationPermissionPending = true
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            sessionBinder?.connect()
         }
     }
 
@@ -472,6 +429,36 @@ class MainActivity : ComponentActivity() {
             sessionBinder?.controller?.startDiscovery()
         } else {
             discoveryPermissions.launch(permissions)
+        }
+    }
+}
+
+/** Older saved navigation must never reopen a removed demonstration destination. */
+internal fun restoredMainDestination(saved: String?): String = when (saved) {
+    null -> "adapter"
+    "adapter", "dashboard", "trips", "vehicles" -> saved
+    else -> "dashboard"
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun MainNavigationTabs(selected: String, onSelect: (String) -> Unit, modifier: Modifier = Modifier) {
+    val destinations = listOf("adapter" to "Adapter", "dashboard" to "Live", "trips" to "Trips", "vehicles" to "Vehicles")
+    PrimaryScrollableTabRow(
+        selectedTabIndex = destinations.indexOfFirst { it.first == selected }.coerceAtLeast(0),
+        modifier = modifier.fillMaxWidth().testTag("main_tabs"),
+        edgePadding = 0.dp,
+        minTabWidth = 72.dp,
+    ) {
+        destinations.forEach { (id, label) ->
+            Tab(
+                selected = selected == id,
+                selectedContentColor = AccentColor,
+                unselectedContentColor = MutedColor,
+                onClick = { onSelect(id) },
+                text = { Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false) },
+                modifier = Modifier.testTag("${id}_tab"),
+            )
         }
     }
 }

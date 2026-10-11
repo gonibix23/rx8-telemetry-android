@@ -188,13 +188,17 @@ class TripAnalysisTest {
     }
 
     @Test fun excessiveRecordedSeriesFailClearlyInsteadOfGrowingUnboundedChoices() = runTest {
-        val samples = (0L..192L).map { analysisSample(it, it, null, ecu = "source-$it", quality = ObdReadingStatus.NO_DATA) }
+        // Include later pages so the failure must stop paging as soon as the limit is exceeded.
+        val samples = (0L..MAX_TRIP_SERIES.toLong() + 1_000L).map { analysisSample(it, it, null, ecu = "source-$it", quality = ObdReadingStatus.NO_DATA) }
         val repository = AnalyticsExportRepository(samples)
         var failure: Throwable? = null
         try { analyzeTrip(repository, analysisTrip()) } catch (caught: Throwable) { failure = caught }
         assertTrue(failure is IOException)
         assertTrue(failure?.message.orEmpty().contains("too many sensor/source combinations"))
-        assertEquals(1, repository.requests.size)
+        val requiredPages = MAX_TRIP_SERIES / 500 + 1
+        assertEquals(requiredPages, repository.requests.size)
+        assertEquals(List(requiredPages) { page -> page * 500L - 1L }, repository.requests.map { it.first })
+        assertTrue(repository.requests.all { it.second == 500 })
     }
 }
 
@@ -228,7 +232,8 @@ internal class AnalyticsExportRepository(private val history: List<TripSample> =
         beforePage(requests.size)
         return fixedPage ?: history.filter { it.sequence > afterSequence }.take(limit)
     }
-    override suspend fun recoverInterrupted() = Unit
+    override suspend fun updateProtocol(tripId: String, protocolLabel: String) = Unit
+        override suspend fun recoverInterrupted() = Unit
     override suspend fun create(session: TripSession) = error("Read-only test")
     override suspend fun append(tripId: String, samples: List<TripSample>) = error("Read-only test")
     override suspend fun finish(tripId: String, endedAtEpochMillis: Long, durationMillis: Long, status: TripStatus, reason: String) = error("Read-only test")

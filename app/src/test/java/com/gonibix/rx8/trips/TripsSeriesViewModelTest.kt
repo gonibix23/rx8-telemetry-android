@@ -320,6 +320,7 @@ class TripsSeriesViewModelTest {
         fun gateNextPage() = ReadGate().also { pageGates.add(it); allGates.add(it) }
         fun gateNextFind() = ReadGate().also { findGates.add(it); allGates.add(it) }
         fun releaseGates() { allGates.forEach { it.release.complete(Unit) } }
+        override suspend fun updateProtocol(tripId: String, protocolLabel: String) = Unit
         override suspend fun recoverInterrupted() = error("History must not recover recordings")
         override suspend fun create(session: TripSession) = error("History must not create recordings")
         override suspend fun append(tripId: String, samples: List<TripSample>) = error("History must not append samples")

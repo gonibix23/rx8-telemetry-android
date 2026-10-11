@@ -27,6 +27,7 @@ class TripRecorder(
 ) {
     private sealed interface Command {
         data class Start(val session: TripSession) : Command
+        data class Protocol(val tripId: String, val label: String) : Command
         data class Samples(val tripId: String, val values: List<TripSample>) : Command
         data class Stop(val tripId: String, val timestamp: Long, val elapsed: Long, val status: TripStatus, val reason: String) : Command
     }
@@ -36,6 +37,7 @@ class TripRecorder(
         val seen: MutableMap<Pair<String, String>, Pair<Long, Long>>,
         var nextSequence: Long = 0,
         var accepting: Boolean = true,
+        var protocolQueued: Boolean = session.protocolLabel != null,
     )
 
     private val lock = Any()
@@ -74,6 +76,16 @@ class TripRecorder(
                             persistedId = command.session.id
                             synchronized(lock) {
                                 mutableState.value = mutableState.value.copy(session = command.session, isStarting = false)
+                            }
+                        }
+                        is Command.Protocol -> {
+                            if (persistedId == command.tripId) {
+                                repository.updateProtocol(command.tripId, command.label)
+                                synchronized(lock) {
+                                    mutableState.value = mutableState.value.copy(
+                                        session = mutableState.value.session?.copy(protocolLabel = command.label),
+                                    )
+                                }
                             }
                         }
                         is Command.Samples -> {
@@ -130,19 +142,43 @@ class TripRecorder(
 
     fun start(vehicle: VehicleProfile, snapshot: ObdSessionSnapshot) = synchronized(lock) {
         if (active != null || snapshot.phase != ObdPhase.LIVE) return@synchronized
+        startLocked(vehicle, clock.epochMillis(), clock.monotonicMillis(), snapshot.protocolLabel,
+            snapshot.readings.associate { it.key() to it.fingerprint() }.toMutableMap())
+    }
+
+    /** Connection time anchors the journey even while ELM discovery has not produced readings. */
+    fun startConnected(vehicle: VehicleProfile, connectedAtEpochMillis: Long, connectedAtMonotonicMillis: Long): Boolean = synchronized(lock) {
+        if (active != null) return@synchronized false
+        require(connectedAtEpochMillis >= 0 && connectedAtMonotonicMillis >= 0)
+        startLocked(vehicle, connectedAtEpochMillis, connectedAtMonotonicMillis, null, mutableMapOf())
+        true
+    }
+
+    private fun startLocked(
+        vehicle: VehicleProfile,
+        epochMillis: Long,
+        monotonicMillis: Long,
+        protocolLabel: String?,
+        seen: MutableMap<Pair<String, String>, Pair<Long, Long>>,
+    ) {
         val session = TripSession(
-            UUID.randomUUID().toString(), vehicle.id, vehicle.alias, clock.epochMillis(),
-            protocolLabel = snapshot.protocolLabel, appVersion = appVersion,
+            UUID.randomUUID().toString(), vehicle.id, vehicle.alias, epochMillis,
+            protocolLabel = protocolLabel, appVersion = appVersion,
         )
-        // Cached dashboard values predate the button press; they are never backfilled into a trip.
-        active = Active(session, clock.monotonicMillis(), snapshot.readings.associate { it.key() to it.fingerprint() }.toMutableMap())
+        // Explicit resume supplies the dashboard baseline; connection starts have no cached samples.
+        active = Active(session, monotonicMillis, seen)
         mutableState.value = TripRecordingState(isStarting = true, revision = mutableState.value.revision)
         commands.trySend(Command.Start(session))
     }
 
     fun onSnapshot(snapshot: ObdSessionSnapshot) = synchronized(lock) {
         val current = active?.takeIf { it.accepting } ?: return@synchronized
+        if (!current.protocolQueued && !snapshot.protocolLabel.isNullOrBlank()) {
+            current.protocolQueued = true
+            commands.trySend(Command.Protocol(current.session.id, snapshot.protocolLabel))
+        }
         val fresh = snapshot.readings.filter { reading ->
+            if (!reading.isRequestResult) return@filter false
             val old = current.seen.put(reading.key(), reading.fingerprint())
             old != reading.fingerprint() && reading.status != ObdReadingStatus.STALE && reading.status != ObdReadingStatus.UNSUPPORTED
         }

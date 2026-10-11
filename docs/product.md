@@ -8,13 +8,13 @@ Selected priority: live data and trip recording. Prepare for a future API withou
 The user reported a successful simulator app test on October 10, 2026. The paired-only Bluetooth build failed to list the adapter.
 Car Scanner reportedly finds OBDII and its MAC address through in-app search with plain Bluetooth selected.
 The user confirmed Bluetooth works and reported successful live readings on October 11, 2026; PR #14 is merged. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed correct readings in 0.5.0-dev. Individual sensors, ECU identifiers, measured rates, sustained lifecycle behavior, VIN retrieval, and profile persistence remain unverified.
-The user broadly confirmed that 0.6.0-dev worked on October 11, 2026, and PR #18 is merged. This does not establish individual sensor results, every favorite-persistence scenario, or measured session duration/battery use. The user subsequently confirmed that 0.7.0-dev worked perfectly, and PR #19 is merged. It provides local trip recording, history, summaries, charts, exports, and deletion; detailed provider, interruption, storage, and duration checks remain open. The user also confirmed 0.8.0-dev worked correctly, and PR #20 is merged with API uploads disabled. PR #22 adds capability reports in 0.9.0-dev and is merged with phone validation explicitly deferred by the user. The current 0.10.0-dev increment (version code 11) adds selectable recorded-sensor charts.
+The user broadly confirmed that 0.6.0-dev worked on October 11, 2026, and PR #18 is merged. This does not establish individual sensor results, every favorite-persistence scenario, or measured session duration/battery use. The user subsequently confirmed that 0.7.0-dev worked perfectly, and PR #19 is merged. It provides local trip recording, history, summaries, charts, exports, and deletion; detailed provider, interruption, storage, and duration checks remain open. The user also confirmed 0.8.0-dev worked correctly, and PR #20 is merged with API uploads disabled. PR #22 adds capability reports in 0.9.0-dev and is merged with phone validation explicitly deferred by the user. The earlier 0.10.0-dev increment (version code 11) adds selectable recorded-sensor charts.
 
-The user subsequently reported that 0.10.0-dev works well, and PR #25 is merged. This confirms the delivered build broadly; individual chart/ECU, rotation, and export checks remain unreported. RX8-011 CI maintenance is merged in PR #26. The current 0.11.0-dev increment (version code 12) adds paged history and independent vehicle filtering.
+The user subsequently reported that 0.10.0-dev works well, and PR #25 is merged. This confirms the delivered build broadly; individual chart/ECU, rotation, and export checks remain unreported. RX8-011 CI maintenance is merged in PR #26. The 0.11.0-dev increment adds paged history and independent vehicle filtering, merged in PR #30. Version 0.12.0-dev (code 13) adds the automatic session flow, expanded readings and real RPM dial requested by the user; journeys are telemetry only, without GPS.
 
 ## Current capability reports
 
-After successful discovery, Adapter offers Vehicle capabilities. It captures the current real acquisition snapshot, including retained stopped/error data, without requiring a saved profile or recording a trip. Each ECU lists its advertised Mode 01 PIDs and the latest displayed states of the six implemented metrics. Other advertised PIDs are visible as unimplemented; they are never queried or given invented names/values.
+After successful discovery, Adapter offers Vehicle capabilities. It captures the current real acquisition snapshot, including retained stopped/error data, without requiring a saved profile or recording a trip. Each ECU lists its advertised Mode 01 PIDs and the latest displayed states of the implemented scalar metrics. Scaling metadata PIDs 4F/50 are identified separately; they are used only when advertised. Other unimplemented PIDs remain visible without invented names/values and are not queried.
 
 A report is frozen at capture time. Capture latest snapshot explicitly replaces the preview, while exporting retains the exact selected report across the document picker and Activity recreation. The view is temporary until exported; process death clears it. Export errors and cancellation do not become success messages.
 
@@ -22,12 +22,11 @@ Reports contain capture time, acquisition state, recognized protocol, duration/r
 
 ## Current live dashboard
 
-The Live tab presents the dashboard: RPM, speed, and coolant temperature in fixed primary positions when reported as supported. Intake temperature, throttle position, and engine load can be selected as extra favorites from the session's known capabilities.
-Each ECU has its own values; the app does not average different ECU responses or identify an engine controller by assumption. Cards show units, age, and quality, preserving valid zero readings and distinguishing missing, unsupported, failed, and stale readings.
-Favorite selections persist across app restarts as app-wide preferences, independent of the selected vehicle or ECU. A saved favorite unavailable in another session remains visibly unavailable. Selecting a favorite changes presentation, not sensor support or polling priority.
-Live shows real ECU data and connection/acquisition status. Opening it does not connect, start polling, or record a trip; use Adapter for connection/acquisition and Trips for explicit recording. It does not display simulator values as car readings. Estimated distance is confined to saved-trip summaries.
-The Simulator tab previews the same cards with a prominent synthetic-data label and its normal, timeout, and missing-data controls. Simulator sampling remains limited to that visible foreground tab.
-The broad 0.6.0-dev success report is recorded; detailed layout, favorite-persistence, and navigation scenarios still need the A53 checks in RX8-006.
+The four tabs are Adapter, Live, Trips and Vehicles. Labels stay on one line; navigation adapts to available width. Old saved Simulator navigation resolves to Live. Production navigation no longer creates or activates a simulator.
+
+Live uses the real per-ECU snapshot. RPM appears in the segmented dial previously used by the simulator, accompanied by supported speed/coolant cards and selectable extra sensor favorites. The scale is a display scale, not an inferred rev limit. Missing or failed readings do not move the dial to a fabricated zero. Stopped/stale values remain clearly historical. Each ECU retains its independent values, units, quality and age.
+
+Favorites persist app-wide using stable metric IDs; unavailable saved choices remain visible and removable. Choosing a favorite affects presentation only: every implemented supported parameter is acquired and recorded. Saved-trip statistics and sensor charts remain in Trips. Synthetic fixtures remain available to tests without a production Simulator tab.
 
 ## Current vehicle profiles
 
@@ -36,29 +35,30 @@ Names contain 1-60 characters after trimming. The optional VIN contains 17 lette
 Read VIN is available only after live acquisition starts. The user chooses a candidate in Adapter, then reviews it in Vehicles before attaching it to a VIN-less profile or creating a separate profile.
 A matching VIN offers explicit selection of its existing profile. A different VIN cannot overwrite the selected profile. Adding a VIN or changing the name never changes the UUID.
 VINs are masked by default and record manual entry or OBD/ECU provenance. A car can be used without a VIN; its Bluetooth adapter does not identify it.
-Switching to Vehicles leaves an active Bluetooth/acquisition session running. Profiles, selected vehicle, dashboard favorites, explicitly recorded trips/samples, and pending work are saved locally. Real uploads remain disabled.
+Switching to Vehicles leaves an active Bluetooth/acquisition session running. Profiles, selected vehicle, dashboard favorites, recorded trips/samples, and pending work are saved locally. Real uploads remain disabled.
 Backups/device transfer are disabled. Finished trips can be exported, but importing/restoring the app is not implemented. Clearing app data or reinstalling loses saved profiles, UUIDs, and local trips.
 
 ## Current session behavior
 
-Connect is an explicit action from the visible app. Read live data starts acquisition separately; a connection alone does not query the ECU.
-The active session continues when changing tabs, using another app, locking the screen, or recreating the Activity. Discovery stops when leaving Adapter, and simulation still samples only while Simulator is visible.
-Adapter and Live stay awake only during visible real initialization, protocol/capability discovery, and live acquisition. Trips, Vehicles, Simulator, and an idle connected adapter do not hold the screen on.
-Disconnect in Adapter or Stop in the ongoing notification ends live acquisition and completes an active trip after queued writes finish. Stop recording in Trips completes only the trip and leaves live acquisition running. Opening the notification returns to Adapter. Notification denial does not block connection; in-app guidance explains how to enable notifications and disconnect.
-Active acquisition consumes battery while running, including with the screen locked. No battery-optimization exemption is requested. There is no automatic reconnect or automatic recording restart. After a process interruption, already committed samples remain and unfinished saved trips are marked interrupted on recovery.
+The visible app attempts the last successful Classic adapter once per app process after Bluetooth and connection permission are available. Manual selection/retry remain in Adapter. Explicit Stop/Disconnect and failed attempts suppress repeated automatic attempts for that process; returning from another tab or document picker does not reconnect. No background service or killed journey is restored after process death.
 
-The user reported screen sleep and background disconnection in 0.5.0-dev. These were consequences of the old lifecycle policy, not confirmed Bluetooth bond removal. The user subsequently confirmed 0.5.1-dev worked, broadly confirming the fix in merged PR #17. [Issue #16](https://github.com/gonibix23/rx8-telemetry-android/issues/16) is closed at the user's explicit request with its checks complete. No measured duration or battery log was supplied, and actual bond removal was not established.
-Background live acquisition becomes a saved trip only after the user chooses Start recording in Trips.
+A successful socket connection automatically continues into read-only ELM initialization, protocol detection and capability discovery. The continuation belongs to that connection even if the user changes tabs or locks the screen while it opens. Bluetooth success is still distinct from ECU success. Discovery remains limited to the visible Adapter screen.
+
+The selected persisted vehicle starts an automatic telemetry journey at connection time. A missing profile does not prevent live readings; select/create one to begin saving from then onward. The app never guesses identity from the adapter or silently saves a VIN. Stop recording completes the trip and prevents automatic restart in the same connection; the manual start control remains available. Disconnect and notification Stop complete the active trip after queued writes finish; connection/acquisition loss interrupts it.
+
+Adapter and Live stay awake only during visible real acquisition. Background/lock/recreation retain the service-owned session. A bounded renewed partial wake lock supports acquisition; notification permission denial is handled visibly. No battery-optimization exemption is requested. Startup recovery retains committed samples and marks unfinished journeys interrupted at their last saved reading. A later new connection creates a separate journey.
+
+These changes were explicitly requested for 0.12.0-dev. Earlier broad Bluetooth/live/background success does not establish the new automatic flow, measured battery behavior, or individual sensor support; phone validation remains deferred.
 
 ## Current trip recording and history
 
-The app has five tabs: Adapter, Live, Trips, Vehicles, and Simulator. In Vehicles, explicitly select a profile; connect and start real live data in Adapter; then choose Start recording in Trips. A trip freezes the vehicle UUID and alias at that moment. Changing the selected profile or renaming it never relabels an existing trip.
+The app has four tabs: Adapter, Live, Trips and Vehicles. Select the intended vehicle once; connecting automatically starts reading and a telemetry journey. A trip freezes the vehicle UUID and alias at its start. Changing the selected profile or renaming it never relabels an existing trip.
 Only newly observed real OBD samples are recorded, with sample/session UUIDs, sequence, UTC and monotonic time, units, ECU source, and quality. The app does not record the simulator. A missing, stale, or failed reading never becomes a fabricated valid value.
-An explicitly started recording uses the existing connected-device foreground service across tab changes, backgrounding, and screen lock. Stop recording saves the terminal state while leaving live readings active. Notification Stop ends both. Unexpected connection loss, acquisition failure, or storage failure ends the trip as interrupted; reconnecting requires a new manual recording.
+Automatic and manually resumed recording use the existing connected-device foreground service across tab changes, backgrounding, and screen lock. Stop recording saves the terminal state while leaving live readings active. Notification Stop ends both. Unexpected connection loss, acquisition failure, or storage failure ends the trip as interrupted; a successful new connection starts a new automatic journey.
 The 0.11.0-dev increment shows one page of up to 50 saved sessions offline, plus total app-database storage usage. Newer and Older reach the rest of the history, ordered by start time and trip ID. All vehicles is the default; a vehicle filter uses its permanent UUID independently of the selected recording profile. Choices show current names, while cards retain recorded names. Refresh reloads the current browsing context; Newest returns to the latest matching page. History does not promise a frozen snapshot while new trips are created or deleted. The active card remains available for its original vehicle even when another vehicle's history is selected. It reports the frozen vehicle name and samples confirmed as saved. Storage errors stop recording and remain visible; queued or failed writes are not reported as saved.
 
 Returning from details, tabs, the document picker, or Activity recreation retains the page/filter. A process restart starts with the newest page for all vehicles. Failed history loads have an explicit retry and cannot become an empty-history claim. An empty filtered result remains distinct from having no saved trips. Confirmed deletion refills the current page; if that page no longer exists, browsing returns to the newest matching page. The Room 3-to-4 upgrade adds history indexes without rewriting profiles, trips, samples, or pending work.
-Finished trips expose sample counts, duration, valid recorded peaks, and bounded charts for the six existing metrics. Choose from the metric/ECU combinations actually recorded, including combinations with only failed samples. Each chart uses one ECU and canonical unit, shows full-stream valid counts and observed min/max, and keeps gaps unjoined. Valid zero and negative Celsius remain visible; invalid values are never converted to zero. Choices do not depend on the current profile, live connection, or favorites. Loading failures have a chart-specific retry, and rapid changes cannot show an older selection's results.
+Finished trips expose sample counts, duration, valid recorded peaks, and bounded charts for recorded metrics. Choose from the metric/ECU combinations actually recorded, including combinations with only failed samples. Each chart uses one ECU and canonical unit, shows full-stream valid counts and observed min/max, and keeps gaps unjoined. Valid zero and negative Celsius remain visible; invalid values are never converted to zero. Choices do not depend on the current profile, live connection, or favorites. Loading failures have a chart-specific retry, and rapid changes cannot show an older selection's results.
 
 The trip overview remains independent of chart selection: speed uses one identified ECU, and estimated distance integrates valid speed intervals only, alongside covered and uncovered duration; it is not the odometer. Peak recorded RPM may come from any valid RPM source.
 JSON/CSV export opens Android's document picker so the user chooses the location. Success is shown only after writing, flushing, and closing the document. Exports contain the vehicle UUID/recorded alias, timestamps, readings, ECU sources, and quality; they exclude VINs and Bluetooth addresses. Exports cannot currently be imported to restore the app.
@@ -67,8 +67,8 @@ Real A53 recording, interruption recovery, export-provider behavior, and storage
 
 ## Expected MVP outcome
 
-The user selects the adapter and vehicle profile, connects, sees the available data, and starts a trip.
-They can lock the screen during recording, stop recording from a notification, and view history without Internet access.
+After initial adapter and vehicle selection, the app attempts to connect and automatically reads and records supported telemetry.
+The user can lock the screen during recording, stop the session from its notification, and view history without Internet access.
 
 ## Current API preparation
 
@@ -84,9 +84,9 @@ Local exports remain version 1 and are available regardless of a reading's queue
 | Adapter (implemented) | Discovery, permissions, Bluetooth/ECU status, live readings, optional VIN request |
 | Vehicle capabilities (inside Adapter) | Explicitly captured per-ECU capabilities, latest display states, and JSON report export |
 | Vehicles (implemented) | Saved profiles, selection, permanent UUID, alias, optional VIN and source |
-| Simulator (implemented) | Clearly synthetic dashboard preview and failure scenarios |
+| Internal test fixtures | Synthetic values and failure scenarios, outside production navigation |
 | Live (implemented) | Supported RPM, speed, coolant, extra favorites, per-ECU status and reading age |
-| Trips (implemented) | Explicit recording, history pages with an independent vehicle filter, storage usage, and disabled-upload queue counts |
+| Trips (implemented) | Automatic journeys and recording controls, history pages with an independent vehicle filter, storage usage, and disabled-upload queue counts |
 | Trip details (inside Trips) | Sample counts, valid peaks, estimated distance, sensor/ECU charts with gaps, JSON/CSV export, and confirmed deletion |
 | Settings (planned) | Units, sampling rate/priorities, storage policy, and future authenticated API configuration |
 
@@ -111,10 +111,10 @@ ABS/SRS are not part of this adapter's promised compatibility.
 - Discovers accessible parameters and does not display errors as zero.
 - Retains vehicles, sessions, and samples across restarts.
 - Adding a VIN later does not split or lose history.
-- Keeps an explicitly started recording running with the A53 screen locked.
+- Keeps an active recording running with the A53 screen locked.
 - Preserves saved data after an interruption and marks the gaps.
 - Exports and deletes trips with clear scope.
-- Supports demonstrations using clearly identified synthetic data.
+- Keeps clearly identified synthetic test fixtures outside production navigation.
 - Prepares batches for the future contract without making real uploads.
 
 ## Outside this first version

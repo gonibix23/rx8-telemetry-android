@@ -55,7 +55,7 @@ suspend fun analyzeTripSeries(
             maxValue = maxOf(maxValue ?: value, value)
             val delta = previousValidTime?.let { sample.elapsedMillis - it }
             if (delta != null) {
-                if (delta in 1L..MAX_SERIES_INTERVAL_MILLIS) coveredMillis += delta
+                if (delta in 1L..key.metric.seriesIntervalMillis()) coveredMillis += delta
                 else chart.add(TripChartPoint(chartTime, null, key.ecuId))
             }
             chart.add(TripChartPoint(chartTime, value, key.ecuId))
@@ -70,14 +70,11 @@ suspend fun analyzeTripSeries(
 private fun TripSample.isUsableSeriesValue(): Boolean {
     val number = value ?: return false
     if (quality != ObdReadingStatus.VALID || unit != metric.unit || !number.isFinite()) return false
-    return when (metric) {
-        ObdMetric.ENGINE_RPM -> number in 0.0..16_383.75
-        ObdMetric.SPEED -> number in 0.0..255.0
-        ObdMetric.COOLANT_TEMPERATURE, ObdMetric.INTAKE_TEMPERATURE -> number in -40.0..215.0
-        ObdMetric.THROTTLE_POSITION, ObdMetric.ENGINE_LOAD -> number in 0.0..100.0
-    }
+    return metric.isValueInRange(number)
 }
 
 internal val tripSeriesOrder: Comparator<TripSeriesKey> = compareBy<TripSeriesKey> { it.metric.ordinal }.thenBy { it.ecuId }
-internal const val MAX_TRIP_SERIES = 192
-private const val MAX_SERIES_INTERVAL_MILLIS = 5_000L
+internal val MAX_TRIP_SERIES = 32 * ObdMetric.entries.size
+
+// Preserve the original six series' coverage semantics and speed-distance integration.
+private fun ObdMetric.seriesIntervalMillis(): Long = if (ordinal < 6) 5_000L else freshnessMillis

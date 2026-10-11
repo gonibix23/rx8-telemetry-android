@@ -437,6 +437,7 @@ class TripsHistoryViewModelTest {
             return loads.removeFirst().invoke()
         }
         override suspend fun list(limit: Int): List<TripSession> = error("History must use bounded cursor pages")
+        override suspend fun updateProtocol(tripId: String, protocolLabel: String) = Unit
         override suspend fun recoverInterrupted() { recordingMutations++ }
         override suspend fun create(session: TripSession) { recordingMutations++ }
         override suspend fun append(tripId: String, samples: List<TripSample>) { recordingMutations++ }

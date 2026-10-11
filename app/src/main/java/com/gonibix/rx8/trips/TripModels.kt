@@ -56,6 +56,7 @@ data class TripHistoryPage(
 interface TripRepository {
     suspend fun recoverInterrupted()
     suspend fun create(session: TripSession)
+    suspend fun updateProtocol(tripId: String, protocolLabel: String)
     suspend fun append(tripId: String, samples: List<TripSample>)
     suspend fun finish(tripId: String, endedAtEpochMillis: Long, durationMillis: Long, status: TripStatus, reason: String)
     suspend fun list(limit: Int = 100): List<TripSession>

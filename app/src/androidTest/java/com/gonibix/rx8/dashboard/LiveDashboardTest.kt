@@ -12,6 +12,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
@@ -104,6 +107,45 @@ class LiveDashboardTest {
         compose.onNodeWithTag("dashboard_ecu_7E9").assertTextEquals("Vehicle ECU · 7E9")
     }
 
+    @Test fun rpmDialDistinguishesZeroMissingAndStoppedValuesWithoutInventedLimits() {
+        val state = mutableStateOf(snapshot(reading(ObdMetric.ENGINE_RPM, 0.0)))
+        compose.setContent { Rx8Theme { LiveDashboard(state.value, emptySet(), {}, {}) } }
+        compose.onNodeWithTag("dashboard_value_7E8_engine_rpm").assertTextEquals("0")
+        compose.onNodeWithTag("dashboard_gauge_7E8_engine_rpm")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "0 rpm, current"))
+        compose.runOnIdle { state.value = snapshot(reading(ObdMetric.ENGINE_RPM, null, ObdReadingStatus.NO_DATA)) }
+        compose.onNodeWithTag("dashboard_value_7E8_engine_rpm").assertTextEquals("—")
+        compose.onNodeWithTag("dashboard_gauge_7E8_engine_rpm")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "No measured value"))
+        compose.runOnIdle { state.value = snapshot(reading(ObdMetric.ENGINE_RPM, 10_500.0)).copy(phase = ObdPhase.STOPPED) }
+        compose.onNodeWithTag("dashboard_value_7E8_engine_rpm").assertTextEquals("10500")
+        compose.onNodeWithTag("dashboard_status_7E8_engine_rpm").assertTextEquals("Stale · last value")
+        compose.onNodeWithTag("dashboard_age_7E8_engine_rpm").assertTextEquals("Age at stop: 0.5 s")
+        compose.onNodeWithText("Dial scale 0–10,000 rpm").assertExists()
+        compose.onNodeWithText("Value exceeds the dial scale").assertExists()
+    }
+
+    @Test fun expandedSensorFavoritesKeepFractionalAndNegativeValuesBySource() {
+        val metric = ObdMetric.CURRENT_OXYGEN_SENSOR_1_CURRENT
+        val favorites = mutableStateOf(emptySet<ObdMetric>())
+        val data = snapshot(reading(metric, -0.25), reading(metric, 0.5, ecu = "7E9"))
+        compose.setContent { Rx8Theme { LiveDashboard(data, favorites.value, { favorites.value += it }, {}) } }
+        scrollTo("dashboard_choose_sensors").performClick()
+        scrollTo("dashboard_favorite_current_oxygen_sensor_1_current").performClick()
+        scrollTo("dashboard_value_7E8_current_oxygen_sensor_1_current").assertTextEquals("-0.250")
+        scrollTo("dashboard_value_7E9_current_oxygen_sensor_1_current").assertTextEquals("0.500")
+        compose.onNodeWithTag("dashboard_ecu_7E9").assertTextEquals("Vehicle ECU · 7E9")
+    }
+
+    @Test fun rpmDialsNeverCombineSourcesOrRepresentUnknownAgeAsCurrent() {
+        show(snapshot(reading(ObdMetric.ENGINE_RPM, 950.0), reading(ObdMetric.ENGINE_RPM, 1200.0, ecu = "7E9"))
+            .copy(elapsedMillis = 500L))
+        compose.onNodeWithTag("dashboard_value_7E8_engine_rpm").assertTextEquals("950")
+        compose.onNodeWithTag("dashboard_age_7E8_engine_rpm").assertTextEquals("Age unknown")
+        compose.onNodeWithTag("dashboard_status_7E8_engine_rpm").assertTextEquals("Stale · last value")
+        scrollTo("dashboard_value_7E9_engine_rpm").assertTextEquals("1200")
+    }
+
     @Test fun bluetoothStatusIsIndependentOfEcuStatusAndMetadataIsExplicitlyFromAdapter() {
         var opened = 0
         compose.setContent {
@@ -150,6 +192,18 @@ class LiveDashboardTest {
         captureFavoritesScreen()
     }
 
+    @Test fun syntheticRealDashboardFixtureCapturesTheActualLiveDial() {
+        show(snapshot(
+            reading(ObdMetric.ENGINE_RPM, 2450.0), reading(ObdMetric.SPEED, 42.0),
+            reading(ObdMetric.COOLANT_TEMPERATURE, 88.0),
+        ), screenshotFixture = true)
+        compose.onNodeWithTag("dashboard_origin").assertTextEquals("VEHICLE · OBD")
+        compose.onNodeWithTag("dashboard_gauge_7E8_engine_rpm").assertIsDisplayed()
+        compose.onNodeWithTag("dashboard_value_7E8_engine_rpm").assertTextEquals("2450")
+        compose.onNodeWithText("UI TEST FIXTURE · SYNTHETIC DASHBOARD").assertIsDisplayed()
+        captureFavoritesScreen("dashboard")
+    }
+
     private fun show(snapshot: ObdSessionSnapshot, favorites: Set<ObdMetric> = emptySet(), simulated: Boolean = false, screenshotFixture: Boolean = false) {
         compose.setContent {
             Rx8Theme {
@@ -178,12 +232,13 @@ class LiveDashboardTest {
         phase = ObdPhase.LIVE,
         statusMessage = "Synthetic UI test fixture.",
         protocolLabel = "Synthetic protocol fixture",
-        ecus = readings.map { it.ecuId }.distinct().map { ObdEcuCapabilities(it, ObdMetric.entries.map { metric -> metric.pid }.toSet()) },
+        ecus = readings.groupBy { it.ecuId }.map { (ecu, values) -> ObdEcuCapabilities(ecu, values.map { it.metric.pid }.toSet()) },
         readings = readings.toList(),
         elapsedMillis = 1_500L,
     )
 
-    private fun captureFavoritesScreen() {
+    private fun captureFavoritesScreen(name: String = "favourites") {
+        require(name == "favourites" || name == "dashboard")
         compose.waitForIdle()
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val directory = File(instrumentation.targetContext.getExternalFilesDir(null), "screenshots")
@@ -196,13 +251,13 @@ class LiveDashboardTest {
         }
         val captured = requireNotNull(rendered)
         try {
-            val source = File(directory, "favourites.png")
+            val source = File(directory, "$name.png")
             source.outputStream().use { assertTrue(captured.compress(Bitmap.CompressFormat.PNG, 100, it)) }
             ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(
-                "cp /sdcard/Android/data/com.gonibix.rx8/files/screenshots/favourites.png /data/local/tmp/rx8-favourites.png",
+                "cp /sdcard/Android/data/com.gonibix.rx8/files/screenshots/$name.png /data/local/tmp/rx8-$name.png",
             )).use { it.readBytes() }
             val copied = ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(
-                "cat /data/local/tmp/rx8-favourites.png",
+                "cat /data/local/tmp/rx8-$name.png",
             )).use { it.readBytes() }
             assertArrayEquals("The dashboard screenshot must survive teardown", source.readBytes(), copied)
         } finally { captured.recycle() }

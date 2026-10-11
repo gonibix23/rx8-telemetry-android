@@ -2,19 +2,19 @@
 
 ## Purpose and limits
 
-RX8-010 / 0.9.0-dev adds Vehicle capabilities inside Adapter. It previews the already-discovered Mode 01 PIDs for each ECU and the latest displayed states of the six implemented metrics. A user can explicitly save that snapshot as JSON.
+RX8-010 / 0.9.0-dev adds Vehicle capabilities inside Adapter. It previews the already-discovered Mode 01 PIDs for each ECU and the latest displayed states of the implemented scalar metrics. A user can explicitly save that snapshot as JSON.
 
 Opening, capturing, or exporting a report sends no additional OBD command. It neither reconnects nor requires a saved vehicle or trip. It does not change recording, history, favorites, or the pending API queue. There is no server, upload, automatic sharing, or raw diagnostic logging.
 
-An ECU advertising a PID is not proof of a valid reading. The app only decodes the existing six metrics; other advertised PID numbers remain unimplemented. An ECU address does not identify a particular vehicle or prove that the module is the engine controller.
+An ECU advertising a PID is not proof of a valid reading. The app decodes the verified standard scalar catalog; scaling metadata PIDs 4F/50 are labelled separately, while other advertised PID numbers remain unimplemented. An ECU address does not identify a particular vehicle or prove that the module is the engine controller.
 
 The report is a **snapshot of displayed state**, not a sequence of measurements or request outcomes. Initial no-data placeholders may appear before the first request. A latest value does not establish accuracy, sustained sampling rate, session stability, battery behavior, screen-lock continuity, or proprietary Mazda support.
 
 ## User flow
 
-1. Connect and choose Read live data in Adapter. Wait until capability discovery completes.
+1. Connect in Adapter; read-only acquisition starts automatically. Wait until capability discovery completes.
 2. Open Vehicle capabilities. The app freezes the current snapshot and displays its capture time, acquisition state, protocol, elapsed acquisition time, and response rate.
-3. Review each ECU's advertised PID list and the six implemented metrics. Keep advertised support separate from the latest valid, failed, unsupported, or stale display state.
+3. Review each ECU's advertised PID list and the implemented scalar metrics. Keep advertised support separate from the latest valid, failed, unsupported, or stale display state.
 4. Use Capture latest to replace the preview explicitly. A report is not a live screen; subsequent readings do not silently change the captured data.
 5. Choose Save JSON report and select a destination in Android's document picker. Canceling leaves no success message. Success appears only after the chosen file has been written, flushed, and closed.
 
@@ -41,13 +41,13 @@ The report has its own schema, separate from trip export v1 and future API paylo
 | effectiveResponsesPerSecond | Existing engine's successful ECU-response rate across sensors, or null if invalid |
 | ecus | Separate ECU capability and latest-display summaries |
 
-Each ECU contains a validated diagnostic `address`, sorted hexadecimal `reportedPids`, and `implementedMetrics` for the six existing app metrics. Each metric includes its ID, PID, unit, `advertised` flag, and an optional `reading` containing value, quality status, and age at the captured snapshot. It does not contain raw supported-PID response bytes.
+Each ECU contains a validated diagnostic `address`, sorted hexadecimal `reportedPids`, and `implementedMetrics` for the implemented app metrics. Each metric includes its ID, PID, unit, `advertised` flag, and an optional `reading` containing value, quality status, and age at the captured snapshot. It does not contain raw supported-PID response bytes.
 
 The rate is not a per-sensor frequency or command latency. Multiple responding ECUs can contribute successful responses. Elapsed time does not prove continuous valid readings. Ages are frozen at capture and never advance while reviewing or exporting an old report.
 
 Valid zero values remain zero. Missing/error readings remain null; they are never replaced by a valid zero. A stale value, if present, is retained only as explicitly historical data. Stopped/error acquisition cannot expose a retained value as current. Exact individual reading timestamps and traces are excluded.
 
-Reports allow at most 32 ECUs, 248 non-continuation Mode 01 PIDs per ECU, six implemented metric summaries per ECU, and 512 KiB of UTF-8 JSON. Collection contents are copied and immutable. Duplicate/conflicting entries, invalid capture metadata, and excessive collections fail capture; invalid identifiers/free text are never copied into the report.
+Reports allow at most 32 ECUs, 248 non-continuation Mode 01 PIDs per ECU, 120 implemented metric summaries per ECU, and 512 KiB of UTF-8 JSON. Collection contents are copied and immutable. Duplicate/conflicting entries, invalid capture metadata, and excessive collections fail capture; invalid identifiers/free text are never copied into the report.
 
 ## Privacy and storage
 
@@ -62,3 +62,5 @@ The app does not store report history in Room, add a database migration, or mark
 Unit tests cover eligibility, advertised versus implemented metrics, multi-ECU isolation, invalid/duplicate input, deep immutability, valid zero, error/stale handling, unknown text, privacy exclusions, bounded output, frozen export data, and failure/cancellation. Android fixtures cover preview controls and document-picker lifecycle. Actual executed results belong in the PR.
 
 The A53 check is to capture from real live data, review the supported PID lists, export a report, and confirm that the existing live/trip workflow continues. Capture again after stopping to check historical labeling. Existing hardware issues still require actual reported evidence; a generated report alone does not close them.
+
+The 512 KiB bound is retained for the expanded catalog. A very large rich capture can exceed it and must fail visibly; the exporter never truncates a report and calls it complete.

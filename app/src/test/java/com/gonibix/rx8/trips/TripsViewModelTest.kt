@@ -255,6 +255,7 @@ class TripsViewModelTest {
         var lastLimit = 0
         var failList = false
         var failDelete = false
+        override suspend fun updateProtocol(tripId: String, protocolLabel: String) = Unit
         override suspend fun recoverInterrupted() { recoveries++ }
         override suspend fun create(session: TripSession) = error("History must not create a recording")
         override suspend fun append(tripId: String, samples: List<TripSample>) = error("History must not append samples")

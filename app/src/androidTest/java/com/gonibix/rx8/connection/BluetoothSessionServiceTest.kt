@@ -84,10 +84,16 @@ class BluetoothSessionServiceTest {
     private val tripRepository = LifecycleTripRepository()
     private val tripScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val tripRecorder = TripRecorder(tripRepository, tripScope)
+    private val rememberedAdapter = MemoryLastAdapterStore()
+    private var openingPolicy = AutomaticConnectionPolicy()
+    private var persistedVehicle: VehicleProfile? = null
+    private var notificationRequestedBefore = false
     private val tripVehicle = VehicleProfile("00000000-0000-4000-8000-000000000007", "Synthetic trip vehicle", null, null, null, 0)
 
     @Before
     fun setUp() {
+        persistedVehicle = tripVehicle
+        notificationRequestedBefore = context.getSharedPreferences("session_ui", Context.MODE_PRIVATE).getBoolean("notifications_requested", false)
         // Adopt only Bluetooth permissions temporarily; notification permission remains untouched.
         instrumentation.uiAutomation.adoptShellPermissionIdentity(
             Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN,
@@ -118,7 +124,8 @@ class BluetoothSessionServiceTest {
                         }
                     }
                 }
-            }, recorder = tripRecorder)
+            }, recorder = tripRecorder, selectedVehicleLoader = { persistedVehicle },
+                lastAdapterStore = rememberedAdapter, automaticPolicy = openingPolicy)
         }
         scenario = ActivityScenario.launch(MainActivity::class.java)
     }
@@ -135,6 +142,7 @@ class BluetoothSessionServiceTest {
             context.stopService(serviceIntent)
             instrumentation.waitForIdleSync()
         } finally {
+            context.getSharedPreferences("session_ui", Context.MODE_PRIVATE).edit().putBoolean("notifications_requested", notificationRequestedBefore).commit()
             BluetoothSessionService.dependenciesFactory = originalFactory
             tripScope.cancel()
             instrumentation.uiAutomation.dropShellPermissionIdentity()
@@ -142,12 +150,137 @@ class BluetoothSessionServiceTest {
     }
 
     @Test
+    fun automaticOpeningWaitsForBluetoothAndAttemptsAnUnlistedRememberedAdapterOnlyOnce() {
+        gateway.ready = BluetoothAvailability.OFF
+        gateway.listed = emptyList()
+        relaunchWithRememberedAdapter()
+        val binding = bind()
+        main { assertFalse(binding.binder.controller.uiState.value.automaticConnectionReady) }
+        assertEquals(0, gateway.attempts)
+        main {
+            gateway.ready = BluetoothAvailability.READY
+            binding.binder.controller.refresh()
+        }
+        awaitUi("The ready remembered adapter should connect and read automatically") {
+            binding.binder.controller.uiState.value.obd.phase == ObdPhase.LIVE
+        }
+        assertEquals(1, gateway.attempts)
+        assertEquals("Last connected adapter", binding.binder.controller.uiState.value.selectedDevice!!.name)
+        assertFalse(binding.binder.controller.uiState.value.selectedDevice!!.isPaired)
+        awaitMain { tripRecorder.state.value.savedSamples > 0 }
+        main { binding.binder.disconnect() }
+        awaitMain { !binding.binder.hasForegroundSession }
+        scenario!!.recreate()
+        scenario!!.moveToState(Lifecycle.State.CREATED)
+        scenario!!.moveToState(Lifecycle.State.RESUMED)
+        main {
+            binding.binder.tryAutomaticConnection()
+            binding.binder.controller.refresh()
+            binding.binder.tryAutomaticConnection()
+        }
+        assertEquals(1, gateway.attempts)
+        assertEquals(BluetoothConnectionPhase.DISCONNECTED, binding.binder.controller.uiState.value.phase)
+    }
+
+    @Test
+    fun failedAutomaticOpeningDoesNotRetryOnResumeAndDoesNotOverwriteLastSuccess() {
+        gateway.failConnection = true
+        relaunchWithRememberedAdapter()
+        val binding = bind()
+        awaitUi("A failed automatic attempt should stay available for manual retry") {
+            gateway.attempts == 1 && binding.binder.controller.uiState.value.message?.contains("Connection failed") == true
+        }
+        scenario!!.moveToState(Lifecycle.State.CREATED)
+        scenario!!.moveToState(Lifecycle.State.RESUMED)
+        main { binding.binder.tryAutomaticConnection() }
+        assertEquals(1, gateway.attempts)
+        assertEquals(device.address, rememberedAdapter.address)
+        assertTrue(gateway.connections.isEmpty())
+        assertNull(tripRecorder.state.value.session)
+    }
+
+    @Test
+    fun socketOpeningAfterBackgroundAutomaticallyStartsReadingsAndTrip() {
+        val gate = CompletableDeferred<Unit>()
+        gateway.connectionGate = gate
+        val binding = bind()
+        main {
+            binding.binder.setAppForeground(true)
+            binding.binder.controller.setForeground(true)
+            binding.binder.controller.selectDevice(device)
+            binding.binder.connect()
+        }
+        awaitMain { binding.binder.controller.uiState.value.phase == BluetoothConnectionPhase.CONNECTING }
+        scenario!!.moveToState(Lifecycle.State.CREATED)
+        gate.complete(Unit)
+        awaitMain { tripRecorder.state.value.savedSamples >= 2 }
+        assertEquals(ObdPhase.LIVE, binding.binder.controller.uiState.value.obd.phase)
+        assertFalse(binding.binder.controller.uiState.value.isForeground)
+        assertTrue(binding.binder.hasForegroundSession)
+        assertTrue(binding.binder.hasAcquisitionWakeLock)
+        assertEquals(tripVehicle.id, tripRecorder.state.value.session!!.vehicleId)
+        assertEquals(device.address, rememberedAdapter.address)
+    }
+
+    @Test
+    fun missingProfileCanBeSelectedOnceAndStopRecordingDoesNotAutomaticallyRestart() {
+        persistedVehicle = null
+        val binding = bind()
+        connect(binding)
+        awaitMain { binding.binder.controller.uiState.value.obd.phase == ObdPhase.LIVE }
+        assertTrue(binding.binder.controller.uiState.value.isAwaitingVehicle)
+        assertNull(tripRecorder.state.value.session)
+        main {
+            persistedVehicle = tripVehicle
+            binding.binder.refreshSelectedVehicle()
+        }
+        awaitMain { tripRecorder.state.value.savedSamples >= 2 }
+        assertFalse(binding.binder.controller.uiState.value.isAwaitingVehicle)
+        main { binding.binder.stopTrip() }
+        awaitMain { tripRecorder.state.value.session == null && !tripRecorder.state.value.isStopping }
+        val count = tripRepository.saved.size
+        val elapsed = binding.binder.controller.uiState.value.obd.elapsedMillis
+        main { binding.binder.refreshSelectedVehicle() }
+        awaitMain { binding.binder.controller.uiState.value.obd.elapsedMillis > elapsed + 200 }
+        assertEquals(count, tripRepository.saved.size)
+        assertNull(tripRecorder.state.value.session)
+        assertEquals(1, gateway.connections.size)
+    }
+
+    private fun relaunchWithRememberedAdapter() {
+        scenario!!.close()
+        scenario = null
+        context.stopService(serviceIntent)
+        instrumentation.waitForIdleSync()
+        rememberedAdapter.address = device.address
+        openingPolicy = AutomaticConnectionPolicy() // Explicitly model a new process opening opportunity.
+        context.getSharedPreferences("session_ui", Context.MODE_PRIVATE).edit().putBoolean("notifications_requested", true).commit()
+        scenario = ActivityScenario.launch(MainActivity::class.java)
+    }
+
+    @Test
+    fun delayedPreferenceLoadFailureCannotClearActiveMissingVehicleGuidance() {
+        persistedVehicle = null
+        val load = CompletableDeferred<Unit>()
+        rememberedAdapter.loadGate = load
+        relaunchWithRememberedAdapter()
+        val binding = bind()
+        connect(binding)
+        awaitMain { binding.binder.controller.uiState.value.obd.phase == ObdPhase.LIVE }
+        assertTrue(binding.binder.controller.uiState.value.isAwaitingVehicle)
+        val previousLoads = rememberedAdapter.completedLoads
+        load.completeExceptionally(IOException("Synthetic preference read failure"))
+        awaitMain { rememberedAdapter.completedLoads > previousLoads }
+        assertTrue(binding.binder.controller.uiState.value.isAwaitingVehicle)
+        assertTrue(binding.binder.controller.uiState.value.automaticMessage!!.contains("Select a vehicle"))
+        assertEquals(1, gateway.attempts)
+    }
+
+    @Test
     fun tripRecordingContinuesWithoutAnActivityAndNotificationStopCommits() {
         val binding = bind()
         connect(binding)
-        main { binding.binder.controller.startObd() }
         awaitMain { binding.binder.controller.uiState.value.obd.phase == ObdPhase.LIVE }
-        main { binding.binder.startTrip(tripVehicle) }
         awaitMain { tripRecorder.state.value.savedSamples >= 2 }
         val stop = stopAction(binding)
         scenario!!.close()
@@ -170,9 +303,7 @@ class BluetoothSessionServiceTest {
         try {
             val binding = bind()
             connect(binding)
-            main { binding.binder.controller.startObd() }
             awaitMain { binding.binder.controller.uiState.value.obd.phase == ObdPhase.LIVE }
-            main { binding.binder.startTrip(tripVehicle) }
             awaitMain { tripRecorder.state.value.savedSamples >= 2 }
             val stop = stopAction(binding)
             scenario!!.close()
@@ -222,9 +353,7 @@ class BluetoothSessionServiceTest {
     fun stoppingOnlyTheTripLeavesLiveAcquisitionRunning() {
         val binding = bind()
         connect(binding)
-        main { binding.binder.controller.startObd() }
         awaitMain { binding.binder.controller.uiState.value.obd.phase == ObdPhase.LIVE }
-        main { binding.binder.startTrip(tripVehicle) }
         awaitMain { tripRecorder.state.value.savedSamples > 0 }
         main { binding.binder.stopTrip() }
         awaitMain { tripRepository.session?.status == TripStatus.COMPLETED && tripRecorder.state.value.session == null }
@@ -241,9 +370,7 @@ class BluetoothSessionServiceTest {
     fun bluetoothLossMarksTheTripInterruptedAndReleasesTheService() {
         val binding = bind()
         connect(binding)
-        main { binding.binder.controller.startObd() }
         awaitMain { binding.binder.controller.uiState.value.obd.phase == ObdPhase.LIVE }
-        main { binding.binder.startTrip(tripVehicle) }
         awaitMain { tripRecorder.state.value.savedSamples > 0 }
         main { binding.binder.controller.onDeviceDisconnected(device.address) }
         awaitMain { tripRepository.session?.status == TripStatus.INTERRUPTED && !binding.binder.hasForegroundSession }
@@ -256,7 +383,6 @@ class BluetoothSessionServiceTest {
     fun dashboardKeepsTheSameSessionAndOnlyVisibleLiveScreensStayAwake() {
         val binding = bind()
         connect(binding)
-        main { binding.binder.controller.startObd() }
         awaitUi("Adapter should stay awake during acquisition") { binding.binder.hasAcquisitionWakeLock && screenRequestsAwake() }
 
         compose.onNodeWithTag("dashboard_tab").performClick()
@@ -292,7 +418,6 @@ class BluetoothSessionServiceTest {
     fun acquisitionSurvivesActivityRecreationBackgroundAndAllClientsUnbinding() {
         val first = bind()
         connect(first)
-        main { first.binder.controller.startObd() }
         awaitMain { first.binder.hasAcquisitionWakeLock }
         val controller = first.binder.controller
         val initialElapsed = controller.uiState.value.obd.elapsedMillis
@@ -351,7 +476,6 @@ class BluetoothSessionServiceTest {
         failAcquisition = true
         val binding = bind()
         connect(binding)
-        main { binding.binder.controller.startObd() }
         awaitMain { binding.binder.hasAcquisitionWakeLock }
         failSignal.complete(Unit)
         awaitMain {
@@ -369,6 +493,7 @@ class BluetoothSessionServiceTest {
     fun connectRequiresVisibleUiSelectedDeviceAndReadinessAndPromotesBeforeTransport() {
         val binding = bind()
         main {
+            binding.binder.setAppForeground(false)
             binding.binder.controller.setForeground(false)
             binding.binder.controller.selectDevice(device)
             binding.binder.connect()
@@ -389,7 +514,7 @@ class BluetoothSessionServiceTest {
         assertTrue(gateway.connections.isEmpty())
         gateway.onConnect = { assertTrue(binding.binder.hasForegroundSession) }
         connect(binding)
-        main { assertFalse(binding.binder.hasAcquisitionWakeLock) }
+        awaitMain { binding.binder.hasAcquisitionWakeLock }
         val notification = notification(binding)
         assertFalse(notification.extras.getCharSequence(Notification.EXTRA_TITLE).toString().contains(device.address))
         assertFalse(notification.extras.getCharSequence(Notification.EXTRA_TEXT).toString().contains(device.name))
@@ -401,7 +526,6 @@ class BluetoothSessionServiceTest {
     fun backgroundReadinessLossStopsAcquisitionWithoutAnActivityReceiver() {
         val binding = bind()
         connect(binding)
-        main { binding.binder.controller.startObd() }
         awaitMain { binding.binder.hasAcquisitionWakeLock }
         scenario!!.moveToState(Lifecycle.State.CREATED)
         main { gateway.ready = BluetoothAvailability.OFF }
@@ -459,6 +583,7 @@ class BluetoothSessionServiceTest {
 
     private fun connect(binding: Binding) {
         main {
+            binding.binder.setAppForeground(true)
             binding.binder.controller.setForeground(true)
             binding.binder.controller.selectDevice(device)
             binding.binder.connect()
@@ -544,6 +669,9 @@ class BluetoothSessionServiceTest {
         override suspend fun recoverInterrupted() = Unit
         override suspend fun create(session: TripSession) { this.session = session }
         override suspend fun append(tripId: String, samples: List<TripSample>) { saved.addAll(samples) }
+        override suspend fun updateProtocol(tripId: String, protocolLabel: String) {
+            session = requireNotNull(session).copy(protocolLabel = protocolLabel)
+        }
         override suspend fun finish(tripId: String, endedAtEpochMillis: Long, durationMillis: Long, status: TripStatus, reason: String) {
             finishEntered.complete(Unit)
             finishGate?.await()
@@ -562,12 +690,27 @@ class BluetoothSessionServiceTest {
         @Volatile var ready = BluetoothAvailability.READY
         val connections = CopyOnWriteArrayList<LifecycleConnection>()
         var onConnect: () -> Unit = {}
+        var connectionGate: CompletableDeferred<Unit>? = null
+        var failConnection = false
+        @Volatile var attempts = 0
+        var listed = listOf(device)
         override fun availability() = ready
-        override fun pairedDevices() = listOf(device)
+        override fun pairedDevices() = listed
         override suspend fun connect(device: AdapterDevice): AdapterConnection {
+            attempts++
             onConnect()
+            connectionGate?.await()
+            if (failConnection) throw IOException("Synthetic connection failure")
             return LifecycleConnection().also { connections += it }
         }
+    }
+
+    private class MemoryLastAdapterStore : LastAdapterStore {
+        @Volatile var address: String? = null
+        var loadGate: CompletableDeferred<Unit>? = null
+        @Volatile var completedLoads = 0
+        override suspend fun loadAddress(): String? = try { loadGate?.await(); address } finally { completedLoads++ }
+        override suspend fun saveAddress(address: String) { this.address = address }
     }
 
     private class LifecycleConnection : AdapterConnection {
@@ -577,5 +720,3 @@ class BluetoothSessionServiceTest {
         override fun close() { closed = true }
     }
 }
-
-

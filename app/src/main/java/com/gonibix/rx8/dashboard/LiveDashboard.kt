@@ -4,6 +4,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -43,7 +45,6 @@ import com.gonibix.rx8.ui.theme.MintColor
 import com.gonibix.rx8.ui.theme.MutedColor
 import com.gonibix.rx8.ui.theme.WarmWhite
 import java.util.Locale
-import kotlin.math.roundToInt
 
 /** A presentation-only screen; session ownership and preference persistence stay with its caller. */
 @Composable
@@ -123,7 +124,7 @@ fun LiveDashboard(
                     style = MaterialTheme.typography.bodySmall,
                 )
                 if (!model.hasCapabilities) Text(
-                    "Sensor capabilities are not available yet. Open Adapter and start live data to discover them.",
+                    "Sensor capabilities are not available yet. Connect an adapter to discover them automatically.",
                     color = MutedColor,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.testTag("dashboard_no_capabilities"),
@@ -145,7 +146,7 @@ fun LiveDashboard(
                         style = MaterialTheme.typography.bodySmall,
                     )
                     ecu.readings.firstOrNull { it.metric == ObdMetric.ENGINE_RPM }?.let { rpm ->
-                        DashboardCard(rpm, model.stopped, Modifier.fillMaxWidth(), wide = true)
+                        RealRpmGauge(rpm, model.stopped, Modifier.fillMaxWidth())
                     }
                     val otherReadings = ecu.readings.filter { it.metric != ObdMetric.ENGINE_RPM }
                     BoxWithConstraints {
@@ -195,7 +196,7 @@ fun LiveDashboard(
         if (model.ecus.any { it.readings.isNotEmpty() }) item {
             Text(
                 if (isSimulated) "Ages use the simulator clock. Simulation pauses when it is not visible." else
-                    "Measurements arrive one at a time. Ages use elapsed session time, independent of the phone's clock. Saving a trip requires Start recording in Trips.",
+                    "Measurements arrive one at a time. Ages use elapsed session time, independent of the phone's clock. Journeys record automatically for the selected vehicle; manage recording in Trips.",
                 color = MutedColor,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -232,6 +233,7 @@ private fun SensorPicker(model: DashboardModel, favorites: Set<ObdMetric>, onTog
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DashboardCard(reading: DashboardReading, stopped: Boolean, modifier: Modifier = Modifier, wide: Boolean = false) {
     val suffix = "${reading.ecuId}_${reading.metric.name.lowercase(Locale.ROOT)}"
@@ -240,7 +242,7 @@ private fun DashboardCard(reading: DashboardReading, stopped: Boolean, modifier:
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(reading.metric.label, color = MutedColor, style = MaterialTheme.typography.labelLarge)
             if (reading.isFavorite) Text("FAVORITE", color = MintColor, fontSize = 9.sp, letterSpacing = 1.sp)
-            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
                     reading.value?.let { formatValue(reading.metric, it) } ?: "—",
                     color = if (warning) AccentColor else WarmWhite,
@@ -263,7 +265,7 @@ private fun DashboardCard(reading: DashboardReading, stopped: Boolean, modifier:
 }
 
 @Composable
-private fun ReadingStatus(reading: DashboardReading, warning: Boolean, suffix: String) {
+internal fun ReadingStatus(reading: DashboardReading, warning: Boolean, suffix: String) {
     Text(
         reading.status.label(),
         color = if (warning) AccentColor else MintColor,
@@ -273,21 +275,18 @@ private fun ReadingStatus(reading: DashboardReading, warning: Boolean, suffix: S
 }
 
 @Composable
-private fun ReadingAge(reading: DashboardReading, stopped: Boolean, suffix: String) {
+internal fun ReadingAge(reading: DashboardReading, stopped: Boolean, suffix: String) {
     Text(
         reading.ageMillis?.let {
             String.format(Locale.ROOT, if (stopped) "Age at stop: %.1f s" else "Age: %.1f s", it / 1_000.0)
-        } ?: "No reading received",
+        } ?: if (reading.status == null) "No reading received" else "Age unknown",
         color = MutedColor,
         fontSize = 11.sp,
         modifier = Modifier.testTag("dashboard_age_$suffix"),
     )
 }
 
-private fun formatValue(metric: ObdMetric, value: Double): String = when (metric) {
-    ObdMetric.THROTTLE_POSITION, ObdMetric.ENGINE_LOAD -> String.format(Locale.ROOT, "%.1f", value)
-    else -> value.roundToInt().toString()
-}
+private fun formatValue(metric: ObdMetric, value: Double): String = String.format(Locale.ROOT, "%.${metric.displayDecimals}f", value)
 
 private fun ObdReadingStatus?.label(): String = when (this) {
     ObdReadingStatus.VALID -> "Current"

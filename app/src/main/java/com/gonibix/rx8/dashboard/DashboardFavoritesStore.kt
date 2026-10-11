@@ -16,11 +16,10 @@ internal interface DashboardFavoritesStorage {
 }
 
 internal object FavoriteMetricIds {
-    private val ids = linkedMapOf(
-        ObdMetric.INTAKE_TEMPERATURE to "intake_temperature",
-        ObdMetric.THROTTLE_POSITION to "throttle_position",
-        ObdMetric.ENGINE_LOAD to "engine_load",
-    )
+    // Existing IDs stay byte-for-byte identical; new fields append stable enum-name IDs.
+    private val ids = ObdMetric.entries
+        .filterNot { it in setOf(ObdMetric.ENGINE_RPM, ObdMetric.SPEED, ObdMetric.COOLANT_TEMPERATURE) }
+        .associateWith { it.name.lowercase(java.util.Locale.ROOT) }
 
     fun accepts(metric: ObdMetric): Boolean = metric in ids
     fun decode(saved: Set<String>): Set<ObdMetric> = ids.filterValues { it in saved }.keys.toSet()

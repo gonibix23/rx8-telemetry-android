@@ -1,6 +1,9 @@
 package com.gonibix.rx8.obd
 
 import com.gonibix.rx8.bluetooth.AdapterConnection
+import com.gonibix.rx8.telemetry.obd.ObdDecodeContext
+import com.gonibix.rx8.telemetry.obd.ObdPid
+import com.gonibix.rx8.telemetry.obd.ObdPollingGroup
 import com.gonibix.rx8.telemetry.obd.ElmError
 import com.gonibix.rx8.telemetry.obd.ElmResponseParser
 import com.gonibix.rx8.telemetry.obd.ElmVinParser
@@ -32,7 +35,7 @@ class Elm327Session(
     private var startedAt = 0L
     private var liveAt: Long? = null
     private var successfulResponses = 0L
-    private var activeMetric: ObdMetric? = null
+    private var activeParameter: ObdPid? = null
     private val vinRequested = AtomicBoolean(false)
     private val vinBusy = AtomicBoolean(false)
 
@@ -65,6 +68,7 @@ class Elm327Session(
             publish(onSnapshot) { it.copy(protocolLabel = protocol.description) }
             val initialCapabilities = ElmResponseParser.parseMode01(firstPage, protocol, 0)
             val capabilities = discoverCapabilities(protocol, initialCapabilities)
+            val decodeContexts = loadDecodeContexts(protocol, capabilities)
             val now = elapsed()
             val timestamp = clock.epochMillis()
             val readings = capabilities.flatMap { ecu ->
@@ -77,6 +81,7 @@ class Elm327Session(
                         observedAtEpochMillis = timestamp,
                         elapsedMillis = now,
                         monotonicMillis = startedAt + now,
+                        isRequestResult = false,
                     )
                 }
             }
@@ -91,7 +96,7 @@ class Elm327Session(
                     supportedPidCount = capabilities.flatMap { ecu -> ecu.supportedPids }.toSet().size,
                 )
             }
-            poll(protocol, capabilities, onSnapshot)
+            poll(protocol, capabilities, decodeContexts, onSnapshot)
         } catch (cancelled: CancellationException) {
             ticker.cancel()
             exchange.close()
@@ -115,9 +120,9 @@ class Elm327Session(
                     statusMessage = message,
                     vin = ObdVinSnapshot(),
                     readings = it.readings.map { reading ->
-                        if (reading.metric == activeMetric && reading.status != ObdReadingStatus.UNSUPPORTED) {
+                        if (reading.metric.parameter == activeParameter && it.ecus.any { ecu -> ecu.ecuId == reading.ecuId && reading.metric.pid in ecu.supportedPids }) {
                             val now = elapsed()
-                            reading.copy(value = null, status = status, observedAtEpochMillis = clock.epochMillis(), elapsedMillis = now, monotonicMillis = startedAt + now)
+                            reading.copy(value = null, status = status, observedAtEpochMillis = clock.epochMillis(), elapsedMillis = now, monotonicMillis = startedAt + now, isRequestResult = true)
                         } else markStale(reading)
                     },
                 )
@@ -170,72 +175,124 @@ class Elm327Session(
             .sortedBy { it.ecuId }
     }
 
+    private suspend fun loadDecodeContexts(
+        protocol: ObdProtocol,
+        capabilities: List<ObdEcuCapabilities>,
+    ): Map<String, ObdDecodeContext> {
+        val contexts = capabilities.associate { ecu ->
+            val scalingKnown = 0x4F !in ecu.supportedPids
+            ecu.ecuId to ObdDecodeContext(
+                maximumRatio = if (scalingKnown) 0 else null,
+                maximumOxygenVoltage = if (scalingKnown) 0 else null,
+                maximumOxygenCurrent = if (scalingKnown) 0 else null,
+                maximumManifoldPressure = if (scalingKnown) 0 else null,
+                maximumMassAirFlow = if (0x50 !in ecu.supportedPids) 0 else null,
+            )
+        }.toMutableMap()
+        for (parameter in listOf(ObdPid.SCALING_CONFIGURATION, ObdPid.MAF_SCALING_CONFIGURATION)) {
+            val expected = capabilities.filter { parameter.pid in it.supportedPids }.map { it.ecuId }.toSet()
+            if (expected.isEmpty()) continue
+            try {
+                val replies = request(parameter.command) { ElmResponseParser.parseMode01(it, protocol, parameter.pid) }
+                for (response in replies.filter { it.ecu in expected }) {
+                    val previous = contexts.getValue(response.ecu)
+                    contexts[response.ecu] = if (parameter == ObdPid.SCALING_CONFIGURATION) previous.copy(
+                        maximumRatio = response.data[0],
+                        maximumOxygenVoltage = response.data[1],
+                        maximumOxygenCurrent = response.data[2],
+                        maximumManifoldPressure = response.data[3],
+                    ) else previous.copy(maximumMassAirFlow = response.data[0])
+                }
+            } catch (_: ObdParseException) {
+                // Other sensors can continue; these dependent values remain unavailable.
+                // A transport/framing timeout is intentionally terminal and is not swallowed.
+            }
+        }
+        return contexts.toMap()
+    }
+
     private suspend fun poll(
         protocol: ObdProtocol,
         capabilities: List<ObdEcuCapabilities>,
+        decodeContexts: Map<String, ObdDecodeContext>,
         onSnapshot: (ObdSessionSnapshot) -> Unit,
     ) {
-        val schedule = POLLING_ORDER.filter { metric -> capabilities.any { metric.pid in it.supportedPids } }
-        if (schedule.isEmpty()) {
-            publish(onSnapshot) { it.copy(statusMessage = "Vehicle communication verified. None of the six dashboard parameters is supported.") }
-            while (currentCoroutineContext().isActive) {
-                readPendingVin(protocol, onSnapshot)
-                delay(250L)
-            }
-            return
+        val parameters = ObdPid.entries.filter { parameter ->
+            parameter.pollingGroup != ObdPollingGroup.METADATA && capabilities.any { parameter.pid in it.supportedPids }
+        }
+        val schedule = ObdPollingSchedule(parameters)
+        if (parameters.isEmpty()) {
+            publish(onSnapshot) { it.copy(statusMessage = "Vehicle communication verified. No advertised parameter has an implemented scalar decoder.") }
         }
         var consecutiveErrors = 0
         while (currentCoroutineContext().isActive) {
-            for (metric in schedule) {
-                currentCoroutineContext().ensureActive()
-                readPendingVin(protocol, onSnapshot)
-                activeMetric = metric
-                val began = clock.monotonicMillis()
-                try {
-                    val responses = request(metric.parameter.command) { ElmResponseParser.parseMode01(it, protocol, metric.pid) }
-                    val decoded = responses.associate { it.ecu to metric.parameter.decode(it.data) }
-                    val expected = capabilities.filter { metric.pid in it.supportedPids }.map { it.ecuId }.toSet()
-                    val received = decoded.filterKeys { it in expected }
-                    val now = elapsed()
-                    val timestamp = clock.epochMillis()
-                    consecutiveErrors = if (received.isEmpty()) (consecutiveErrors + 1).coerceAtMost(5) else 0
-                    publish(onSnapshot) {
-                        successfulResponses += received.size
-                        it.copy(
-                            statusMessage = if (received.size == expected.size) "Reading available vehicle parameters." else "Some ECUs did not return this reading.",
-                            readings = it.readings.map { reading ->
-                                if (reading.metric != metric || reading.ecuId !in expected) reading else reading.copy(
-                                    value = received[reading.ecuId],
-                                    status = if (reading.ecuId in received) ObdReadingStatus.VALID else ObdReadingStatus.NO_DATA,
+            currentCoroutineContext().ensureActive()
+            readPendingVin(protocol, onSnapshot)
+            val parameter = schedule.next(clock.monotonicMillis())
+            if (parameter == null) {
+                delay(250L)
+                continue
+            }
+            activeParameter = parameter
+            val expected = capabilities.filter { parameter.pid in it.supportedPids }.map { it.ecuId }.toSet()
+            val began = clock.monotonicMillis()
+            var failed = false
+            try {
+                val responses = request(parameter.command) { ElmResponseParser.parseMode01(it, protocol, parameter.pid) }
+                val received = responses.filter { it.ecu in expected }.associate { response ->
+                    response.ecu to parameter.decodeValues(response.data, decodeContexts.getValue(response.ecu))
+                }
+                failed = received.isEmpty()
+                val now = elapsed()
+                val timestamp = clock.epochMillis()
+                consecutiveErrors = if (failed) (consecutiveErrors + 1).coerceAtMost(5) else 0
+                publish(onSnapshot) {
+                    // Count ECU responses, not the number of output channels in a compound PID.
+                    successfulResponses += received.size
+                    it.copy(
+                        statusMessage = if (received.size == expected.size) "Reading available vehicle parameters." else "Some ECUs did not return this reading.",
+                        readings = it.readings.map { reading ->
+                            if (reading.metric.pid != parameter.pid || reading.ecuId !in expected) reading else {
+                                val decoded = received[reading.ecuId]?.get(reading.metric.field)
+                                reading.copy(
+                                    value = decoded?.value,
+                                    status = when {
+                                        decoded?.available == false -> ObdReadingStatus.UNSUPPORTED
+                                        decoded?.value == null -> ObdReadingStatus.NO_DATA
+                                        else -> ObdReadingStatus.VALID
+                                    },
                                     observedAtEpochMillis = timestamp,
                                     elapsedMillis = now,
                                     monotonicMillis = startedAt + now,
+                                    isRequestResult = true,
                                 )
-                            },
-                        )
-                    }
-                } catch (failure: ObdParseException) {
-                    consecutiveErrors = (consecutiveErrors + 1).coerceAtMost(5)
-                    val status = statusFor(failure)
-                    val now = elapsed()
-                    val timestamp = clock.epochMillis()
-                    publish(onSnapshot) {
-                        it.copy(
-                            statusMessage = readingFailureMessage(status),
-                            readings = it.readings.map { reading ->
-                                if (reading.metric != metric || reading.status == ObdReadingStatus.UNSUPPORTED) reading else reading.copy(
-                                    value = null, status = status, observedAtEpochMillis = timestamp, elapsedMillis = now,
-                                    monotonicMillis = startedAt + now,
-                                )
-                            },
-                        )
-                    }
+                            }
+                        },
+                    )
                 }
-                activeMetric = null
-                val latency = (clock.monotonicMillis() - began).coerceAtLeast(0L)
-                // Deliberately serial and conservative. Slower replies and errors increase the pause.
-                delay((250L + latency / 4L + consecutiveErrors * 350L).coerceAtMost(2_500L))
+            } catch (failure: ObdParseException) {
+                failed = true
+                consecutiveErrors = (consecutiveErrors + 1).coerceAtMost(5)
+                val status = statusFor(failure)
+                val now = elapsed()
+                val timestamp = clock.epochMillis()
+                publish(onSnapshot) {
+                    it.copy(
+                        statusMessage = readingFailureMessage(status),
+                        readings = it.readings.map { reading ->
+                            if (reading.metric.pid != parameter.pid || reading.ecuId !in expected) reading else reading.copy(
+                                value = null, status = status, observedAtEpochMillis = timestamp, elapsedMillis = now,
+                                monotonicMillis = startedAt + now, isRequestResult = true,
+                            )
+                        },
+                    )
+                }
             }
+            schedule.completed(parameter, clock.monotonicMillis(), failed)
+            activeParameter = null
+            val latency = (clock.monotonicMillis() - began).coerceAtLeast(0L)
+            // Deliberately serial and conservative. Slower replies and errors increase the pause.
+            delay((250L + latency / 4L + consecutiveErrors * 350L).coerceAtMost(2_500L))
         }
     }
 
@@ -306,7 +363,7 @@ class Elm327Session(
                 elapsedMillis = now,
                 effectiveResponsesPerSecond = if (liveAt == null || successfulResponses == 0L) 0.0 else successfulResponses * 1_000.0 / liveDuration,
                 readings = updated.readings.map { reading ->
-                    if (reading.status == ObdReadingStatus.VALID && now - reading.elapsedMillis >= 5_000L) markStale(reading) else reading
+                    if (reading.status == ObdReadingStatus.VALID && now - reading.elapsedMillis >= reading.metric.freshnessMillis) markStale(reading) else reading
                 },
             )
             onSnapshot(snapshot)
@@ -345,10 +402,5 @@ class Elm327Session(
     private companion object {
         val ADAPTER_BANNER = Regex("(?:ELM327|STN[0-9]+)(?:[ \\t]+[A-Za-z0-9._ -]+)?", RegexOption.IGNORE_CASE)
         val INITIALIZATION_COMMANDS = listOf("ATE0", "ATL0", "ATS1", "ATH1", "ATD0", "ATCAF1", "ATSP0")
-        val POLLING_ORDER = listOf(
-            ObdMetric.ENGINE_RPM, ObdMetric.SPEED, ObdMetric.COOLANT_TEMPERATURE,
-            ObdMetric.ENGINE_RPM, ObdMetric.SPEED, ObdMetric.INTAKE_TEMPERATURE,
-            ObdMetric.ENGINE_RPM, ObdMetric.SPEED, ObdMetric.THROTTLE_POSITION, ObdMetric.ENGINE_LOAD,
-        )
     }
 }
