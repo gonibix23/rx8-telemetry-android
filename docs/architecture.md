@@ -2,12 +2,12 @@
 
 ## Status
 
-The 0.5.0-dev app contains a deterministic simulator, Bluetooth Classic/SPP discovery, a read-only OBD engine, optional VIN acquisition, and Room vehicle profiles.
+The 0.5.1-dev app contains a deterministic simulator, Bluetooth Classic/SPP discovery, service-owned read-only OBD acquisition, optional VIN acquisition, and Room vehicle profiles.
 The Bluetooth screen combines paired devices and nearby discoveries, handles scan and connection permissions separately, and opens a secure RFCOMM socket.
 Device names and MAC addresses are shown locally so the user can identify the OBDII adapter reported in Car Scanner.
 The connection starts without OBD commands. An explicit Read live data action initializes the adapter and starts Mode 01 acquisition, keeping Bluetooth status separate from ECU communication.
 
-Acquisition is foreground-only: simulation pauses when its tab is hidden, and leaving Adapter for Vehicles, Simulator, or the background closes the connection and requires manual reconnection. Saved profiles remain available without a connection.
+An explicitly started real connection/acquisition session continues across tabs, backgrounding, screen lock, and Activity recreation. Discovery stops when Adapter is hidden; simulation pauses when Simulator is hidden. Saved profiles remain available without a connection.
 The user reported the simulator app worked after testing on October 10, 2026 and confirmed the Samsung A53 runs Android 16.
 The paired-only Bluetooth build failed to list the adapter, which the user finds by searching in Car Scanner with plain Bluetooth selected.
 The user confirmed Bluetooth works and, on October 11, 2026, reported that live readings worked; PR #14 is merged. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed correct readings in 0.5.0-dev. These reports do not establish individual sensors, ECU identifiers, measured rates, sustained lifecycle behavior, VIN retrieval, or profile persistence. Detailed RX8-001/RX8-004 checks remain open.
@@ -56,7 +56,7 @@ Byte reads and writes are bounded and cancellable; closing the socket cancels bl
 The OBD engine uses these operations only after the user selects Read live data. Connecting alone sends no application commands.
 Android still performs the protocol handshakes needed to establish the Bluetooth connection.
 
-No automatic reconnection or background service is implemented. While live readings are active, command deadlines detect missing replies.
+A non-exported connectedDevice foreground service owns the session controller, socket, acquisition jobs, and Bluetooth-event receiver. The visible Connect action starts/promotes the service before connecting; Read live data starts OBD separately. While acquisition runs, command deadlines detect missing replies. There is no automatic reconnection.
 The user reconnects manually, and a connected socket does not establish adapter command compatibility or sensor availability.
 This follows Android's [paired-device](https://developer.android.com/develop/connectivity/bluetooth/find-bluetooth-devices) and [RFCOMM client](https://developer.android.com/develop/connectivity/bluetooth/connect-bluetooth-devices) guidance.
 
@@ -70,7 +70,7 @@ RX8-004 separates pure parsing in `:core:telemetry` from the session scheduler i
 - Read Mode 01 supported-PID bitmaps and retain each ECU's capabilities. Request only the six implemented metrics reported by at least one responding ECU.
 - Parse CAN 11/29-bit single-frame and supported legacy header formats, keeping ECU source identifiers. Unexpected layouts, wrong PIDs, and malformed data fail visibly rather than being interpreted as values.
 - Schedule RPM and speed more often than slower parameters, with serial requests and latency/error backoff. Report the observed response rate without promising a fixed sampling frequency.
-- Preserve timestamps and units, distinguish missing/unsupported/error results, and mark old valid values stale. Disconnecting or leaving Adapter cancels acquisition and marks retained values stale.
+- Preserve timestamps and units, distinguish missing/unsupported/error results, and mark old valid values stale. Explicit disconnection or a terminal error cancels acquisition and marks retained values stale. Leaving Adapter keeps an active session running.
 
 The first decoders cover PIDs `04`, `05`, `0C`, `0D`, `0F`, and `11`: load, coolant temperature, RPM, speed, intake temperature, and throttle position.
 Capability blocks are discovered separately from decoding; a reported PID is not a promise that this build displays that parameter.
@@ -140,13 +140,26 @@ Those legacy permissions are limited to API 30. Android 12+ does not request loc
 Android can present pairing during connection. Bluetooth and permission settings remain available for recovery.
 See Android's [Bluetooth permission guidance](https://developer.android.com/develop/connectivity/bluetooth/bt-permissions).
 
-The connection closes when Adapter is hidden, including navigation to Vehicles to review a chosen VIN, or when the app leaves the foreground. Returning requires a manual reconnect.
-This is not screen-locked trip recording.
+### Current background session lifecycle
+
+[Issue #16](https://github.com/gonibix23/rx8-telemetry-android/issues/16) / 0.5.1-dev separates session ownership from the Activity. The non-exported service is both started and bound: a visible Connect action promotes it to a `connectedDevice` foreground service, while binding lets the UI observe and control the same controller.
+Connection attempts, an established socket, and explicit OBD acquisition continue across tab changes, backgrounding, screen lock, and Activity recreation. The service owns Bluetooth events so losing the Activity does not lose disconnect/permission handling.
+Discovery remains limited to the visible Adapter screen. New connection, OBD-start, and VIN actions require explicit foreground interaction; returning to the screen never starts another session automatically.
+Choosing a VIN candidate opens Vehicles for review while acquisition continues. Profile selection does not relabel or save the telemetry buffer.
+
+The service declares the foreground-service/connected-device permissions and uses an ongoing notification with Stop and open-Adapter controls. It contains no VIN, MAC, UUID, or raw readings.
+On API 33+, the first Connect action requests `POST_NOTIFICATIONS`. Denial does not block connecting; the UI provides notification-settings/disconnect guidance, and Android may withhold the service notification from the notification drawer. See [notification permission behavior](https://developer.android.com/develop/ui/compose/notifications/notification-permission).
+
+`KeepScreenAwake` applies only while Adapter is visible and OBD is INITIALIZING, DISCOVERING, or LIVE. It releases the screen-on flag when the screen stops being visible or acquisition stops; it does not override an explicit lock action. The service handles acquisition with the screen off.
+A partial wake lock keeps acquisition work eligible to run with the screen off. Each acquisition has a 120-second timeout, renewed every 60 seconds only during active initialization/discovery/live polling; it is released on stop/error/cleanup. An idle Bluetooth connection does not hold that wake lock.
+Stop/disconnect and terminal errors release the socket, jobs, wake lock, and foreground notification even if the UI remains bound. The service returns `START_NOT_STICKY`; there is no automatic reconnect or process-death session restoration. Old in-memory readings are not a saved trip.
+Active sessions consume battery. No battery-optimization exemption is requested, and indefinite survival against process termination or device power policies is not promised. A53 lock/background/battery behavior still needs hardware validation.
+
+The user reported idle screen sleep and background disconnection in 0.5.0-dev, consistent with the old foreground-only policy. Actual Bluetooth bond removal is unconfirmed; the app has no `removeBond` call. A dropped socket and an Android pairing entry are separate states.
 
 ### Planned recording sessions
 
-RX8-007 will add user-started recording with a `connectedDevice` foreground service, a notification, and a stop action.
-Declare the permissions and service type required by the Android version/target when implementing that feature.
+RX8-007 will build on the service lifecycle to add explicit trip recording and persisted sessions/samples. Background acquisition by itself does not save history or recover it after process death.
 
 The MVP does not include GPS. WorkManager is reserved for future synchronization, not vehicle polling.
 Recording with the screen locked will need explicit A53 testing; indefinite survival after process termination is not promised.
@@ -178,12 +191,15 @@ Current app data is excluded from Android backup and device transfer. Any future
 Parser tests cover complete, fragmented, multi-ECU, and malformed Mode 01/VIN responses. Identity tests cover duplicate/different VINs, UUID/provenance preservation, explicit selection, storage failures, and reopening Room. Actual run results belong in the PR.
 Tests for persistence, migrations, identity, unexpected termination, the queue, and retries.
 Interface tests with a clearly identified simulator.
-Real-vehicle validation for compatibility, sampling rate, reconnection, and recording with the screen locked.
+Lifecycle checks cover Activity recreation, continued background samples, notification denial/Stop, and resource release. Real-vehicle validation still needs compatibility, measured rates, battery use, and background/lock continuity; saved recording remains future work.
 
 ## References
 
 - [Android architecture](https://developer.android.com/topic/architecture/recommendations).
 - [Bluetooth Classic](https://developer.android.com/develop/connectivity/bluetooth/connect-bluetooth-devices).
 - [Bluetooth permissions](https://developer.android.com/develop/connectivity/bluetooth/bt-permissions).
-- [Foreground services](https://developer.android.com/develop/background-work/services/fgs/service-types#connected-device).
+- [Connected-device foreground services](https://developer.android.com/develop/background-work/services/fgs/service-types#connected-device).
+- [Notification permission](https://developer.android.com/develop/ui/compose/notifications/notification-permission).
+- [Keeping the screen on](https://developer.android.com/develop/background-work/background-tasks/awake/screen-on).
+- [Wake locks](https://developer.android.com/develop/background-work/background-tasks/awake/wakelock).
 - [Offline-first operation](https://developer.android.com/topic/architecture/data-layer/offline-first).

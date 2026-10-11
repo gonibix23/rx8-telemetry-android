@@ -2,7 +2,7 @@
 
 Android app in development for viewing live vehicle data and recording trips without an Internet connection.
 
-**Current implementation (0.5.0-dev): Bluetooth Classic discovery and connection, read-only live OBD acquisition, saved vehicle profiles with optional VINs, and a separate simulator. Trips and API integration remain planned.**
+**Current implementation (0.5.1-dev): Bluetooth Classic discovery and connection, live OBD acquisition that continues in the background, saved vehicle profiles with optional VINs, and a separate simulator. Trips and API integration remain planned.**
 
 The simulator uses deterministic synthetic readings and supports normal operation, timeouts, and missing data.
 Connect, disconnect, and reset controls make demonstrations repeatable.
@@ -13,7 +13,10 @@ It attempts a secure RFCOMM/SPP connection; Android can request pairing during c
 After connecting, choose **Read live data** to initialize the adapter, detect its protocol, and discover supported parameters.
 The first six decoded parameters are engine speed, vehicle speed, coolant and intake air temperatures, throttle position, and engine load, when reported as supported.
 Readings retain their ECU source and timestamp. Missing, malformed, unsupported, and stale readings are distinct from valid zero values.
-Connections close when leaving the Adapter tab, including switching to Vehicles or Simulator, or putting the app in the background; reconnect manually when ready.
+A connection started with **Connect** continues across tabs, backgrounding, screen lock, and Activity recreation. **Read live data** still starts acquisition explicitly; discovery stops when leaving Adapter.
+The visible Adapter screen stays awake during initialization and live acquisition. Use **Disconnect** in the app or **Stop** in the ongoing session notification to end the session. Opening the notification returns to Adapter.
+On Android 13+, notification access is requested on the first Connect action. Denial does not block connecting; the app explains how to enable the notification or stop from Adapter.
+Active acquisition uses additional battery, including while the screen is locked. No battery-optimization exemption is requested. A stopped, failed, or process-terminated session requires a new manual connection; no trip or telemetry history is saved.
 
 In **Vehicles**, explicitly create a named profile with a permanent UUID, select a saved profile, or rename it. The profile and selection are saved locally in Room.
 A VIN is optional: enter it manually or choose **Read VIN** after live acquisition starts, then review a detected candidate before saving it. VINs are masked by default and retain their manual or OBD source.
@@ -25,7 +28,8 @@ The user confirmed that the Samsung A53 runs Android 16. The paired-only Bluetoo
 The user reports that Car Scanner finds it through an in-app search with plain Bluetooth selected, displaying OBDII and its MAC address.
 The user subsequently confirmed Bluetooth works. On October 11, 2026, the user reported that live readings worked, and PR #14 is merged.
 The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed that 0.5.0-dev reads data correctly. These reports do not confirm all six sensors, ECU identifiers, measured rates, or sustained lifecycle behavior. RX8-001, RX8-004, and the remaining hardware checks stay open; VIN retrieval and profile persistence still need device validation.
-There are no published APK releases or deployed APIs.
+The user also reported the screen sleeping when idle and readings disconnecting after backgrounding in 0.5.0-dev. That matched the previous foreground-only connection policy; actual Bluetooth bond removal was not confirmed.
+[Issue #16](https://github.com/gonibix23/rx8-telemetry-android/issues/16) tracks the lifecycle fix and pending A53 background/lock/notification checks. There are no published APK releases or deployed APIs.
 
 ## Reference vehicle and equipment
 
@@ -83,7 +87,7 @@ Each issue has a scope and acceptance criteria. Implementation changes go throug
 [RX8-002](https://github.com/gonibix23/rx8-telemetry-android/issues/2) records the completed foundation and successful user-reported simulator test on the Samsung A53 running Android 16.
 [RX8-003](https://github.com/gonibix23/rx8-telemetry-android/issues/3) records the successful user-reported Bluetooth connection and remaining transport checks.
 [RX8-004](https://github.com/gonibix23/rx8-telemetry-android/issues/4) records the general live-reading success and pending detailed hardware checks.
-[RX8-005](https://github.com/gonibix23/rx8-telemetry-android/issues/5) tracks permanent vehicle profiles, optional VINs, and identity validation.
+[RX8-005](https://github.com/gonibix23/rx8-telemetry-android/issues/5) tracks permanent vehicle profiles and optional VINs, implemented in merged [PR #15](https://github.com/gonibix23/rx8-telemetry-android/pull/15). Its device checks remain open.
 [RX8-001](https://github.com/gonibix23/rx8-telemetry-android/issues/1) tracks separate validation with the real car and adapter.
 
 ## Documentation checks

@@ -1,0 +1,12 @@
+<resources>
+    <string name="session_channel">Adapter connection</string>
+    <string name="session_title">RX-8 Telemetry</string>
+    <string name="session_connecting">Connecting to the adapter</string>
+    <string name="session_initializing">Preparing vehicle readings</string>
+    <string name="session_reading">Live readings continue in the background</string>
+    <string name="session_connected">Adapter connected. Open the app to read live data.</string>
+    <string name="session_stop">Stop</string>
+    <string name="session_start_failure">The background connection could not start. Keep the app open and try Connect again.</string>
+    <string name="session_permission_failure">Bluetooth access is required to keep this connection active. Allow access and try Connect again.</string>
+    <string name="session_power_failure">Readings stopped because background power protection was unavailable. Reconnect to try again.</string>
+</resources>

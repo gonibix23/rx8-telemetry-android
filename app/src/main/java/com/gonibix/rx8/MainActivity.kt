@@ -1,17 +1,15 @@
 package com.gonibix.rx8
 
 import android.Manifest
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothDevice
-import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
+import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.net.Uri
-import android.location.LocationManager
 import android.os.Build
 import android.os.Bundle
+import android.os.IBinder
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -33,17 +31,17 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.core.content.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.gonibix.rx8.bluetooth.AndroidBluetoothGateway
 import com.gonibix.rx8.connection.BluetoothConnectionScreen
-import com.gonibix.rx8.connection.BluetoothConnectionViewModel
+import com.gonibix.rx8.connection.BluetoothSessionService
+import com.gonibix.rx8.ui.KeepScreenAwake
 import com.gonibix.rx8.ui.SimulatorDashboard
 import com.gonibix.rx8.obd.ObdPhase
 import com.gonibix.rx8.obd.ObdVinStatus
@@ -68,70 +66,60 @@ class MainActivity : ComponentActivity() {
     private val simulatorViewModel by lazy {
         ViewModelProvider(this)[SimulatorViewModel::class.java]
     }
-    private val bluetoothViewModel by lazy {
-        ViewModelProvider(this, object : ViewModelProvider.Factory {
-            @Suppress("UNCHECKED_CAST")
-            override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                require(modelClass == BluetoothConnectionViewModel::class.java)
-                return BluetoothConnectionViewModel(AndroidBluetoothGateway(applicationContext)) as T
-            }
-        })[BluetoothConnectionViewModel::class.java]
+    private var sessionBinder by mutableStateOf<BluetoothSessionService.LocalBinder?>(null)
+    private var serviceBound = false
+    private var selectedTab by mutableStateOf("adapter")
+    private var connectAfterPermission by mutableStateOf(false)
+    private var notificationsAllowed by mutableStateOf(true)
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName, service: IBinder) {
+            sessionBinder = service as BluetoothSessionService.LocalBinder
+        }
+
+        override fun onServiceDisconnected(name: ComponentName) {
+            sessionBinder = null
+        }
     }
     private val bluetoothPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
-    ) { bluetoothViewModel.refresh() }
+    ) { sessionBinder?.controller?.refresh() }
+    private val notificationPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { allowed ->
+        notificationsAllowed = allowed
+        // Denial hides the drawer notification, but does not prevent a foreground service.
+        connectAfterPermission = selectedTab == "adapter"
+    }
     private var scanAfterPermission by mutableStateOf(false)
     private val discoveryPermissions = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { grants ->
-        bluetoothViewModel.refresh()
+        sessionBinder?.controller?.refresh()
         if (grants.isNotEmpty() && grants.values.all { it }) {
             // ActivityResult can deliver at ON_START before the screen's lifecycle effect.
             scanAfterPermission = true
         }
     }
-    private var receiverRegistered = false
-    private val bluetoothEvents = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            when (intent.action) {
-                BluetoothAdapter.ACTION_STATE_CHANGED,
-                LocationManager.MODE_CHANGED_ACTION,
-                BluetoothDevice.ACTION_BOND_STATE_CHANGED -> bluetoothViewModel.refresh()
-                BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
-                    val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
-                    } else {
-                        @Suppress("DEPRECATION")
-                        intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)
-                    }
-                    if (hasBluetoothPermission()) {
-                        try {
-                            device?.address?.let(bluetoothViewModel::onDeviceDisconnected)
-                        } catch (_: SecurityException) {
-                            bluetoothViewModel.refresh()
-                        }
-                    } else {
-                        bluetoothViewModel.refresh()
-                    }
-                }
-            }
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         scanAfterPermission = savedInstanceState?.getBoolean("scan_after_permission") ?: false
+        selectedTab = savedInstanceState?.getString("selected_tab") ?: "adapter"
+        if (savedInstanceState == null && intent.action == BluetoothSessionService.ACTION_OPEN_SESSION) {
+            selectedTab = "adapter"
+        }
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
         )
         setContent {
             Rx8Theme {
-                var selectedTab by rememberSaveable { mutableStateOf("adapter") }
                 val showBluetooth = selectedTab == "adapter"
                 val vehicles by vehicleViewModel.uiState.collectAsStateWithLifecycle()
-                LaunchedEffect(showBluetooth, scanAfterPermission) {
-                    if (!showBluetooth) scanAfterPermission = false
+                LaunchedEffect(showBluetooth, scanAfterPermission, connectAfterPermission) {
+                    if (!showBluetooth) {
+                        scanAfterPermission = false
+                        connectAfterPermission = false
+                    }
                 }
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -167,47 +155,63 @@ class MainActivity : ComponentActivity() {
                         }
                         Box(Modifier.weight(1f)) {
                             if (showBluetooth) {
-                                val state by bluetoothViewModel.uiState.collectAsStateWithLifecycle()
-                                LifecycleStartEffect(bluetoothViewModel) {
-                                    bluetoothViewModel.setForeground(true)
-                                    onStopOrDispose { bluetoothViewModel.setForeground(false) }
-                                }
-                                LaunchedEffect(state.isForeground, scanAfterPermission) {
-                                    if (state.isForeground && scanAfterPermission) {
-                                        scanAfterPermission = false
-                                        bluetoothViewModel.startDiscovery()
+                                val binder = sessionBinder
+                                val controller = binder?.controller
+                                if (controller == null) {
+                                    Text("Preparing Bluetooth controls…")
+                                } else {
+                                    val state by controller.uiState.collectAsStateWithLifecycle()
+                                    KeepScreenAwake(state.obd.phase in setOf(
+                                        ObdPhase.INITIALIZING, ObdPhase.DISCOVERING, ObdPhase.LIVE,
+                                    ))
+                                    LifecycleStartEffect(controller) {
+                                        controller.setForeground(true)
+                                        onStopOrDispose { controller.setForeground(false) }
                                     }
+                                    LaunchedEffect(state.isForeground, scanAfterPermission) {
+                                        if (state.isForeground && scanAfterPermission) {
+                                            scanAfterPermission = false
+                                            controller.startDiscovery()
+                                        }
+                                    }
+                                    LaunchedEffect(state.isForeground, connectAfterPermission) {
+                                        if (state.isForeground && connectAfterPermission) {
+                                            connectAfterPermission = false
+                                            binder.connect()
+                                        }
+                                    }
+                                    BluetoothConnectionScreen(
+                                        state = state,
+                                        onRefresh = controller::refresh,
+                                        onRequestPermission = ::requestBluetoothPermission,
+                                        onOpenBluetoothSettings = {
+                                            openSettings(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
+                                        },
+                                        onOpenAppSettings = {
+                                            openSettings(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                                data = Uri.fromParts("package", packageName, null)
+                                            })
+                                        },
+                                        onSelectDevice = controller::selectDevice,
+                                        onConnect = ::requestSessionConnection,
+                                        onDisconnect = controller::disconnect,
+                                        onStartObd = controller::startObd,
+                                        onReadVin = controller::readVin,
+                                        notificationsAllowed = notificationsAllowed,
+                                        canReviewVin = !vehicles.isLoading && !vehicles.isSaving,
+                                        onReviewVin = { candidate ->
+                                            val current = controller.uiState.value.obd
+                                            if (current.phase == ObdPhase.LIVE && current.vin.status == ObdVinStatus.AVAILABLE &&
+                                                candidate in current.vin.candidates && vehicleViewModel.offerObdVin(candidate)
+                                            ) selectedTab = "vehicles"
+                                        },
+                                        onScan = ::requestDiscovery,
+                                        onStopScan = controller::stopDiscovery,
+                                        onOpenLocationSettings = {
+                                            openSettings(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+                                        },
+                                    )
                                 }
-                                BluetoothConnectionScreen(
-                                    state = state,
-                                    onRefresh = bluetoothViewModel::refresh,
-                                    onRequestPermission = ::requestBluetoothPermission,
-                                    onOpenBluetoothSettings = {
-                                        openSettings(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
-                                    },
-                                    onOpenAppSettings = {
-                                        openSettings(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                            data = Uri.fromParts("package", packageName, null)
-                                        })
-                                    },
-                                    onSelectDevice = bluetoothViewModel::selectDevice,
-                                    onConnect = bluetoothViewModel::connect,
-                                    onDisconnect = bluetoothViewModel::disconnect,
-                                    onStartObd = bluetoothViewModel::startObd,
-                                    onReadVin = bluetoothViewModel::readVin,
-                                    canReviewVin = !vehicles.isLoading && !vehicles.isSaving,
-                                    onReviewVin = { candidate ->
-                                        val current = bluetoothViewModel.uiState.value.obd
-                                        if (current.phase == ObdPhase.LIVE && current.vin.status == ObdVinStatus.AVAILABLE &&
-                                            candidate in current.vin.candidates && vehicleViewModel.offerObdVin(candidate)
-                                        ) selectedTab = "vehicles"
-                                    },
-                                    onScan = ::requestDiscovery,
-                                    onStopScan = bluetoothViewModel::stopDiscovery,
-                                    onOpenLocationSettings = {
-                                        openSettings(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
-                                    },
-                                )
                             } else if (selectedTab == "vehicles") {
                                 LaunchedEffect(Unit) { vehicleViewModel.reload() }
                                 VehicleProfileScreen(
@@ -247,34 +251,35 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        val filter = IntentFilter().apply {
-            addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
-            addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
-            addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
-            addAction(LocationManager.MODE_CHANGED_ACTION)
+        notificationsAllowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        if (!serviceBound) {
+            serviceBound = bindService(
+                Intent(this, BluetoothSessionService::class.java), serviceConnection, Context.BIND_AUTO_CREATE,
+            )
         }
-        // Bluetooth stack broadcasts can originate outside the system UID. These actions
-        // are protected system broadcasts, so a third-party app cannot send them.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(bluetoothEvents, filter, Context.RECEIVER_EXPORTED)
-        } else {
-            registerReceiver(bluetoothEvents, filter)
-        }
-        receiverRegistered = true
-        bluetoothViewModel.refresh()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.action == BluetoothSessionService.ACTION_OPEN_SESSION) selectedTab = "adapter"
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean("scan_after_permission", scanAfterPermission)
+        outState.putString("selected_tab", selectedTab)
         super.onSaveInstanceState(outState)
     }
 
     override fun onStop() {
-        bluetoothViewModel.setForeground(false)
-        if (receiverRegistered) {
-            unregisterReceiver(bluetoothEvents)
-            receiverRegistered = false
+        connectAfterPermission = false
+        sessionBinder?.controller?.setForeground(false)
+        if (serviceBound) {
+            unbindService(serviceConnection)
+            serviceBound = false
         }
+        sessionBinder = null
         super.onStop()
     }
 
@@ -286,7 +291,19 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !hasBluetoothPermission()) {
             bluetoothPermission.launch(Manifest.permission.BLUETOOTH_CONNECT)
         } else {
-            bluetoothViewModel.refresh()
+            sessionBinder?.controller?.refresh()
+        }
+    }
+
+    private fun requestSessionConnection() {
+        val preferences = getSharedPreferences("session_ui", Context.MODE_PRIVATE)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !notificationsAllowed &&
+            !preferences.getBoolean("notifications_requested", false)
+        ) {
+            preferences.edit { putBoolean("notifications_requested", true) }
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            sessionBinder?.connect()
         }
     }
 
@@ -305,7 +322,7 @@ class MainActivity : ComponentActivity() {
             arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
         }
         if (permissions.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }) {
-            bluetoothViewModel.startDiscovery()
+            sessionBinder?.controller?.startDiscovery()
         } else {
             discoveryPermissions.launch(permissions)
         }

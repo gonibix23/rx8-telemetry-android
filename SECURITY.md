@@ -13,6 +13,16 @@ Android backup and device transfer are disabled/excluded for app data. Clearing 
 No profile deletion action is available in this increment. Future retention, backup, and export features need explicit handling before distribution.
 When trip recording is implemented, allow trips to be exported and deleted, show storage usage, and do not delete records pending upload without informing the user.
 
+## Active sessions and device power
+
+Connect explicitly starts a non-exported connectedDevice foreground service; Read live data separately starts read-only acquisition. The service can continue receiving data with another tab/app open or the screen locked, but no telemetry history is saved.
+The ongoing notification offers Stop and opens Adapter. It contains no VIN, MAC address, profile UUID, or raw readings. On Android 13+, notification permission is requested on the first Connect action; denial does not block the service, and the app provides guidance for notification settings and in-app disconnection.
+A foreground-service notification is still created when permission is denied, although Android can withhold it from the notification drawer. See [Android notification permission behavior](https://developer.android.com/develop/ui/compose/notifications/notification-permission).
+
+The service uses foreground-service/connected-device and wake-lock permissions. A bounded partial wake lock is renewed only while acquisition is active, and the visible Adapter screen stays awake during initialization/live acquisition.
+These behaviors consume battery; stop the session when finished. The app does not request a battery-optimization exemption. Stop, errors, and service cleanup release session resources and the wake lock even while the UI remains bound.
+Process death does not restore a connection or in-memory readings; there is no automatic reconnect or sticky restart.
+
 ## Future integration
 
 The API will remain disabled until a server, authentication, and consent to upload data are in place.

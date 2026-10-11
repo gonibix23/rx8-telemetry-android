@@ -5,7 +5,7 @@
 Read README.md, docs/product.md, docs/architecture.md, and the issue before changing code.
 Initial project: European 2004 Mazda RX-8, 231 metric horsepower (CV); Samsung A53 running Android 16; iLC B0BDRHRR22.
 Priority: live data and local trip recording. Prepare for an API without deploying a backend.
-The repository contains a simulator, Bluetooth Classic/SPP discovery, a read-only ELM327 acquisition engine, and Room vehicle profiles with optional manual/OBD VINs. Trip recording, telemetry persistence, and API integration remain planned.
+The repository contains a simulator, Bluetooth Classic/SPP discovery, service-owned read-only ELM327 acquisition, and Room vehicle profiles with optional manual/OBD VINs. Trip recording, telemetry persistence, and API integration remain planned.
 Read docs/development.md for the pinned toolchain and current build commands. Never claim that a check passed or that hardware was validated without evidence.
 
 ## Language
@@ -39,7 +39,12 @@ Use English for documentation, source comments, UI text, issues, pull requests, 
 - Mask VINs by default, retain manual/OBD provenance, and never save a detected candidate without an explicit user decision. Only profiles are persisted; no history exists yet. Backups/device transfer are excluded, and export/restore is not implemented.
 - Preserve the Room schema export and require explicit migrations for future schema versions. Do not add a destructive database fallback.
 - Copy every APK ready for user testing with `scripts/export-test-apk.ps1`, using the ignored `apk-delivery.local.json` destination or the user's requested directory. Keep that machine-specific path outside committed files; document the version delivered.
-- A connected RFCOMM socket is not proof of ECU communication. Preserve the UI distinction, foreground-only connection policy, and manual reconnection. RX8-001 tracks physical adapter and car evidence.
+- A connected RFCOMM socket is not proof of ECU communication. Preserve the UI distinction and manual reconnection. RX8-001 tracks physical adapter and car evidence.
+- Issue #16 / 0.5.1-dev moves an explicitly started connection into a non-exported, started and bound connectedDevice foreground service. Keep attempts, sockets, and acquisition alive across tabs/background/lock/recreation; cancel discovery when leaving Adapter. New Connect, live-data, and VIN actions still require the visible UI.
+- Keep the screen awake only for visible Adapter initialization/discovery/live acquisition. Hold and renew a bounded partial wake lock only during acquisition; stop/error/service cleanup must release resources even while the UI remains bound.
+- Preserve notification Stop/open-Adapter controls without sensitive identifiers. Notification permission denial must not block connection; show recovery guidance. Do not request battery-optimization exemptions.
+- Keep START_NOT_STICKY, no automatic reconnect, and no process-death session restoration. Background live data is not trip recording or telemetry persistence.
+- The user reported idle screen sleep/background disconnection in 0.5.0-dev. Actual bond removal is unconfirmed; the app has no removeBond call. Validate the new lifecycle on the A53 before claiming it works on hardware.
 - The current simulator samples only in the foreground. Do not describe it as background trip recording.
 - Clearly state completed tests, pending tests, and limitations.
 - Do not mark an issue complete until its criteria are met.

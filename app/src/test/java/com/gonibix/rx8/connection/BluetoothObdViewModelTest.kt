@@ -88,6 +88,7 @@ class BluetoothObdViewModelTest {
 
     @After
     fun tearDown() {
+        viewModel.stopDiscovery()
         viewModel.disconnect()
         Dispatchers.resetMain()
     }
@@ -119,20 +120,57 @@ class BluetoothObdViewModelTest {
     }
 
     @Test
-    fun backgroundClosesTheLinkAndMarksCachedValuesStale() = sessionTest {
+    fun backgroundKeepsLiveReadingsUntilExplicitDisconnect() = sessionTest {
         connectAndRead()
         emit!!(liveSnapshot())
         viewModel.setForeground(false)
+        runCurrent()
+        assertFalse(cancelled)
+        assertFalse(gateway.link.closed)
+        assertEquals(BluetoothConnectionPhase.CONNECTED, viewModel.uiState.value.phase)
+        assertEquals(ObdPhase.LIVE, viewModel.uiState.value.obd.phase)
+        assertEquals(ObdReadingStatus.VALID, viewModel.uiState.value.obd.readings.single().status)
+
+        val next = liveSnapshot().copy(
+            elapsedMillis = 2_000L,
+            readings = liveSnapshot().readings.map { it.copy(value = 12.0, elapsedMillis = 2_000L) },
+        )
+        emit!!(next)
+        assertEquals(2_000L, viewModel.uiState.value.obd.elapsedMillis)
+        assertEquals(12.0, viewModel.uiState.value.obd.readings.single().value!!, 0.0)
+        viewModel.readVin()
+        viewModel.startObd()
+        runCurrent()
+        assertEquals(0, vinRequests)
+        assertEquals(1, starts)
+        viewModel.setForeground(true)
+        runCurrent()
+        assertEquals(1, starts)
+        assertEquals(1, gateway.connects)
+        assertEquals(BluetoothConnectionPhase.CONNECTED, viewModel.uiState.value.phase)
+
+        viewModel.disconnect()
         runCurrent()
         assertTrue(cancelled)
         assertTrue(gateway.link.closed)
         assertEquals(BluetoothConnectionPhase.DISCONNECTED, viewModel.uiState.value.phase)
         assertEquals(ObdPhase.STOPPED, viewModel.uiState.value.obd.phase)
         assertEquals(ObdReadingStatus.STALE, viewModel.uiState.value.obd.readings.single().status)
+    }
+
+    @Test
+    fun backgroundCannotStartObdOnAnIdleConnectedLink() = sessionTest {
+        connect()
+        viewModel.setForeground(false)
+        viewModel.startObd()
+        runCurrent()
+        assertEquals(0, starts)
+        assertEquals(ObdPhase.IDLE, viewModel.uiState.value.obd.phase)
+        assertFalse(gateway.link.closed)
         viewModel.setForeground(true)
+        viewModel.startObd()
         runCurrent()
         assertEquals(1, starts)
-        assertEquals(BluetoothConnectionPhase.DISCONNECTED, viewModel.uiState.value.phase)
     }
 
     @Test
@@ -207,7 +245,7 @@ class BluetoothObdViewModelTest {
     }
 
     private fun sessionTest(block: suspend TestScope.() -> Unit) = runTest(dispatcher) {
-        try { block() } finally { viewModel.disconnect(); runCurrent() }
+        try { block() } finally { viewModel.stopDiscovery(); viewModel.disconnect(); runCurrent() }
     }
 
     private inner class TestGateway : BluetoothGateway {
