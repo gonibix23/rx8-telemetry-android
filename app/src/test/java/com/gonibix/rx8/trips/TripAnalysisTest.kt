@@ -154,6 +154,48 @@ class TripAnalysisTest {
         assertTrue(cancelled)
         assertEquals(1, repository.requests.size)
     }
+
+    @Test fun seriesChoicesComeFromSavedSourcesIncludingErrorsAndPreferExistingSpeedSummary() = runTest {
+        val samples = listOf(
+            analysisSample(0, 0, null, ecu = "7E7", quality = ObdReadingStatus.NO_DATA),
+            analysisSample(1, 0, 20.0, ecu = "7E9"),
+            analysisSample(2, 1_000, 40.0, ecu = "7E9"),
+            analysisSample(3, 2_000, null, ecu = "7E8", quality = ObdReadingStatus.TIMEOUT, metric = ObdMetric.ENGINE_RPM),
+            analysisSample(4, 3_000, -10.0, metric = ObdMetric.INTAKE_TEMPERATURE),
+        )
+        val repository = AnalyticsExportRepository(samples)
+        val analysis = analyzeTrip(repository, analysisTrip())
+        assertEquals(listOf(
+            TripSeriesKey(ObdMetric.ENGINE_RPM, "7E8"), TripSeriesKey(ObdMetric.SPEED, "7E7"),
+            TripSeriesKey(ObdMetric.SPEED, "7E9"), TripSeriesKey(ObdMetric.INTAKE_TEMPERATURE, "7E8"),
+        ), analysis.seriesOptions)
+        assertEquals(TripSeriesKey(ObdMetric.SPEED, "7E9"), analysis.defaultSeries())
+        assertEquals(1_000L, analysis.coveredMillis)
+        assertEquals(30.0 / 3_600.0, analysis.estimatedDistanceKm!!, 0.0000001)
+        assertEquals(listOf(-1L, 4L, -1L, 4L), repository.requests.map { it.first })
+    }
+
+    @Test fun noSpeedDefaultsToStableMetricThenEcuAndEmptyTripHasNoSeries() = runTest {
+        val analysis = analyzeTrip(AnalyticsExportRepository(listOf(
+            analysisSample(0, 0, null, ecu = "7E9", quality = ObdReadingStatus.NO_DATA, metric = ObdMetric.INTAKE_TEMPERATURE),
+            analysisSample(1, 0, 10.0, ecu = "7E9", metric = ObdMetric.COOLANT_TEMPERATURE),
+            analysisSample(2, 0, 20.0, ecu = "7E8", metric = ObdMetric.COOLANT_TEMPERATURE),
+        )), analysisTrip())
+        assertEquals(TripSeriesKey(ObdMetric.COOLANT_TEMPERATURE, "7E8"), analysis.defaultSeries())
+        assertNull(analyzeTrip(AnalyticsExportRepository(), analysisTrip()).defaultSeries())
+        assertTrue(analysis.chart.isEmpty())
+        assertNull(analysis.estimatedDistanceKm)
+    }
+
+    @Test fun excessiveRecordedSeriesFailClearlyInsteadOfGrowingUnboundedChoices() = runTest {
+        val samples = (0L..192L).map { analysisSample(it, it, null, ecu = "source-$it", quality = ObdReadingStatus.NO_DATA) }
+        val repository = AnalyticsExportRepository(samples)
+        var failure: Throwable? = null
+        try { analyzeTrip(repository, analysisTrip()) } catch (caught: Throwable) { failure = caught }
+        assertTrue(failure is IOException)
+        assertTrue(failure?.message.orEmpty().contains("too many sensor/source combinations"))
+        assertEquals(1, repository.requests.size)
+    }
 }
 
 internal fun analysisTrip(duration: Long = 10_000L) = TripSession(

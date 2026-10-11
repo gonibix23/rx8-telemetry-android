@@ -20,6 +20,7 @@ data class TripAnalysis(
     val maxRpm: Double?,
     val maxSpeedKph: Double?,
     val chart: List<TripChartPoint>,
+    val seriesOptions: List<TripSeriesKey> = emptyList(),
 )
 
 /** Analyze immutable, finished trips without loading their complete sample history. */
@@ -30,7 +31,10 @@ suspend fun analyzeTrip(repository: TripRepository, session: TripSession): TripA
     var maxRpm: Double? = null
     var anySpeedEcu: String? = null
     var validSpeedEcu: String? = null
+    val series = linkedSetOf<TripSeriesKey>()
     forEachTripSample(repository, session.id) { sample ->
+        series += TripSeriesKey(sample.metric, sample.ecuId)
+        if (series.size > MAX_TRIP_SERIES) throw IOException("The trip contains too many sensor/source combinations.")
         sampleCount++
         if (sample.isValidNumber()) validCount++
         if (sample.metric == ObdMetric.ENGINE_RPM && sample.isCanonicalNonnegative()) {
@@ -79,6 +83,7 @@ suspend fun analyzeTrip(repository: TripRepository, session: TripSession): TripA
         maxRpm = maxRpm,
         maxSpeedKph = maxSpeed,
         chart = chart.points(),
+        seriesOptions = series.sortedWith(tripSeriesOrder),
     )
 }
 
@@ -94,7 +99,7 @@ private fun TripSample.isUsableSpeed(session: TripSession): Boolean =
     isCanonicalNonnegative() && elapsedMillis in 0L..session.durationMillis
 
 /** Nulls survive compaction, so dropping chart detail can never bridge a recorded gap. */
-private class BoundedTripChart {
+internal class BoundedTripChart {
     private var samples = mutableListOf<TripChartPoint>()
 
     fun add(point: TripChartPoint) {
