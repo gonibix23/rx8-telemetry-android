@@ -17,6 +17,10 @@ import androidx.room.Update
 import androidx.room.Upsert
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.gonibix.rx8.sync.SyncDao
+import com.gonibix.rx8.sync.SyncWorkEntity
+import com.gonibix.rx8.sync.SyncSampleEntity
+import com.gonibix.rx8.sync.SyncMigration
 import com.gonibix.rx8.trips.TripDao
 import com.gonibix.rx8.trips.TripSampleEntity
 import com.gonibix.rx8.trips.TripSessionEntity
@@ -29,6 +33,7 @@ data class VehicleEntity(
     val vinSource: String?,
     val vinEcuId: String?,
     val createdAtEpochMillis: Long,
+    @ColumnInfo(defaultValue = "1") val revision: Long = 1,
 )
 
 @Entity(
@@ -68,13 +73,14 @@ interface VehicleDao {
 }
 
 @Database(
-    entities = [VehicleEntity::class, ActiveVehicleEntity::class, TripSessionEntity::class, TripSampleEntity::class],
-    version = 2,
+    entities = [VehicleEntity::class, ActiveVehicleEntity::class, TripSessionEntity::class, TripSampleEntity::class, SyncWorkEntity::class, SyncSampleEntity::class],
+    version = 3,
     exportSchema = true,
 )
 abstract class VehicleDatabase : RoomDatabase() {
     abstract fun vehicles(): VehicleDao
     abstract fun trips(): TripDao
+    abstract fun sync(): SyncDao
 
     companion object {
         /** Add trip storage without rebuilding, replacing or reselecting any existing vehicle. */
@@ -118,6 +124,7 @@ abstract class VehicleDatabase : RoomDatabase() {
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_trip_samples_tripId_sequence` ON `trip_samples` (`tripId`, `sequence`)")
             }
         }
+        val MIGRATION_2_3: Migration = SyncMigration
         @Volatile private var instance: VehicleDatabase? = null
 
         /** Application-scoped database. The process owns its lifetime, not an Activity or ViewModel. */
@@ -126,7 +133,7 @@ abstract class VehicleDatabase : RoomDatabase() {
                 context.applicationContext,
                 VehicleDatabase::class.java,
                 "rx8-vehicles.db",
-            ).addMigrations(MIGRATION_1_2).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
             // No destructive fallback: future schema changes require explicit migrations.
         }
     }

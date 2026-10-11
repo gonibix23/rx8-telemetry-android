@@ -2,11 +2,11 @@
 
 ## Current implementation
 
-The 0.7.0-dev iteration (version code 8) adds explicit trip recording, offline history, summaries, speed charts, JSON/CSV export, and confirmed deletion. Its five tabs are Adapter, Live, Trips, Vehicles, and Simulator:
+The 0.8.0-dev iteration (version code 9) adds local API models, a persistent queue, and an Uploads disabled status in Trips. Recording, history, summaries, charts, JSON/CSV export, and deletion remain offline. Its five tabs are Adapter, Live, Trips, Vehicles, and Simulator:
 
 | Module | Responsibility |
 | --- | --- |
-| `:app` | Compose screens, favorites, service-owned Bluetooth/OBD and recording, Room profiles/trips, summaries, and document exports |
+| `:app` | Compose screens, favorites, service-owned Bluetooth/OBD and recording, Room profiles/trips/pending work, API models, isolated retry logic, summaries, and document exports |
 | `:core:telemetry` | Pure Kotlin Mode 01/VIN parsing, VIN validation, telemetry types, and deterministic simulation |
 
 The simulator is identified in the interface and supplies synthetic engine speed, vehicle speed, coolant temperature, intake air temperature, throttle position, and engine load readings.
@@ -101,7 +101,7 @@ The user confirmed that the Samsung A53 runs Android 16, completing RX8-002. The
 Car Scanner reportedly finds it through in-app search with plain Bluetooth selected, showing OBDII and its MAC address.
 The user confirmed Bluetooth and reported live readings worked on October 11, 2026; PR #14 is merged. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed correct readings in 0.5.0-dev. Individual sensor support, ECU identifiers, measured rates, and sustained lifecycle checks remain unverified; the report does not validate profiles or VIN retrieval.
 
-The user broadly confirmed 0.6.0-dev worked on October 11, 2026, and PR #18 is merged. This does not establish detailed favorite persistence, individual sensor results, or any trip-recording/export outcome. Record new 0.7.0-dev results separately; current unit/CI counts are not asserted here.
+The user broadly confirmed 0.6.0-dev and later 0.7.0-dev worked on October 11, 2026; PRs #18 and #19 are merged. These reports do not establish each detailed favorite, sensor, recording-duration, provider, or interruption scenario. Record the new 0.8.0-dev upgrade/queue results separately; current unit/CI counts are not asserted here.
 
 ## Finding and connecting the Bluetooth adapter
 
@@ -183,12 +183,12 @@ VIN validation checks format, not ownership, check digit, or vehicle specificati
 Profiles, their active selection, dashboard favorites, and explicitly recorded trips/samples are saved. Finished-trip export and deletion are available in Trips. Profile deletion, uploads, and app import/restore remain unimplemented.
 Backups/device transfer are disabled. Clearing app data or reinstalling removes the saved UUIDs, with no current recovery workflow.
 
-Room schema version 2 adds trips and samples through an explicit migration from version 1, preserving existing profiles and selection. Exported schemas remain under `app/schemas`. Future database changes need explicit migrations; destructive migration fallback is prohibited.
+Room schema version 3 adds API metadata revisions, recording app version, and pending work through an explicit 2-to-3 migration. The existing 1-to-2 migration is retained. Existing profiles, selection, trips, and samples remain; legacy samples become pending locally and old recording app versions remain unknown. Exported schemas remain under `app/schemas`. Future database changes need explicit migrations; destructive migration fallback is prohibited.
 Instrumented checks include database close/reopen and Compose identity flows. With an emulator or authorized test device, use `./gradlew :app:connectedDebugAndroidTest` (or `./gradlew.bat` on Windows). The workflow also captures labeled, synthetic UI fixtures; these are not evidence from the RX-8.
 
 ## Recording, reviewing, and exporting a trip
 
-Use the 0.7.0-dev update with existing app data intact; do not clear the user's database as a routine test. The Room 1-to-2 migration must retain saved vehicle UUIDs and selected profile.
+Use the current update with existing app data intact; do not clear the user's database as a routine test. The Room 1-to-2 and 2-to-3 migration chain must retain saved vehicle UUIDs, selected profile, and existing trip data.
 
 1. In Vehicles, create or explicitly select the intended profile. A VIN is optional. In Adapter, connect and choose Read live data; wait for real ECU acquisition to reach LIVE.
 2. Open Trips and choose Start recording. Check that the recorded vehicle name matches the selected profile and the saved-sample count begins advancing. Opening a tab, connecting Bluetooth, or opening Live never starts a trip automatically.
@@ -203,7 +203,18 @@ Use the 0.7.0-dev update with existing app data intact; do not clear the user's 
 
 History shows the latest 100 sessions. Detailed analysis/export requires a completed or interrupted trip, so paged reads operate on a finished dataset. Recording uses ordered bounded sample buffering; the displayed saved count advances only after database commits. Insufficient space or failed writes stops recording and reports that some samples may not have been saved. A failed history query does not replace stored data with an empty database.
 Exports reveal the vehicle UUID and recorded alias, times, and readings even though they exclude VIN/MAC values. Choose destinations and recipients deliberately. Android backups/device transfer remain disabled; trip export is not an app backup, and import/restore is not implemented. No GPS, simulator recording, backend, Internet permission, or API upload is added.
-The A53 recording/export/storage checks remain pending. Unit and Android 16 CI results belong in the PR; this guide makes no new pass-count claim.
+The user broadly confirmed 0.7.0-dev worked, and PR #19 is merged. Detailed measured A53 recording/export/storage scenarios remain open. Unit and Android 16 CI results belong in the PR; this guide makes no new pass-count claim.
+
+## Checking API preparation without a server
+
+1. Install 0.8.0-dev over the current app. Keep existing app data so the Room 2-to-3 migration can be checked. Confirm profiles, selected UUID, favorites, and previous trips remain available.
+2. Open Trips and choose Refresh. Future uploads must say Uploads disabled and show the last-refreshed sample counts. Existing recorded samples are included as waiting locally; migration never acknowledges them. A failed status read must remain an error, not zero.
+3. Record and stop a new trip, then refresh. Check that the waiting count includes its saved samples. Background recording and existing offline features should remain usable without API configuration.
+4. Restart the app and verify the count persists. Export an old and a new finished trip; local export schema version 1 is unchanged and does not filter samples by queue state. On a disposable trip, confirm deletion removes its related pending work without affecting other trips or profiles.
+
+There is no upload button, server URL, account, Internet permission, HTTP client, or scheduled worker. `TripRuntime` exposes only a default non-isolated `RoomSyncStore` to the UI. Do not opt the real database into test synchronization. `SyncCoordinator` refuses a non-isolated store or disabled transport before leasing work; fake-server tests use isolated in-memory or disposable file-backed databases.
+
+The isolated verification covers immutable retries after lost responses, partial/rejected ACKs, malformed/foreign ACKs, 409 conflicts, 413 splits, metadata revisions, expired leases, deletion, restart recovery, and disabled operation. Authentication/HTTPS configuration remains documented future work in [the contract](api-contract.md), with no credentials or deployable endpoint. The [upgrade checklist](hardware-validation.md#api-preparation-upgrade-checklist-rx8-008) remains pending until the A53 result is reported.
 
 ## Using the simulator
 
@@ -242,7 +253,7 @@ The user has confirmed the simulator, Bluetooth connection, and general live rea
 - [Issue #16](https://github.com/gonibix23/rx8-telemetry-android/issues/16): validate background/lock continuity, Activity recreation, visible screen-awake behavior, notification denial/Stop, and battery/resource cleanup on the A53.
 - [RX8-006](https://github.com/gonibix23/rx8-telemetry-android/issues/6): validate the dashboard layout, favorite persistence/unavailability, ECU separation, simulator preview, and navigation on the A53.
 - [RX8-007](https://github.com/gonibix23/rx8-telemetry-android/issues/7): validate explicit recording, screen lock/background, committed-data recovery, gaps, summaries, document exports, deletion, and storage errors on the A53.
-- Later issues: implement API preparation and synchronization without enabling uploads prematurely.
+- [RX8-008](https://github.com/gonibix23/rx8-telemetry-android/issues/8): verify the 0.8.0-dev upgrade, preserved history, local queue counts, exports/deletion, and uploads-disabled behavior on the A53. Real API integration remains a later task.
 
 Keep issues open while required evidence is missing. PR #14 is merged, but RX8-004 remains open for detailed hardware checks. RX8-005 software does not close RX8-001 or prove VIN compatibility.
 There are no published APK releases.

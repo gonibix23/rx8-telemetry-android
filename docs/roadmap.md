@@ -10,7 +10,8 @@ The 0.5.1-dev fix for [issue #16](https://github.com/gonibix23/rx8-telemetry-and
 The user reported screen sleep and background disconnection in 0.5.0-dev. Actual bond removal, measured durations, battery use, and detailed notification scenarios remain unverified despite the broad success report.
 
 The user confirmed that 0.6.0-dev works perfectly, and [PR #18](https://github.com/gonibix23/rx8-telemetry-android/pull/18) is merged. Its dashboard/favorites have broad user confirmation; individual scenario results remain unreported.
-The current 0.7.0-dev increment (version code 8) implements RX8-007: manual recording for a fixed vehicle UUID, local session/sample storage, interruption recovery, offline history, speed charts, estimated distance with coverage, JSON/CSV exports, and confirmed trip deletion. Real-device trip validation remains pending. API preparation follows in RX8-008.
+The user subsequently confirmed that 0.7.0-dev works perfectly, and [PR #19](https://github.com/gonibix23/rx8-telemetry-android/pull/19) is merged at `d855c99`. RX8-007 provides manual recording for a fixed vehicle UUID, local session/sample storage, interruption recovery, offline history, charts, estimates, exports, and deletion. Detailed measured recording, provider, storage/interruption, and battery checks remain open.
+The current 0.8.0-dev increment (version code 9) implements RX8-008 API preparation: versioned DTOs, a durable sample-reference queue with migration/backfill, metadata revisions, immutable requests, validated ACK/retry handling in isolated tests, and a read-only Uploads disabled status. No backend, HTTP transport, production upload worker, or enabled upload configuration is added.
 
 ## Milestones and issues
 
@@ -38,6 +39,7 @@ The reported live-reading and 0.5.1-dev success allow dashboard development to p
 - User-started read-only OBD initialization, protocol and supported-PID discovery, six standard decoders, and per-ECU live values with explicit error and stale states. RX8-006 adds a dedicated dashboard without changing decoder support or acquisition scheduling.
 - Fixed supported RPM/speed/coolant cards, optional intake/throttle/load favorites saved in app-wide SharedPreferences, separate ECU groups, honest unavailable/stale states, and a synthetic simulator preview using the same cards.
 - Explicit manual trip recording through the existing foreground service; ordered bounded writes to Room v2 with a non-destructive v1 migration. Latest 100 trips are available offline with terminal summaries, a bounded speed chart, JSON/CSV document exports, and confirmed deletion. Process recovery preserves committed readings and marks unfinished sessions interrupted. No GPS, simulated-trip recording, or uploads.
+- Room v3 adds atomic pending work for new and previously recorded samples, immutable metadata revisions/prepared requests, bounded batches, leases, per-sample ACKs, and retry/conflict/split handling. Production uses only disabled status/counts; fake-server exercises are isolated from real records. Explicit 1-to-2 and 2-to-3 migrations preserve stored data.
 - Explicit vehicle creation/selection/rename, stable UUIDs, optional VINs and provenance, and Room persistence. Duplicate or different VINs never silently reassign a profile.
 - Optional, user-started Mode 09 PID 02 acquisition during LIVE; limited CAN/legacy VIN reconstruction, masked candidates, and explicit review in Vehicles before saving. No general ISO-TP support or automatic vehicle assignment.
 - Non-exported connected-device foreground service owning an explicitly started session; background/lock/recreation continuity, notification Stop/open-Adapter, visible acquisition screen-awake behavior, and bounded partial wake-lock renewal. No automatic reconnect or process-death recovery; discovery and simulation retain their foreground limits.
@@ -54,10 +56,11 @@ The reported live-reading and 0.5.1-dev success allow dashboard development to p
 - Supported PIDs and sustained sampling rate with this adapter.
 - A53 trip recording across lock/background, notification Stop, Bluetooth loss, storage interruption, upgrade preservation, and JSON/CSV document-provider behavior. Retention is manual deletion; real storage growth remains to be measured.
 - Authentication, hosting, and database engine for the future server.
+- A53 0.8.0-dev upgrade preservation, persistent waiting counts, local export/deletion continuity, and disabled-upload display.
 - Distribution license.
 
 ## Next verifiable outcome
 
-Run 0.7.0-dev on the A53, select a vehicle, start real live data in Adapter, then explicitly Start recording in Trips. Record across a screen-locked interval, stop, and inspect the saved trip offline. Verify JSON/CSV exports, gaps after an interruption, notification Stop, and existing profiles after upgrading.
-Follow the [hardware checklist](hardware-validation.md) for the complete trip checks and remaining lifecycle/battery, VIN/profile, sensor, ECU identifier, rate, and reconnection evidence. API preparation follows in the next increment.
+Install 0.8.0-dev over the existing app on the A53. Confirm saved profiles/trips remain, then open Trips and Refresh: uploads must be disabled, with existing samples waiting locally. Record a short trip and refresh again; restart the app, review old/new trips, and test an export plus confirmed deletion of a disposable trip.
+Follow the [hardware checklist](hardware-validation.md) for the upgrade checks and remaining trip, lifecycle/battery, VIN/profile, sensor, ECU identifier, rate, and reconnection evidence. Enabling real uploads requires a separately configured and authenticated backend in a later increment.
 No backend is required.

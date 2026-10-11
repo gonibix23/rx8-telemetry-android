@@ -4,6 +4,8 @@ import androidx.room.withTransaction
 import com.gonibix.rx8.obd.ObdMetric
 import com.gonibix.rx8.obd.ObdReadingStatus
 import com.gonibix.rx8.vehicle.VehicleDatabase
+import com.gonibix.rx8.sync.SyncSampleEntity
+import com.gonibix.rx8.sync.enqueueSession
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
@@ -22,7 +24,9 @@ class RoomTripRepository(private val database: VehicleDatabase) : TripRepository
         require(session.durationMillis == 0L && session.endReason == null)
         require(session.origin.isNotBlank())
         check(dao.recording().isEmpty()) { "A trip is already recording" }
-        dao.insertSession(session.toEntity())
+        val entity = session.toEntity()
+        dao.insertSession(entity)
+        database.sync().enqueueSession(entity)
     }
 
     override suspend fun append(tripId: String, samples: List<TripSample>) = database.withTransaction {
@@ -46,6 +50,7 @@ class RoomTripRepository(private val database: VehicleDatabase) : TripRepository
             sample.toEntity()
         }
         dao.insertSamples(rows)
+        database.sync().insertSamples(rows.map { SyncSampleEntity(it.id) })
         dao.updateSession(session.copy(durationMillis = elapsed))
     }
 
@@ -60,24 +65,30 @@ class RoomTripRepository(private val database: VehicleDatabase) : TripRepository
         val session = requireNotNull(dao.find(tripId)) { "Trip not found" }
         check(session.status == TripStatus.RECORDING.name) { "Trip is already finished" }
         require(durationMillis >= session.durationMillis) { "Duration cannot precede saved samples" }
-        dao.updateSession(session.copy(
+        val updated = session.copy(
             endedAtEpochMillis = endedAtEpochMillis,
             durationMillis = durationMillis,
             status = status.name,
             endReason = reason,
-        ))
+            revision = Math.addExact(session.revision, 1L),
+        )
+        dao.updateSession(updated)
+        database.sync().enqueueSession(updated)
     }
 
     override suspend fun recoverInterrupted() = database.withTransaction {
         // The caller owns startup recovery and must never call it against its live recorder.
         dao.recording().forEach { session ->
             val last = dao.lastSample(session.id)
-            dao.updateSession(session.copy(
+            val updated = session.copy(
                 endedAtEpochMillis = last?.observedAtEpochMillis ?: session.startedAtEpochMillis,
                 durationMillis = last?.elapsedMillis ?: 0L,
                 status = TripStatus.INTERRUPTED.name,
                 endReason = PROCESS_INTERRUPTION_REASON,
-            ))
+                revision = Math.addExact(session.revision, 1L),
+            )
+            dao.updateSession(updated)
+            database.sync().enqueueSession(updated)
         }
     }
 
@@ -118,12 +129,12 @@ private fun requireUuid(value: String) {
 
 private fun TripSession.toEntity() = TripSessionEntity(
     id, vehicleId, vehicleAlias, startedAtEpochMillis, endedAtEpochMillis, durationMillis,
-    status.name, endReason, protocolLabel, origin,
+    status.name, endReason, protocolLabel, origin, appVersion = appVersion,
 )
 
 private fun TripSessionEntity.toModel() = TripSession(
     id, vehicleId, vehicleAlias, startedAtEpochMillis, endedAtEpochMillis, durationMillis,
-    TripStatus.valueOf(status), endReason, protocolLabel, origin,
+    TripStatus.valueOf(status), endReason, protocolLabel, origin, appVersion,
 )
 
 private fun TripSample.toEntity() = TripSampleEntity(

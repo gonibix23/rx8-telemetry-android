@@ -85,7 +85,7 @@ class MainActivity : ComponentActivity() {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 require(modelClass == TripsViewModel::class.java)
-                return TripsViewModel(tripRuntime.repository) as T
+                return TripsViewModel(tripRuntime.repository, queueSummaryLoader = tripRuntime.syncStore::summary) as T
             }
         })[TripsViewModel::class.java]
     }

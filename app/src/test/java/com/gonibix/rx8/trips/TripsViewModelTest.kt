@@ -1,8 +1,11 @@
 package com.gonibix.rx8.trips
 
+import com.gonibix.rx8.sync.SyncQueueSummary
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -32,6 +35,7 @@ class TripsViewModelTest {
         assertEquals(100, repository.lastLimit)
         assertEquals(listOf(repository.current), model.uiState.value.trips)
         assertEquals(4_096L, model.uiState.value.storageBytes)
+        assertNull(model.uiState.value.syncStatus)
         assertEquals(0, repository.recoveries)
         assertEquals(0, repository.deletions)
     }
@@ -140,6 +144,107 @@ class TripsViewModelTest {
         assertEquals(listOf(trip), model.uiState.value.trips)
         assertNull(model.uiState.value.message)
         assertTrue(model.uiState.value.error!!.contains("could not be deleted"))
+    }
+
+    @Test fun queueLoadingDoesNotDelayHistory() = runTest(dispatcher) {
+        val result = CompletableDeferred<SyncQueueSummary>()
+        var loads = 0
+        val model = TripsViewModel(repository, dispatcher) { loads++; result.await() }
+        runCurrent()
+        assertEquals(listOf(trip), model.uiState.value.trips)
+        assertFalse(model.uiState.value.isLoading)
+        assertTrue(model.uiState.value.syncStatus!!.isLoading)
+        assertNull(model.uiState.value.syncStatus!!.summary)
+        assertEquals(1, loads)
+        result.complete(SyncQueueSummary(pending = 12, sending = 2, blocked = 1))
+        runCurrent()
+        assertEquals(12L, model.uiState.value.syncStatus!!.summary!!.pending)
+        assertFalse(model.uiState.value.syncStatus!!.isLoading)
+    }
+
+    @Test fun queueReadFailureDoesNotBreakLocalHistoryOrExport() = runTest(dispatcher) {
+        val model = TripsViewModel(repository, dispatcher) { throw IOException("Synthetic queue failure") }
+        runCurrent()
+        assertEquals(listOf(trip), model.uiState.value.trips)
+        assertNull(model.uiState.value.error)
+        assertNull(model.uiState.value.syncStatus!!.summary)
+        assertFalse(model.uiState.value.syncStatus!!.isLoading)
+        assertTrue(model.uiState.value.syncStatus!!.error!!.contains("could not be read"))
+        val output = ByteArrayOutputStream()
+        model.exportTrip(trip.id, TripExportFormat.JSON) { output }
+        model.uiState.first { !it.isExporting }
+        assertTrue(model.uiState.value.message!!.contains("JSON export saved"))
+        assertTrue(output.toString(Charsets.UTF_8.name()).contains(trip.id))
+    }
+
+    @Test fun failedQueueRefreshClearsUnavailableCountsAndExplicitRefreshRecovers() = runTest(dispatcher) {
+        var fail = false
+        var loads = 0
+        val model = TripsViewModel(repository, dispatcher) {
+            loads++
+            if (fail) throw IOException("Synthetic queue failure")
+            SyncQueueSummary(pending = 14, blocked = 2)
+        }
+        runCurrent()
+        assertEquals(14L, model.uiState.value.syncStatus!!.summary!!.pending)
+        fail = true
+        model.refresh()
+        runCurrent()
+        assertNull(model.uiState.value.syncStatus!!.summary)
+        assertTrue(model.uiState.value.syncStatus!!.error!!.contains("Refresh Trips"))
+        fail = false
+        model.refresh()
+        runCurrent()
+        assertEquals(3, loads)
+        assertEquals(SyncQueueSummary(pending = 14, blocked = 2), model.uiState.value.syncStatus!!.summary)
+        assertNull(model.uiState.value.syncStatus!!.error)
+        assertNull(model.uiState.value.error)
+    }
+
+    @Test fun historyReadFailureDoesNotHideAnIndependentQueueSnapshot() = runTest(dispatcher) {
+        repository.failList = true
+        val summary = SyncQueueSummary(pending = 8)
+        val model = TripsViewModel(repository, dispatcher) { summary }
+        runCurrent()
+        assertTrue(model.uiState.value.error!!.contains("could not be loaded"))
+        assertEquals(summary, model.uiState.value.syncStatus!!.summary)
+        assertNull(model.uiState.value.syncStatus!!.error)
+    }
+
+    @Test fun successfulDeletionRefreshesLocalQueueCounts() = runTest(dispatcher) {
+        var loads = 0
+        val model = TripsViewModel(repository, dispatcher) {
+            loads++
+            SyncQueueSummary(pending = if (repository.current == null) 0 else 9)
+        }
+        runCurrent()
+        assertEquals(9L, model.uiState.value.syncStatus!!.summary!!.pending)
+        model.deleteTrip(trip.id)
+        runCurrent()
+        assertEquals(2, loads)
+        assertEquals(0L, model.uiState.value.syncStatus!!.summary!!.pending)
+        assertTrue(model.uiState.value.trips.isEmpty())
+        assertTrue(model.uiState.value.message!!.contains("deleted"))
+    }
+
+    @Test fun aNewRefreshCancelsThePreviousQueueReadWithoutReportingFailure() = runTest(dispatcher) {
+        var loads = 0
+        var cancelled = false
+        val model = TripsViewModel(repository, dispatcher) {
+            loads++
+            if (loads == 1) {
+                try { awaitCancellation() } finally { cancelled = true }
+            }
+            SyncQueueSummary(pending = 4)
+        }
+        runCurrent()
+        model.refresh()
+        runCurrent()
+        assertTrue(cancelled)
+        assertEquals(2, loads)
+        assertEquals(4L, model.uiState.value.syncStatus!!.summary!!.pending)
+        assertNull(model.uiState.value.syncStatus!!.error)
+        assertFalse(model.uiState.value.syncStatus!!.isLoading)
     }
 
     private class FakeRepository : TripRepository {

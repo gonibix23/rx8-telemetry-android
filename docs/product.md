@@ -8,7 +8,7 @@ Selected priority: live data and trip recording. Prepare for a future API withou
 The user reported a successful simulator app test on October 10, 2026. The paired-only Bluetooth build failed to list the adapter.
 Car Scanner reportedly finds OBDII and its MAC address through in-app search with plain Bluetooth selected.
 The user confirmed Bluetooth works and reported successful live readings on October 11, 2026; PR #14 is merged. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed correct readings in 0.5.0-dev. Individual sensors, ECU identifiers, measured rates, sustained lifecycle behavior, VIN retrieval, and profile persistence remain unverified.
-The user broadly confirmed that 0.6.0-dev worked on October 11, 2026, and PR #18 is merged. This does not establish individual sensor results, every favorite-persistence scenario, or measured session duration/battery use. The current 0.7.0-dev increment (version code 8) adds explicit local trip recording, offline history, summaries, speed charts, JSON/CSV export, and confirmed deletion. RX8-004 and the detailed hardware checks remain open.
+The user broadly confirmed that 0.6.0-dev worked on October 11, 2026, and PR #18 is merged. This does not establish individual sensor results, every favorite-persistence scenario, or measured session duration/battery use. The user subsequently confirmed that 0.7.0-dev worked perfectly, and PR #19 is merged. It provides local trip recording, history, summaries, charts, exports, and deletion; detailed provider, interruption, storage, and duration checks remain open. The current 0.8.0-dev increment (version code 9) prepares the future API with local pending work and uploads disabled.
 
 ## Current live dashboard
 
@@ -26,7 +26,7 @@ Names contain 1-60 characters after trimming. The optional VIN contains 17 lette
 Read VIN is available only after live acquisition starts. The user chooses a candidate in Adapter, then reviews it in Vehicles before attaching it to a VIN-less profile or creating a separate profile.
 A matching VIN offers explicit selection of its existing profile. A different VIN cannot overwrite the selected profile. Adding a VIN or changing the name never changes the UUID.
 VINs are masked by default and record manual entry or OBD/ECU provenance. A car can be used without a VIN; its Bluetooth adapter does not identify it.
-Switching to Vehicles leaves an active Bluetooth/acquisition session running. Profiles, selected vehicle, dashboard favorites, and explicitly recorded trips/samples are saved locally. API synchronization remains planned.
+Switching to Vehicles leaves an active Bluetooth/acquisition session running. Profiles, selected vehicle, dashboard favorites, explicitly recorded trips/samples, and pending work are saved locally. Real uploads remain disabled.
 Backups/device transfer are disabled. Finished trips can be exported, but importing/restoring the app is not implemented. Clearing app data or reinstalling loses saved profiles, UUIDs, and local trips.
 
 ## Current session behavior
@@ -56,6 +56,13 @@ Real A53 recording, interruption recovery, export-provider behavior, and storage
 The user selects the adapter and vehicle profile, connects, sees the available data, and starts a trip.
 They can lock the screen during recording, stop recording from a notification, and view history without Internet access.
 
+## Current API preparation
+
+Recording and pending sample work are saved in one database transaction. Upgrading includes existing recorded samples in the queue while retaining their IDs, order, quality, profiles, and selection. New recordings preserve the app version; the app does not invent this information for old trips.
+Trips shows a read-only Future uploads card with Uploads disabled, the last refreshed count waiting locally, and any samples needing attention. Counts refresh with the history; they are not a live per-reading counter. A failed status query is shown separately and does not replace the history or claim that no samples are waiting.
+No endpoint, account, upload button, background upload worker, or Internet permission is added. Real data stays local unless the user explicitly exports a file. The retry and acknowledgment logic is exercised only with isolated test storage and a fake server; those tests cannot mark real recordings as uploaded.
+Local exports remain version 1 and are available regardless of a reading's queue state. Deleting a trip also removes work referencing it, while existing exported copies remain. Backend development, authentication setup, and enabling uploads require a later increment.
+
 ## Screens
 
 | Screen | Contents |
@@ -64,9 +71,9 @@ They can lock the screen during recording, stop recording from a notification, a
 | Vehicles (implemented) | Saved profiles, selection, permanent UUID, alias, optional VIN and source |
 | Simulator (implemented) | Clearly synthetic dashboard preview and failure scenarios |
 | Live (implemented) | Supported RPM, speed, coolant, extra favorites, per-ECU status and reading age |
-| Trips (implemented) | Explicit recording, latest 100 saved sessions, storage usage, and offline history |
+| Trips (implemented) | Explicit recording, latest 100 saved sessions, storage usage, offline history, and disabled-upload queue counts |
 | Trip details (inside Trips) | Sample counts, valid peaks, estimated distance, speed chart/gaps, JSON/CSV export, and confirmed deletion |
-| Settings (planned) | Units, sampling rate/priorities, storage policy, and synchronization status |
+| Settings (planned) | Units, sampling rate/priorities, storage policy, and future authenticated API configuration |
 
 The MVP does not include maps. A trip is a telemetry session.
 Distance calculated from speed must be labeled as an estimate, not the car's odometer reading.

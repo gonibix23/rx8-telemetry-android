@@ -14,8 +14,8 @@ android {
         applicationId = "com.gonibix.rx8"
         minSdk = 26
         targetSdk = 36
-        versionCode = 8
-        versionName = "0.7.0-dev"
+        versionCode = 9
+        versionName = "0.8.0-dev"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -23,7 +23,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
     lint {
         abortOnError = true
         warningsAsErrors = true

@@ -26,6 +26,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.gonibix.rx8.sync.SyncQueueSummary
 import com.gonibix.rx8.ui.theme.Rx8Theme
 import com.gonibix.rx8.vehicle.VehicleProfile
 import java.io.File
@@ -46,6 +47,7 @@ class TripsScreenTest {
         show(selected = null, canStart = true, onStart = { starts++ })
         compose.onNodeWithTag("start_recording").assertIsNotEnabled()
         assertEquals(0, starts)
+        compose.onNodeWithTag("trip_sync_status").assertDoesNotExist()
     }
 
     @Test fun idleAcquisitionCannotStartEvenWithASelectedVehicle() {
@@ -128,11 +130,59 @@ class TripsScreenTest {
         compose.onNodeWithTag("empty_trips").assertDoesNotExist()
     }
 
+    @Test fun loadingUploadStatusDoesNotInventCountsOrHideHistory() {
+        show(state = history().copy(syncStatus = TripSyncStatus()))
+        scrollToTag("trip_sync_loading").assertTextEquals("Reading local status…")
+        compose.onNodeWithTag("trip_sync_waiting").assertDoesNotExist()
+        compose.onNodeWithTag("trip_sync_acknowledged").assertDoesNotExist()
+        scrollToTag("trip_details_${trip.id}").assertIsEnabled()
+    }
+
+    @Test fun unavailableUploadStatusDoesNotClaimZeroOrDisableLocalActions() {
+        val error = "Upload status could not be read. Refresh Trips to try again."
+        show(state = history().copy(syncStatus = TripSyncStatus(isLoading = false, error = error)))
+        scrollToTag("trip_sync_error").assertTextEquals(error)
+        compose.onNodeWithTag("trip_sync_waiting").assertDoesNotExist()
+        compose.onNodeWithTag("trip_sync_blocked").assertDoesNotExist()
+        compose.onNodeWithTag("trip_sync_acknowledged").assertDoesNotExist()
+        scrollToTag("trip_delete_${trip.id}").assertIsEnabled()
+    }
+
+    @Test fun confirmedCountRequiresAcknowledgedRecords() {
+        show(state = history().copy(syncStatus = TripSyncStatus(summary = SyncQueueSummary(acknowledged = 4), isLoading = false)))
+        scrollToTag("trip_sync_acknowledged").assertTextEquals("Confirmed by server: 4 samples")
+        compose.onNodeWithTag("trip_sync_disabled").assertTextEquals("Uploads disabled")
+    }
+
+    @Test fun syntheticQueueScreenshotShowsWaitingAttentionAndDisabledUploads() {
+        show(
+            state = history().copy(syncStatus = TripSyncStatus(summary = SyncQueueSummary(pending = 12, sending = 3, blocked = 2), isLoading = false)),
+            recording = TripRecordingState(session = trip.copy(status = TripStatus.RECORDING), savedSamples = 17),
+            fixtureBanner = true,
+            fixtureLabel = "UI TEST FIXTURE · SYNTHETIC QUEUE",
+        )
+        scrollToTag("trip_sync_status").assertIsDisplayed()
+        compose.onNodeWithText("Future uploads").assertIsDisplayed()
+        compose.onNodeWithTag("trip_sync_disabled").assertTextEquals("Uploads disabled").assertIsDisplayed()
+        compose.onNodeWithText("Recorded samples stay on this device. No server is configured.").assertIsDisplayed()
+        compose.onNodeWithTag("trip_sync_waiting").assertTextEquals("Waiting locally: 15 samples").assertIsDisplayed()
+        compose.onNodeWithTag("trip_sync_blocked").assertTextEquals("Needs attention: 2 samples").assertIsDisplayed()
+        compose.onNodeWithTag("trip_sync_acknowledged").assertDoesNotExist()
+        compose.onNodeWithTag("trip_sync_snapshot").assertIsDisplayed()
+        compose.onNodeWithText("UI TEST FIXTURE · SYNTHETIC QUEUE").assertIsDisplayed()
+        captureFixture("sync")
+    }
+
     @Test fun fakeTripSummaryScreenshotContainsRenderedContent() {
         show(state = history().copy(selectedTripId = trip.id, detail = analysis()), fixtureBanner = true)
         scrollToTag("trip_estimated_distance").assertIsDisplayed()
         scrollToTag("trip_speed_chart").assertIsDisplayed()
         compose.onNodeWithText("UI TEST FIXTURE · FAKE TRIP").assertIsDisplayed()
+        captureFixture("trips")
+    }
+
+    private fun captureFixture(name: String) {
+        require(name == "trips" || name == "sync")
         compose.waitForIdle()
         var rendered: Bitmap? = null
         compose.waitUntil(5_000L) {
@@ -144,10 +194,10 @@ class TripsScreenTest {
         val directory = File(instrumentation.targetContext.getExternalFilesDir(null), "screenshots")
         assertTrue(directory.isDirectory || directory.mkdirs())
         try {
-            val source = File(directory, "trips.png")
+            val source = File(directory, "$name.png")
             source.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
-            ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand("cp /sdcard/Android/data/com.gonibix.rx8/files/screenshots/trips.png /data/local/tmp/rx8-trips.png")).use { it.readBytes() }
-            val preserved = ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand("cat /data/local/tmp/rx8-trips.png")).use { it.readBytes() }
+            ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand("cp /sdcard/Android/data/com.gonibix.rx8/files/screenshots/$name.png /data/local/tmp/rx8-$name.png")).use { it.readBytes() }
+            val preserved = ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand("cat /data/local/tmp/rx8-$name.png")).use { it.readBytes() }
             assertArrayEquals(source.readBytes(), preserved)
         } finally { bitmap.recycle() }
     }
@@ -168,12 +218,13 @@ class TripsScreenTest {
         onDelete: (String) -> Unit = {},
         onExport: (TripSession, TripExportFormat) -> Unit = { _, _ -> },
         fixtureBanner: Boolean = false,
+        fixtureLabel: String = "UI TEST FIXTURE · FAKE TRIP",
     ) {
         compose.setContent {
             Rx8Theme {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onBackground) {
                     Column(Modifier.safeDrawingPadding()) {
-                        if (fixtureBanner) Text("UI TEST FIXTURE · FAKE TRIP")
+                        if (fixtureBanner) Text(fixtureLabel)
                         TripsContent(state, selected, recording, canStart, onStart, onStop, {}, {}, {}, {}, {}, onDelete, onExport, Modifier.weight(1f))
                     }
                 }
