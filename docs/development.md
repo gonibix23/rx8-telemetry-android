@@ -37,7 +37,7 @@ The app does not request Internet access; acquisition, profiles, saved-trip hist
 
 ## Continuous integration environment
 
-All three repository-check jobs use the explicit `ubuntu-24.04` x64 GitHub-hosted runner. This avoids automatic OS migrations through `ubuntu-latest`; runner software and installed image packages still receive updates. Linux runners support Android hardware acceleration. The emulator job retains the KVM permission rule and API 36 Google APIs x86_64 image, with the documented `swiftshader` software renderer instead of deprecated `swiftshader_indirect`.
+All three repository-check jobs use the explicit `ubuntu-24.04` x64 GitHub-hosted runner. This avoids automatic OS migrations through `ubuntu-latest`; runner software and installed image packages still receive updates. Linux runners support Android hardware acceleration. The emulator job retains the KVM permission rule and API 36 Google APIs x86_64 image, with the documented `swiftshader` software renderer instead of deprecated `swiftshader_indirect`. Its explicit `-no-metrics` option disables emulator metrics collection and avoids a future interactive consent prompt in unattended CI.
 
 The workflow pins actions to full commit SHAs from these stable releases, verified on October 11, 2026:
 
