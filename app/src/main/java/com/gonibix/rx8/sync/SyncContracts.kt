@@ -78,7 +78,7 @@ fun validateAcknowledgment(request: PreparedRequest, result: SyncResult) {
 }
 
 interface SyncStore {
-    /** This preparation increment never runs a coordinator against the user's real database. */
+    /** Fake transports are permitted only for isolated stores; production requires HTTPS. */
     val isIsolatedTestStore: Boolean get() = false
     suspend fun claimNext(nowEpochMillis: Long, leaseMillis: Long, limits: BatchLimits): SyncLease?
     /** Validates the whole ACK and commits atomically. Stale/expired/deleted leases return false. */
