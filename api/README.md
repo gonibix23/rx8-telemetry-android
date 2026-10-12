@@ -62,6 +62,8 @@ Errors contain only a bounded machine-readable `{code}`: 400 validation/identity
 
 ## Later deployment
 
+Production deployment: `.github/workflows/deploy.yml` runs on pushes to `main` touching `api/`. After the API checks pass it pushes `ghcr.io/gonibix23/rx8-telemetry-android-api` (`latest` and `sha-<commit>`), pins that tag in `deploy/portainer-compose.yml` and calls the `PORTAINER_WEBHOOK_URL` secret to redeploy the Portainer stack `gonibix`. That stack runs the API on host port 7600 with a single-node MongoDB 8.0 replica set stored in `/mnt/rx8/mongo`.
+
 The production image includes the project's MIT license at `/app/LICENSE`. Third-party packages retain their own licenses.
 
 Build with `docker build -t rx8-telemetry-api ./api` from the repository root, or `docker compose -f deploy/compose.yaml build` from `api/`. The image runs as the nonroot `node` user and excludes local credentials/tests. The Compose example binds only loopback, drops capabilities, makes the root filesystem read-only and enables init/signal forwarding. It is an example, not a deployment performed by these files. Runtime host environment supplies Atlas credentials.
