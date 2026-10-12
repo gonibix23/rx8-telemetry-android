@@ -89,28 +89,9 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 5
-    permissions:
-      contents: write
+    permissions: {}
     steps:
-      # Credentials are persisted on purpose: this job pushes the pinned compose file.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: main
-      - name: Pin built image tag in compose
-        env:
-          IMAGE: ghcr.io/${{ github.repository }}-api
-          COMPOSE: api/deploy/portainer-compose.yml
-        run: |
-          sed -i -E "s#(image:\s*${IMAGE}):\S+#\1:sha-${GITHUB_SHA}#" "$COMPOSE"
-          if git diff --quiet "$COMPOSE"; then
-            echo "compose already pinned to this tag"; exit 0
-          fi
-          git config user.name "Cikly"
-          git config user.email "evpuebla@gmail.com"
-          git add "$COMPOSE"
-          git commit -m "chore(api): deploy sha-${GITHUB_SHA} [skip ci]"
-          git pull --rebase origin main
-          git push origin HEAD:main
+      # The stack force-pulls :latest on redeploy; sha-<commit> tags remain for rollback.
       - name: Trigger Portainer stack redeploy
         env:
           WEBHOOK_URL: ${{ secrets.PORTAINER_WEBHOOK_URL }}

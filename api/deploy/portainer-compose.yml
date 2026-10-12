@@ -1,5 +1,6 @@
 # Production stack "gonibix", deployed by Portainer from this file.
-# .github/workflows/api.yml pins the api image tag on every deploy; do not edit it by hand.
+# .github/workflows/api.yml pushes :latest and triggers the stack webhook, which force-pulls it.
+# To roll back, change the tag to a published sha-<commit> and redeploy the stack.
 services:
   api:
     image: ghcr.io/gonibix23/rx8-telemetry-android-api:latest
