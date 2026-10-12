@@ -270,6 +270,7 @@ class LiveDashboardTest {
         scrollTo("dashboard_sensor_search").assertIsDisplayed()
         scrollTo("dashboard_sensor_search_count").assertTextEquals("1 of 120 sensors").assertIsDisplayed()
         scrollTo("dashboard_favorite_intake_temperature").assertIsOn().assertIsDisplayed()
+        compose.onNodeWithText("UI TEST FIXTURE · SYNTHETIC DASHBOARD").assertIsDisplayed()
         captureFavoritesScreen()
     }
 
