@@ -240,7 +240,17 @@ npm ci
 npm run lint:docs
 ```
 
-These checks validate documentation formatting separately from Android checks.
+These checks validate documentation formatting separately from Android checks. The command first runs the lint runner's regressions, then checks all repository Markdown (including hidden GitHub templates). Rules remain unchanged: defaults enabled, MD013 and MD060 disabled. They now live in `.markdownlint.json`. The runner excludes `node_modules` at every level, generated `api/dist`, and Git metadata; it does not follow symbolic links. It does not load nested CLI configurations, plugins, TOML, or command-line globs/fix options; none are used by this repository. Read/configuration errors and finding no Markdown files fail the command.
+
+### Documentation dependency remediation (RX8-013)
+
+On October 12, 2026, the previous CLI2 0.23.3 dependency tree reported nine affected entries: five high, one moderate, three low. The direct `markdownlint` engine remains pinned to 0.41.1 and Node remains 22 or later. A small repository runner replaces CLI2's unused general-purpose configuration/glob machinery; the baseline and replacement both cover the same 14 existing files. Tests cover hidden/nested/API files, exclusions, enabled/disabled rules, inline configuration, math parsing, error diagnostics and exit codes.
+
+- [braces GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm): versions through 3.0.3 have unbounded recursive pattern walking; no patched version was listed. Removing CLI2 also removes its `globby`/`fast-glob`/`micromatch`/`braces` chain. Repository patterns were fixed trusted configuration, but retaining the dependency was unnecessary.
+- [smol-toml GHSA-r4xh-jqrq-34v2](https://github.com/advisories/GHSA-r4xh-jqrq-34v2): the old pinned 1.8.0 parser has quadratic key parsing; 1.9.0 fixes it. This repository used JSON configuration, so removing CLI2 removes TOML parsing entirely.
+- [KaTeX GHSA-238p-pmpm-9mq7](https://github.com/advisories/GHSA-238p-pmpm-9mq7): existing prototype pollution can bypass renderer trust settings before 0.18.2. A scoped override pins `micromark-extension-math`'s KaTeX to 0.18.2, the first fixed release, outside its old `^0.16.0` range. Linting tokenizes math without publishing rendered HTML; regression tests also exercise the retained extension's inline/display rendering and default untrusted-link handling. Revisit the override when that extension declares a patched range.
+
+The reviewed [markdownlint API](https://github.com/DavidAnson/markdownlint/blob/v0.41.1/README.md#api) provides the same rule engine formerly called by CLI2. A forced downgrade suggested by npm audit was not applied. After the change, a clean `npm ci`, `npm run lint:docs`, and `npm audit --json` reported no lint failures and zero known vulnerabilities (all severities zero). This is a dated dependency audit, not a guarantee against future advisories. Android, backend dependencies and CI action pins are unchanged.
 
 ## Validation still required
 
