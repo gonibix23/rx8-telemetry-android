@@ -11,7 +11,7 @@ Install the update over existing app data. This increment changes presentation/p
 5. Finish a trip offline and observe waiting feedback. Restore networking: feedback must show sending and only confirm completion after durable metadata/sample ACKs. Failed requests keep local copies and wait/retry or show attention. Check an empty trip too.
 6. API request logs should correlate received/completed/errors by generated ID, route template, status and elapsed time without disclosing payloads, query strings or credentials. Existing Portainer deployment is maintained by the owner-added workflow.
 
-The user supplied a private 0.13.0-dev start/rev/shutdown export with 457 samples over 150.448 seconds: 30 metrics from one ECU, 454 valid, two no-data and one timeout. The file passed identity/sequence/unit/quality/range checks and is marked interrupted; speed is zero throughout. The configured local Atlas database was reachable but empty. Owner deployment files default to a separate server MongoDB replica set but allow an environment override; the actual deployed datastore is unverified, so this Atlas check alone cannot establish deployed API delivery. Keep the original file and identifiers outside the public repository.
+The user supplied a private 0.13.0-dev start/rev/shutdown export with 457 samples over 150.448 seconds: 30 metrics from one ECU, 454 valid, two no-data and one timeout. The file passed identity/sequence/unit/quality/range checks and is marked interrupted; speed is zero throughout. The owner explicitly excluded real database verification and will check storage personally later. Keep the original file and identifiers outside the public repository.
 
 ## Current implementation
 
