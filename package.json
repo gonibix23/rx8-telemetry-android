@@ -5,12 +5,18 @@
   "license": "MIT",
   "description": "Documentation checks for the RX-8 Telemetry Android project.",
   "scripts": {
-    "lint:docs": "markdownlint-cli2"
+    "lint:docs": "node --test scripts/lint-docs.test.mjs && node scripts/lint-docs.mjs",
+    "test:docs": "node --test scripts/lint-docs.test.mjs"
   },
   "devDependencies": {
-    "markdownlint-cli2": "0.23.3"
+    "markdownlint": "0.41.1"
   },
   "engines": {
     "node": ">=22"
+  },
+  "overrides": {
+    "micromark-extension-math": {
+      "katex": "0.18.2"
+    }
   }
 }
