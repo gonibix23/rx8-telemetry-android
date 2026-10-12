@@ -96,6 +96,11 @@ class BluetoothSessionServiceTest {
     fun setUp() {
         persistedVehicle = tripVehicle
         notificationRequestedBefore = context.getSharedPreferences("session_ui", Context.MODE_PRIVATE).getBoolean("notifications_requested", false)
+        // Lifecycle fixtures begin after the one-time notification choice. Otherwise automatic
+        // favorites wait for an unanswered system dialog, before any transport attempt can run.
+        // This does not grant POST_NOTIFICATIONS; the denial test still checks the real permission.
+        assertTrue(context.getSharedPreferences("session_ui", Context.MODE_PRIVATE).edit()
+            .putBoolean("notifications_requested", true).commit())
         // Adopt only Bluetooth permissions temporarily; notification permission remains untouched.
         instrumentation.uiAutomation.adoptShellPermissionIdentity(
             Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN,
@@ -257,7 +262,6 @@ class BluetoothSessionServiceTest {
         instrumentation.waitForIdleSync()
         rememberedAdapter.address = device.address
         openingPolicy = AutomaticConnectionPolicy() // Explicitly model a new process opening opportunity.
-        context.getSharedPreferences("session_ui", Context.MODE_PRIVATE).edit().putBoolean("notifications_requested", true).commit()
         scenario = ActivityScenario.launch(MainActivity::class.java)
     }
 
@@ -782,7 +786,16 @@ class BluetoothSessionServiceTest {
                 satisfied
             }
         } catch (timeout: ComposeTimeoutException) {
-            throw AssertionError(message, timeout)
+            var stateSummary = "No bound service"
+            main {
+                bindings.lastOrNull { it.bound }?.binder?.controller?.uiState?.value?.let {
+                    stateSummary = "attempts=${gateway.attempts}, phase=${it.phase}, availability=${it.availability}, " +
+                        "automaticReady=${it.automaticConnectionReady}, scanning=${it.isScanning}, " +
+                        "favoriteSet=${it.favoriteAdapter != null}, paused=${it.favoriteAutoConnectPaused}, " +
+                        "loading=${it.favoritePreferenceLoading}, saving=${it.favoritePreferenceSaving}, obd=${it.obd.phase}"
+                }
+            }
+            throw AssertionError("$message ($stateSummary)", timeout)
         }
     }
 

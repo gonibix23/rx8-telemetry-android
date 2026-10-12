@@ -6,7 +6,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -36,11 +37,13 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gonibix.rx8.obd.ObdReadingStatus
@@ -73,7 +76,7 @@ internal fun CustomSensorCard(reading: DashboardReading, config: DashboardCardCo
                     .semantics { contentDescription = "Customize ${reading.metric.label}, ECU ${reading.ecuId}" }) { Text("Edit") }
             }
             if (config.style == DashboardCardStyle.DIAL) {
-                Box(Modifier.fillMaxWidth().height(if (large) 180.dp else 130.dp), contentAlignment = Alignment.Center) {
+                BoxWithConstraints(Modifier.fillMaxWidth().height(if (large) 180.dp else 130.dp), contentAlignment = Alignment.Center) {
                     Canvas(Modifier.matchParentSize().testTag("dashboard_dial_$suffix")) {
                         val diameter = minOf(size.width, size.height) * 0.92f
                         val offset = Offset((size.width - diameter) / 2, (size.height - diameter) / 2)
@@ -81,7 +84,9 @@ internal fun CustomSensorCard(reading: DashboardReading, config: DashboardCardCo
                         if (progress != null) drawArc(if (reading.status == ObdReadingStatus.VALID) MintColor else AccentColor,
                             140f, 260f * progress, false, offset, Size(diameter, diameter), style = Stroke(7.dp.toPx(), cap = StrokeCap.Round))
                     }
-                    SensorNumber(value, reading.metric.unit, large, color, suffix)
+                    // Keep the centered text inside the arc, including longer values and larger font scales.
+                    val innerWidth = minOf(maxWidth, maxHeight) * 0.70f
+                    SensorNumber(value, reading.metric.unit, large, color, suffix, dialWidth = innerWidth)
                 }
             } else {
                 SensorNumber(value, reading.metric.unit, large, color, suffix)
@@ -102,10 +107,17 @@ internal fun CustomSensorCard(reading: DashboardReading, config: DashboardCardCo
 }
 
 @Composable
-private fun SensorNumber(value: String, unit: String, large: Boolean, color: androidx.compose.ui.graphics.Color, suffix: String) {
-    Column {
-        val digits = value.length.coerceAtLeast(4)
-        val size = (if (large) 66f else 44f).coerceAtMost((if (large) 460f else 210f) / digits).coerceAtLeast(20f)
+private fun SensorNumber(value: String, unit: String, large: Boolean, color: androidx.compose.ui.graphics.Color,
+    suffix: String, dialWidth: Dp? = null) {
+    val digits = value.length.coerceAtLeast(4)
+    val preferredSize = (if (large) 66f else 44f).coerceAtMost((if (large) 460f else 210f) / digits).coerceAtLeast(20f)
+    val density = LocalDensity.current
+    val size = dialWidth?.let { width ->
+        // Monospace digits use less than 0.65 em; reserve that width for each character.
+        minOf(preferredSize, with(density) { (width / (digits * 0.65f)).toSp().value })
+    } ?: preferredSize
+    Column(modifier = if (dialWidth == null) Modifier else Modifier.widthIn(max = dialWidth),
+        horizontalAlignment = if (dialWidth == null) Alignment.Start else Alignment.CenterHorizontally) {
         Text(value, color = color, fontFamily = FontFamily.Monospace, fontSize = size.sp, lineHeight = (size + 5).sp,
             modifier = Modifier.testTag("dashboard_value_$suffix"))
         Text(unit, color = MutedColor, style = MaterialTheme.typography.bodySmall)
