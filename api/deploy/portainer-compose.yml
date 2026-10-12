@@ -1,6 +1,9 @@
 # Production stack "gonibix", deployed by Portainer from this file.
 # .github/workflows/api.yml pushes :latest and triggers the stack webhook; pull_policy makes
 # the redeploy fetch it. To roll back, set a published sha-<commit> tag and redeploy.
+#
+# MongoDB runs with authentication. Credentials are Portainer stack environment variables,
+# never committed: MONGO_ROOT_USERNAME, MONGO_ROOT_PASSWORD, MONGO_API_PASSWORD, MONGO_KEYFILE.
 services:
   api:
     image: ghcr.io/gonibix23/rx8-telemetry-android-api:latest
@@ -10,8 +13,9 @@ services:
       mongo:
         condition: service_healthy
     environment:
-      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017/?replicaSet=rs0}
-      MONGODB_DATABASE: ${MONGODB_DATABASE:-rx8_telemetry}
+      # Least-privilege user: readWrite on rx8_telemetry only.
+      MONGODB_URI: mongodb://rx8api:${MONGO_API_PASSWORD:?set in Portainer}@mongo:27017/?replicaSet=rs0&authSource=admin
+      MONGODB_DATABASE: rx8_telemetry
       HOST: 0.0.0.0
       PORT: 3000
     ports:
@@ -27,12 +31,47 @@ services:
   # Single-node replica set: the API requires transactions.
   mongo:
     image: mongo:8.0
-    command: ["--replSet", "rs0", "--bind_ip_all"]
+    # A replica set with authentication needs a key file; it is written from the secret at start.
+    command:
+      - bash
+      - -c
+      - >-
+        printf '%s' "$$MONGO_KEYFILE" > /data/keyfile && chmod 400 /data/keyfile && chown 999:999 /data/keyfile &&
+        exec docker-entrypoint.sh mongod --replSet rs0 --bind_ip_all --auth --keyFile /data/keyfile
+    environment:
+      MONGO_KEYFILE: ${MONGO_KEYFILE:?set in Portainer}
+      MONGO_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?set in Portainer}
+      MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?set in Portainer}
+      MONGO_API_PASSWORD: ${MONGO_API_PASSWORD:?set in Portainer}
+    # TEMPORARY debug access via the owner's reverse tunnel; loopback-only, remove when done.
+    # Connect with directConnection=true (the set advertises mongo:27017).
+    ports:
+      - "127.0.0.1:7601:27017"
     restart: unless-stopped
     volumes:
       - /mnt/rx8/mongo:/data/db
+    # Also bootstraps the replica set and users. The data directory predates authentication, so the
+    # image's MONGO_INITDB_* setup never runs; the localhost exception allows creating the first user.
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "try { rs.status() } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }] }) }; quit(db.hello().isWritablePrimary ? 0 : 1)"]
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --eval
+        - |
+          const hello = db.hello();
+          if (!hello.setName) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }] }); quit(1); }
+          if (!hello.isWritablePrimary) quit(1);
+          const env = process.env; const admin = db.getSiblingDB('admin');
+          try { admin.auth(env.MONGO_ROOT_USERNAME, env.MONGO_ROOT_PASSWORD); }
+          catch (e) {
+            admin.createUser({ user: env.MONGO_ROOT_USERNAME, pwd: env.MONGO_ROOT_PASSWORD, roles: ['root'] });
+            admin.auth(env.MONGO_ROOT_USERNAME, env.MONGO_ROOT_PASSWORD);
+          }
+          if (!admin.getUser('rx8api')) {
+            admin.createUser({ user: 'rx8api', pwd: env.MONGO_API_PASSWORD, roles: [{ role: 'readWrite', db: 'rx8_telemetry' }] });
+          }
+          quit(0);
       interval: 10s
       timeout: 10s
       retries: 30
