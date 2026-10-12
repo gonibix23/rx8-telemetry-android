@@ -1,16 +1,10 @@
 name: Documentation
 
+# No path filters: "Documentation" is a required status check for main.
 on:
   pull_request:
-    paths: &docs-paths
-      - '**/*.md'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.markdownlint-cli2.jsonc'
-      - '.github/workflows/docs.yml'
   push:
     branches: [main]
-    paths: *docs-paths
   workflow_dispatch:
 
 permissions:
