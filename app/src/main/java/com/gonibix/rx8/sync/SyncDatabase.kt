@@ -81,6 +81,8 @@ interface SyncDao {
     @Query("""
         SELECT w.* FROM sync_work w
         WHERE w.state = 'PENDING' AND w.nextAttemptEpochMillis <= :now AND w.kind = :kind
+          AND EXISTS (SELECT 1 FROM trip_sessions t WHERE t.status IN ('COMPLETED', 'INTERRUPTED')
+              AND ((w.kind = 'VEHICLE' AND t.vehicleId = w.vehicleId) OR t.id = w.sessionId))
           AND NOT EXISTS (SELECT 1 FROM sync_work older WHERE older.kind = w.kind AND older.resourceId = w.resourceId
               AND older.revision < w.revision AND older.state != 'ACKNOWLEDGED')
           AND (w.kind = 'VEHICLE' OR NOT EXISTS (SELECT 1 FROM sync_work v
@@ -93,7 +95,8 @@ interface SyncDao {
 
     @Query("""
         SELECT t.* FROM trip_sessions t
-        WHERE EXISTS (SELECT 1 FROM trip_samples s INNER JOIN sync_samples q ON q.sampleId = s.id
+        WHERE t.status IN ('COMPLETED', 'INTERRUPTED')
+          AND EXISTS (SELECT 1 FROM trip_samples s INNER JOIN sync_samples q ON q.sampleId = s.id
             WHERE s.tripId = t.id AND q.state = 'PENDING' AND q.batchId IS NULL)
           AND NOT EXISTS (SELECT 1 FROM sync_work w WHERE w.state != 'ACKNOWLEDGED'
             AND ((w.kind = 'VEHICLE' AND w.vehicleId = t.vehicleId) OR (w.kind = 'SESSION' AND w.sessionId = t.id)))
@@ -107,6 +110,26 @@ interface SyncDao {
         ORDER BY s.sequence LIMIT :limit
     """)
     suspend fun unbatchedSamples(tripId: String, limit: Int): List<TripSampleEntity>
+
+    @Query("""
+        SELECT MIN(CASE WHEN w.state = 'SENDING' THEN w.leaseExpiresAtEpochMillis ELSE w.nextAttemptEpochMillis END)
+        FROM sync_work w WHERE w.state IN ('PENDING', 'SENDING')
+          AND EXISTS (SELECT 1 FROM trip_sessions t WHERE t.status IN ('COMPLETED', 'INTERRUPTED')
+              AND ((w.kind = 'VEHICLE' AND t.vehicleId = w.vehicleId) OR t.id = w.sessionId))
+          AND NOT EXISTS (SELECT 1 FROM sync_work older WHERE older.kind = w.kind AND older.resourceId = w.resourceId
+              AND older.revision < w.revision AND older.state != 'ACKNOWLEDGED')
+          AND (w.kind = 'VEHICLE' OR NOT EXISTS (SELECT 1 FROM sync_work v
+              WHERE v.kind = 'VEHICLE' AND v.vehicleId = w.vehicleId AND v.state != 'ACKNOWLEDGED'))
+          AND (w.kind != 'TELEMETRY' OR NOT EXISTS (SELECT 1 FROM sync_work s
+              WHERE s.kind = 'SESSION' AND s.sessionId = w.sessionId AND s.state != 'ACKNOWLEDGED'))
+    """)
+    suspend fun nextEligibleTime(): Long?
+
+    @Query("SELECT EXISTS(SELECT 1 FROM sync_work WHERE state = 'BLOCKED') OR EXISTS(SELECT 1 FROM sync_samples WHERE state = 'BLOCKED')")
+    suspend fun hasBlocked(): Boolean
+
+    @Query("SELECT * FROM sync_work WHERE state = 'BLOCKED' AND errorCode = 'retry_limit_reached' ORDER BY id LIMIT 100")
+    suspend fun exhausted(): List<SyncWorkEntity>
 }
 
 internal const val PENDING = "PENDING"

@@ -5,6 +5,17 @@ labels:
   - type:bug
   - status:triage
 body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Android app
+        - API / MongoDB
+        - Shared contract / synchronization
+        - Documentation / CI
+    validations:
+      required: true
   - type: textarea
     id: problem
     attributes:
@@ -23,7 +34,7 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: App/Android version, phone, vehicle, adapter, protocol, and real or simulated mode.
+      description: For Android, app/Android version, phone, adapter and protocol. For the API, version, Node/container version and safe error code. Never include a credentialed database URI.
     validations:
       required: true
   - type: textarea

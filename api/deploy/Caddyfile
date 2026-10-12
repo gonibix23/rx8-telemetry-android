@@ -1,0 +1,8 @@
+# Example only: replace the domain, configure DNS, and install Caddy on the host.
+# No access log is enabled; request paths may contain private resource UUIDs.
+telemetry.example.com {
+    request_body {
+        max_size 1MB
+    }
+    reverse_proxy 127.0.0.1:3000
+}

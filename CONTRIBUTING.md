@@ -20,13 +20,15 @@ An issue should describe a concrete outcome and include:
 - Dependencies linked to other issues.
 - Evidence and a way to verify the result.
 
+For app work use `area:android` and the relevant feature area; for backend work use `area:api`. Keep API work in `api/` and Android work in `app/` or `core/`, with independent checks. Cross-component changes should link one shared contract issue and specify each component's acceptance criteria.
+
 For failures involving the vehicle, record the app/Android version, adapter, protocol, PIDs, and reproduction steps, with personal identifiers removed.
 Never document an unverified capability as supported.
 
 ## Labels and priorities
 
 - Type: `type:bug`, `type:feature`, `type:task`, `type:research`.
-- Area: `area:android`, `area:bluetooth`, `area:obd`, `area:data`, `area:ui`, `area:sync`, `area:docs`.
+- Area: `area:android`, `area:bluetooth`, `area:obd`, `area:data`, `area:ui`, `area:sync`, `area:api`, `area:docs`.
 - Priority: `priority:P0` (data loss or a major blocker), `priority:P1` (required for the MVP), `priority:P2` (improvement or later phase).
 - Status: exactly one of `status:triage`, `status:ready`, `status:in-progress`, `status:blocked`, `status:review`.
 - Evidence: `needs:hardware` when validation with the actual vehicle/adapter is still required.
@@ -68,6 +70,8 @@ Documented rules do not imply that GitHub enforces them. The actual protection s
 ## Checks and definition of done
 
 For documentation changes, run `npm ci` and `npm run lint:docs`.
+
+For backend changes, run the package checks from `api/` using its own lockfile; see [API development](api/README.md). Never use real Atlas data as test fixtures.
 
 For Android or telemetry changes, use the Gradle wrapper from the repository root:
 

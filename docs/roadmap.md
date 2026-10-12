@@ -36,6 +36,7 @@ RX8-011 is complete in PR #26: CI action runtimes and the Ubuntu runner baseline
 | [RX8-014](https://github.com/gonibix23/rx8-telemetry-android/issues/28) | Browse older trips and filter by vehicle | M2 - Live data and trips | RX8-012 software |
 | [RX8-015](https://github.com/gonibix23/rx8-telemetry-android/issues/29) | Automatic journeys, broader readings and real dashboard | M2 - Live data and trips | RX8-014 |
 | [RX8-016](https://github.com/gonibix23/rx8-telemetry-android/issues/32) | Search and filter dashboard sensor choices | M2 - Live data and trips | RX8-015 |
+| [RX8-017](https://github.com/gonibix23/rx8-telemetry-android/issues/34) | Separate Atlas API and offline completed-trip uploads | M4 - API integration | RX8-008, RX8-016 |
 
 [Project issues](https://github.com/gonibix23/rx8-telemetry-android/issues) and [milestones](https://github.com/gonibix23/rx8-telemetry-android/milestones) are the operational tracker.
 RX8-xxx codes remain stable even if an issue number changes. The focused [lifecycle fix, issue #16](https://github.com/gonibix23/rx8-telemetry-android/issues/16), supports acquisition without completing RX8-007 trip recording.
@@ -48,8 +49,8 @@ The reported live-reading and 0.5.1-dev success allow dashboard development to p
 - Bounded Classic discovery, paired and nearby device selection with names and MAC addresses, separate scan/connection permissions, secure SPP connection, cancellation, and manual reconnection. No BLE transport.
 - Automatic read-only OBD initialization, protocol and supported-PID discovery, an expanded standard scalar catalog, and per-ECU live values with explicit error and stale states. RX8-015 expands decoding and automatic acquisition while preserving source identities.
 - Fixed supported RPM/speed/coolant cards, optional supported-sensor favorites saved in app-wide SharedPreferences, separate ECU groups, honest unavailable/stale states, and a real per-ECU RPM dial; synthetic scenarios remain internal fixtures.
-- Automatic connection-to-disconnection telemetry journeys and explicit recording controls through the existing foreground service; ordered bounded writes to Room with explicit migrations. History loads at most 50 trips per page, with Newer/Older/Newest controls and independent vehicle filtering. Room v4 adds indexes without changing existing records. Terminal summaries, sensor charts, JSON/CSV exports, and confirmed deletion remain available. Process recovery preserves committed readings and marks unfinished sessions interrupted. No GPS, simulated-trip recording, or uploads.
-- Room v3 adds atomic pending work for new and previously recorded samples, immutable metadata revisions/prepared requests, bounded batches, leases, per-sample ACKs, and retry/conflict/split handling. Production uses only disabled status/counts; fake-server exercises are isolated from real records. Explicit 1-to-2 and 2-to-3 migrations preserve stored data.
+- Automatic connection-to-disconnection telemetry journeys and explicit recording controls through the existing foreground service; ordered bounded writes to Room with explicit migrations. History loads at most 50 trips per page, with Newer/Older/Newest controls and independent vehicle filtering. Room v4 adds indexes without changing existing records. Terminal summaries, sensor charts, JSON/CSV exports, and confirmed deletion remain available. Process recovery preserves committed readings and marks unfinished sessions interrupted. No GPS or simulated-trip recording. RX8-017 adds optional terminal-trip uploads after configuration.
+- Room v3 adds atomic pending work for new and previously recorded samples, immutable metadata revisions/prepared requests, bounded batches, leases, per-sample ACKs, and retry/conflict/split handling. The original preparation used disabled status/counts; RX8-017 adds the guarded HTTPS transport and network-constrained work. Fake-server exercises remain isolated from real records. Explicit 1-to-2 and 2-to-3 migrations preserve stored data.
 - Vehicle capabilities captures advertised PID lists and the latest display state into an immutable, allowlisted preview. Explicit JSON export excludes VINs, MACs, profiles, trip identifiers, raw logs, and free-form adapter/errors. It adds no requests and does not claim sustained measurement evidence or new sensor support.
 - Explicit vehicle creation/selection/rename, stable UUIDs, optional VINs and provenance, and Room persistence. Duplicate or different VINs never silently reassign a profile.
 - Optional, user-started Mode 09 PID 02 acquisition during LIVE; limited CAN/legacy VIN reconstruction, masked candidates, and explicit review in Vehicles before saving. No general ISO-TP support or automatic vehicle assignment.
@@ -57,7 +58,7 @@ The reported live-reading and 0.5.1-dev success allow dashboard development to p
 - Android build, unit-test, lint, and Markdown check commands are documented in [Development](development.md). Record actual check results in each PR.
 - Squash merging and automatic deletion of merged branches are enabled.
 - Main branch protection is enabled: pull requests, passing Documentation checks on an up-to-date branch, and resolved review conversations are required, including for administrators. Force-push and branch deletion are disabled. No additional reviewer approval is required for solo maintenance.
-- Debug APK assembly and delivery to a configured local folder are part of the development workflow. The simulator, Bluetooth connection, and general live readings work on the A53 running Android 16 according to the user. No backend, deployment, published APK release, or GitHub Projects board has been created.
+- Debug APK assembly and delivery to a configured local folder are part of the development workflow. The simulator, Bluetooth connection, and general live readings work on the A53 running Android 16 according to the user. RX8-017 adds the backend in `api/` with independent development/CI. Deployment, published APK releases and a GitHub Projects board remain deferred.
 
 ## Pending decisions
 
@@ -66,14 +67,12 @@ The reported live-reading and 0.5.1-dev success allow dashboard development to p
 - Remaining compatibility with the adapter's ELM command implementation, beyond the reported successful live readings over `ISO 15765-CAN (11 bit, 500 kbaud)`.
 - Supported PIDs and sustained sampling rate with this adapter.
 - A53 trip recording across lock/background, notification Stop, Bluetooth loss, storage interruption, upgrade preservation, and JSON/CSV document-provider behavior. Retention is manual deletion; real storage growth remains to be measured.
-- Authentication, hosting, and database engine for the future server.
+- MongoDB Atlas is selected and the API has no login as requested. Actual server hosting and public HTTPS URL remain deferred.
 - Individual A53 0.8.0-dev upgrade, count, export/deletion scenarios beyond the broad successful test; 0.9.0-dev capability reports and 0.10.0-dev sensor charts. The user has deferred phone validation while development continues.
 - Distribution license.
 
 ## Next verifiable outcome
 
-Verify 0.12.1-dev sensor name/PID searches, selection preservation, clearing/no-match feedback, keyboard use and saved-state restoration. Run all local checks and Android 16 CI, review all eleven screenshots, and deliver the signed update through the configured APK script.
+The owner broadly confirmed 0.12.1-dev works perfectly before explicitly requesting an anonymous Atlas API and offline synchronization. RX8-017 / issue #34 implements API and Android tracks in the same repository, with independent build/test commands and labels. Verify isolated MongoDB persistence/idempotency, terminal-only upload eligibility, offline recovery, strict ACKs and configurable HTTPS settings. Run all local checks and full Android 16 CI, inspect all eleven screenshots, and deliver 0.13.0-dev through the configured APK script.
 
-Phone checks remain deferred. When validation resumes, confirm the last-adapter attempt, direct readings, automatic profile association/start/end, manual Stop suppression, background/lock behavior and real additional sensors. Preserve existing data and review/export older trips. Capture capabilities without interpreting synthetic tests or catalog entries as hardware evidence. No GPS or uploads are included.
-
-No backend is required.
+The actual API deployment and public URL are deferred. After deployment, configure the URL in Trips and validate real completed-trip delivery, offline queuing/reconnection, server persistence and retained local history. Phone/software evidence remains distinct; earlier broad success does not establish remote uploads or detailed sensor/battery behavior.

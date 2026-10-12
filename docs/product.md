@@ -4,7 +4,7 @@
 
 The user has a European-market 2004 Mazda RX-8 with 231 PS and a Samsung Galaxy A53 running Android 16.
 User's adapter: iLC OBD2 Bluetooth, ASIN B0BDRHRR22.
-Selected priority: live data and trip recording. Prepare for a future API without developing it yet.
+Selected priority: live data, offline trip recording and completed-trip uploads. RX8-017 explicitly adds an anonymous MongoDB Atlas API in this repository; hosting on the owner's server is deferred.
 The user reported a successful simulator app test on October 10, 2026. The paired-only Bluetooth build failed to list the adapter.
 Car Scanner reportedly finds OBDII and its MAC address through in-app search with plain Bluetooth selected.
 The user confirmed Bluetooth works and reported successful live readings on October 11, 2026; PR #14 is merged. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed correct readings in 0.5.0-dev. Individual sensors, ECU identifiers, measured rates, sustained lifecycle behavior, VIN retrieval, and profile persistence remain unverified.
@@ -37,7 +37,7 @@ Names contain 1-60 characters after trimming. The optional VIN contains 17 lette
 Read VIN is available only after live acquisition starts. The user chooses a candidate in Adapter, then reviews it in Vehicles before attaching it to a VIN-less profile or creating a separate profile.
 A matching VIN offers explicit selection of its existing profile. A different VIN cannot overwrite the selected profile. Adding a VIN or changing the name never changes the UUID.
 VINs are masked by default and record manual entry or OBD/ECU provenance. A car can be used without a VIN; its Bluetooth adapter does not identify it.
-Switching to Vehicles leaves an active Bluetooth/acquisition session running. Profiles, selected vehicle, dashboard favorites, recorded trips/samples, and pending work are saved locally. Real uploads remain disabled.
+Switching to Vehicles leaves an active Bluetooth/acquisition session running. Profiles, selected vehicle, dashboard favorites, recorded trips/samples, and pending work are saved locally. Completed-trip uploads are optional and require an explicitly configured HTTPS API URL.
 Backups/device transfer are disabled. Finished trips can be exported, but importing/restoring the app is not implemented. Clearing app data or reinstalling loses saved profiles, UUIDs, and local trips.
 
 ## Current session behavior
@@ -64,7 +64,7 @@ Finished trips expose sample counts, duration, valid recorded peaks, and bounded
 
 The trip overview remains independent of chart selection: speed uses one identified ECU, and estimated distance integrates valid speed intervals only, alongside covered and uncovered duration; it is not the odometer. Peak recorded RPM may come from any valid RPM source.
 JSON/CSV export opens Android's document picker so the user chooses the location. Success is shown only after writing, flushing, and closing the document. Exports contain the vehicle UUID/recorded alias, timestamps, readings, ECU sources, and quality; they exclude VINs and Bluetooth addresses. Exports cannot currently be imported to restore the app.
-Deletion requires confirmation and removes the selected trip and its samples; externally exported files remain. Active trips cannot be analyzed, exported, or deleted until recording ends. No backend, Internet permission, GPS/maps, or uploads are added.
+Deletion requires confirmation and removes the selected trip and its samples; externally exported files remain. Active trips cannot be analyzed, exported, or deleted until recording ends. GPS/maps and remote deletion are not included. Uploading does not remove local history; local deletion does not delete server copies.
 Real A53 recording, interruption recovery, export-provider behavior, and storage-limit checks remain pending. Earlier live/dashboard success does not validate saved trips.
 
 ## Expected MVP outcome
@@ -72,12 +72,17 @@ Real A53 recording, interruption recovery, export-provider behavior, and storage
 After initial adapter and vehicle selection, the app attempts to connect and automatically reads and records supported telemetry.
 The user can lock the screen during recording, stop the session from its notification, and view history without Internet access.
 
-## Current API preparation
+## Offline synchronization and API
 
-Recording and pending sample work are saved in one database transaction. Upgrading includes existing recorded samples in the queue while retaining their IDs, order, quality, profiles, and selection. New recordings preserve the app version; the app does not invent this information for old trips.
-Trips shows a read-only Future uploads card with Uploads disabled, the last refreshed count waiting locally, and any samples needing attention. Counts refresh with the history; they are not a live per-reading counter. A failed status query is shown separately and does not replace the history or claim that no samples are waiting.
-No endpoint, account, upload button, background upload worker, or Internet permission is added. Real data stays local unless the user explicitly exports a file. The retry and acknowledgment logic is exercised only with isolated test storage and a fake server; those tests cannot mark real recordings as uploaded.
-Local exports remain version 1 and are available regardless of a reading's queue state. Deleting a trip also removes work referencing it, while existing exported copies remain. Backend development, authentication setup, and enabling uploads require a later increment.
+Recording and pending work commit in one local transaction. Vehicle UUIDs, trip/sample IDs, quality and sources remain unchanged. The phone can record, review, export and delete local trips without an Internet connection or server.
+
+The API is developed separately in `api/`, with independent dependencies, tests and CI. It stores vehicle profiles, trip sessions and readings in MongoDB Atlas. There is no login or user account; UUIDs identify records, not owners. Database credentials stay exclusively in ignored backend configuration. The Android app never receives them.
+
+Configure the API's HTTPS base URL in Trips after deploying the server. Until then uploads remain unconfigured and everything waits locally. Completed/interrupted trips, including recovered and empty trips, become eligible after their final local commit. Active journeys never upload. Network-constrained background work survives process restarts and retries failed deliveries. Earlier unsent finished trips are included. Metadata is confirmed before samples, and only validated durable acknowledgments mark delivery.
+
+Trips presents server configuration, pause/resume, retry controls and queue state independently of history. Once a server has been used, its identity is retained: pausing does not change which server owns existing acknowledgments. Conflicting or rejected data remains local for review. Synchronization does not delete trips; JSON/CSV export version 1 remains available regardless of upload state.
+
+The server is prepared for later deployment on the owner's machine behind HTTPS. No deployment or phone upload validation is implied by isolated software tests.
 
 ## Screens
 
@@ -88,9 +93,9 @@ Local exports remain version 1 and are available regardless of a reading's queue
 | Vehicles (implemented) | Saved profiles, selection, permanent UUID, alias, optional VIN and source |
 | Internal test fixtures | Synthetic values and failure scenarios, outside production navigation |
 | Live (implemented) | Supported RPM, speed, coolant, extra favorites, per-ECU status and reading age |
-| Trips (implemented) | Automatic journeys and recording controls, history pages with an independent vehicle filter, storage usage, and disabled-upload queue counts |
+| Trips (implemented) | Automatic journeys and recording controls, history pages with an independent vehicle filter, storage usage, server settings and upload queue state |
 | Trip details (inside Trips) | Sample counts, valid peaks, estimated distance, sensor/ECU charts with gaps, JSON/CSV export, and confirmed deletion |
-| Settings (planned) | Units, sampling rate/priorities, storage policy, and future authenticated API configuration |
+| Settings (planned) | Units, sampling rate/priorities and storage policy; API settings are inside Trips |
 
 The MVP does not include maps. A trip is a telemetry session.
 Distance calculated from speed must be labeled as an estimate, not the car's odometer reading.
@@ -117,11 +122,11 @@ ABS/SRS are not part of this adapter's promised compatibility.
 - Preserves saved data after an interruption and marks the gaps.
 - Exports and deletes trips with clear scope.
 - Keeps clearly identified synthetic test fixtures outside production navigation.
-- Prepares batches for the future contract without making real uploads.
+- Saves locally first and uploads only finished trips to the configured API, preserving identical retries and validated acknowledgments.
 
 ## Outside this first version
 
-API/server/remote database, cloud accounts, GPS maps, advanced diagnostics, fault clearing, ECU reprogramming, and actuator control.
+User login, actual server deployment, GPS maps, advanced diagnostics, fault clearing, ECU reprogramming, and actuator control.
 Additional Mazda sensors require specific investigation and testing before inclusion.
 
 ## References

@@ -1,12 +1,12 @@
-# API v1 preparation and local export contract
+# API v1 and local export contract
 
 ## Status and boundaries
 
-RX8-008 / 0.8.0-dev implements typed version-1 payloads, deterministic JSON serialization, a durable local outbox, a transport interface, and an isolated-test coordinator. No API, live URL, configured authentication, HTTP client, response JSON decoder, worker, or remote database exists.
-The app has no Internet permission and instantiates no coordinator. Its production transport is disabled; there is no setting that enables uploads. Backend implementation, HTTPS transport, authentication, scheduling, and server validation belong to a later phase.
-All examples are synthetic. Fault diagnostics and remote deletion are outside this initial contract.
+RX8-017 / 0.13.0-dev adds a separately developed API in `api/`, MongoDB Atlas persistence, anonymous HTTPS transport, bounded ACK decoding and persistent network-constrained Android work. The user explicitly requested no login. The app's server URL starts absent and is configurable; actual deployment on the owner's server is deferred. MongoDB credentials belong only to backend environment configuration, never the APK.
 
-The app records trips locally and exports files. Those files retain the separate version-1 contract below; they are not uploads or an implementation of the proposed API routes. Trips displays explicitly disabled uploads and last-refreshed sample queue counts. Queue-query failures remain visible without preventing local recording or export.
+Room remains the local source of truth. Recording, history, charts and document export work offline. Completed/interrupted trips, including startup-recovered and empty trips, become upload-eligible only after their terminal local commit. Active trips are excluded. Failed deliveries retain the same immutable bodies/IDs for retries after connectivity returns. Upload success never removes local history.
+
+All examples and automated database tests are synthetic and isolated. They do not validate a deployed server or A53 uploads. Fault diagnostics, remote deletion, importing and multi-user ownership are outside this contract. Local JSON/CSV exports retain their separate version-1 format below.
 
 ## Implemented local trip export
 
@@ -48,13 +48,14 @@ The file contains private vehicle/trip information and is shared only through th
 
 ## Conventions
 
-Future transport: HTTPS/JSON and /v1 routes. Implemented payloads use schemaVersion equal to 1 and UTC ISO 8601 timestamps ending in Z.
+Transport: HTTPS/JSON and /v1 routes. Implemented payloads use schemaVersion equal to 1 and UTC ISO 8601 timestamps ending in Z.
 Client-generated UUIDs are retained for vehicles, sessions, samples, and batches.
+The API requires their canonical lowercase representation, matching the Android recorder's generated IDs.
 Explicit canonical units do not depend on the phone's language.
-VIN is optional; neither a VIN nor a UUID is a credential. Authorization must verify ownership of each resource.
+VIN is optional; neither a VIN nor a UUID is a credential. The requested anonymous API has no user ownership boundary; server network exposure is a deployment decision.
 Payloads preserve ECU source addresses but omit Bluetooth MAC addresses. All implemented scalar metrics use `obd_standard` and service `01`; actual availability is determined by discovery and responses, not by the contract.
 
-## Planned resources
+## Implemented resources
 
 | Method | Route | Purpose |
 | --- | --- | --- |
@@ -63,7 +64,7 @@ Payloads preserve ECU source addresses but omit Bluetooth MAC addresses. All imp
 | POST | /v1/telemetry/batches | Store samples in batches |
 
 Confirm the vehicle first, then the session, and finally the samples.
-These routes are a future server contract. The current app makes no requests.
+The Android app sends these requests only after configuring its HTTPS base URL. Bounded GET routes expose vehicles, sessions and samples; `/health` and `/ready` support operations. See [API setup](../api/README.md) for the exact read routes and cursors.
 
 ## Vehicle and session
 
@@ -76,7 +77,7 @@ States: recording, completed, interrupted.
 Duration uses a monotonic clock; wall-clock changes must not produce negative durations.
 Recording-session metadata has null endedAt and durationMs. Appending samples does not change that metadata revision; first protocol discovery creates an immutable metadata revision when an automatic journey started before initialization; completion or interruption creates the next revision with the saved duration. Earlier queued JSON bodies remain unchanged. New recordings capture their actual app version at start. Existing recordings migrated from version 2 have appVersion null, never the version installed during migration.
 
-revision is a positive integer that increases with every metadata change. The future server must implement these rules:
+revision is a positive integer that increases with every metadata change. The server implements these rules:
 
 - Higher than the stored revision: apply it.
 - Equal with the same content: acknowledge without duplication.
@@ -90,7 +91,7 @@ Each metadata revision freezes its complete JSON inside the local mutation trans
 ## Telemetry batch
 
 A batch belongs to a single vehicle and session. Its JSON body and member sample IDs are frozen before it is leased and remain immutable across retries.
-The future Idempotency-Key header must match batchId. Metadata uses its resource UUID and revision instead.
+The Idempotency-Key header must match batchId. Metadata uses its resource UUID and revision instead.
 
 ```json
 {
@@ -133,20 +134,20 @@ Voltage measured by the adapter uses a different metric from voltage reported by
 | Temperature | Cel |
 | Percentage | % |
 
-Wire metric IDs are the lower-case stable `ObdMetric` names, with a one-to-one `ApiMetric` mapping. The original six IDs and payload shape remain unchanged; 0.12.0-dev extends the enum with the 120-field scalar catalog. Future server implementations must accept each implemented metric/unit/PID combination and retain unknown extension IDs if forwarding records. No live server currently consumes this contract.
+Wire metric IDs are the lower-case stable `ObdMetric` names, with a one-to-one `ApiMetric` mapping. The original six IDs and payload shape remain unchanged; 0.12.0-dev extends the enum with the 120-field scalar catalog. The server validates the implemented metric/unit/PID combinations, accepts the 120-field catalog, and rejects unknown metrics rather than inventing semantics. Expanding the catalog requires a coordinated contract change.
 Default limits are 100 samples and 256 KiB of UTF-8 JSON, including the envelope. Configurable hard bounds are 1-500 samples and 1 byte-1 MiB. A singleton exceeding the configured byte ceiling is blocked visibly in queue state. Batch preparation reads at most 500 sample rows at once and does not copy the full trip history into a payload.
 JSON field ordering and numeric formatting are deterministic. Quotes, backslashes, controls, and UTF-16 surrogate code units are escaped; non-finite values, inconsistent units, foreign-trip samples, duplicate IDs, and non-increasing sequences are rejected.
 Do not upload simulated data as real sessions.
 
 ## Acknowledgments and duplicates
 
-The future HTTP decoder must produce the typed acknowledgments validated by the local coordinator and store. Metadata acknowledgment has exactly the matching schemaVersion, resourceId, and revision:
+The HTTPS decoder produces typed acknowledgments validated by the local coordinator and store. Metadata acknowledgment has exactly the matching schemaVersion, resourceId, and revision:
 
 ```json
 {"schemaVersion":1,"resourceId":"17ca18ac-8df9-4af1-8d78-b44759c6e993","revision":2}
 ```
 
-Proposed batch HTTP 200 response:
+Batch HTTP 200 response:
 
 ```json
 {
@@ -164,7 +165,7 @@ Proposed batch HTTP 200 response:
 Per-sample states: stored, already_stored, or rejected. A rejection requires a bounded machine-readable code (`[A-Za-z0-9_.-]{1,64}`); free-form server messages are not stored or shown.
 Only stored and already_stored acknowledge durable persistence. HTTP 200 without those results does not acknowledge the batch.
 
-The server deduplicates by sampleId within the authorized scope, including across different batches.
+The server deduplicates by sampleId across stored sessions, including across different batches.
 Reusing a sampleId with different content or an Idempotency-Key with a different body causes a conflict.
 Never overwrite an existing sample because of a retry.
 
@@ -183,7 +184,7 @@ Save a sample and its pending reference in the same transaction. Vehicle/session
 The store records attempts, a safe error code, the next attempt time, and a temporary lease. Default coordinator timing is a 30-second lease and a 10-second remote-call timeout. The store validates token, expiry, request identity, membership, and exact body inside the ACK transaction. Stale, expired, replaced, or deleted leases cannot acknowledge data.
 An expired lease can be reclaimed with a new token while retaining the same request ID/body. Cancellation leaves recovery to lease expiry. A transport becoming disabled after claiming releases the lease without an ACK or artificial error. Metadata dependencies enforce vehicle before session before samples.
 
-`SyncCoordinator.runOnce()` checks both transport availability and `SyncStore.isIsolatedTestStore` before leasing or mutating anything. The real Room store defaults to false. Only isolated fixture stores opt in, and fake transports exist only in test sources. The app constructs no runner, so neither fixture ACKs nor accidental coordinator construction can mark real records uploaded.
+`SyncCoordinator.runOnce()` checks transport availability and requires the concrete production HTTPS transport for a real Room store before leasing work. Isolated fixture stores may use fake transports. Terminal eligibility is enforced for both prepared and unbatched work. All historical session revisions are replayed in order after local closure, with the terminal revision confirmed before samples. The server accepts these historical recording revisions but rejects reopening terminal sessions or storing samples against recording metadata. The durable endpoint identity is locked before the first request, and pause/resume retains it.
 
 ## Errors and retention
 
@@ -191,17 +192,20 @@ An expired lease can be reclaimed with a new token while retaining the same requ
 | --- | --- |
 | Offline, timeout, 408, 5xx | Increasing delay with random jitter and retry |
 | 429 | Retry with bounded policy and respect Retry-After when present |
-| 401/403 | Block until future authentication/access recovery is implemented |
+| 401/403 | Block as server access rejected; no app login flow exists |
 | 409 | Block and preserve the conflicting data/body |
 | 413 | Halve sample count, preserve the configured byte ceiling, create new batchId values; a rejected singleton is blocked |
 | Permanent validation error | Block the affected sample and retain it locally |
 
 Synchronization does not delete local history.
 Exports include pending and blocked records.
-Local deletion removes work referencing those records and does not imply deletion from a future server.
-Retry policy uses exponential backoff from one second with ±20% jitter, capped at one hour, and at most eight attempts before blocking. A nonnegative Retry-After up to 24 hours is honored if longer than the computed delay. Larger hints block for review rather than retrying earlier than the server requested. Timestamp addition is overflow-safe. No background scheduling or unblocking UI is implemented yet.
+Local deletion removes work referencing those records and does not delete server copies.
+Retry policy uses exponential backoff from one second with ±20% jitter, capped at one hour, and at most eight attempts before blocking. A nonnegative Retry-After up to 24 hours is honored if longer than the computed delay. Larger hints block for review rather than retrying earlier than the server requested. Timestamp addition is overflow-safe. Persistent network-constrained work handles scheduling. Explicit retry recovers exhausted transient attempts; permanent validation/content conflicts remain blocked. Queue counters count samples, so metadata-only empty-trip work does not appear as a sample.
 
-## Verification and remaining work
+## Verification and deployment
 
-Isolated JVM and Room tests cover DTO mapping/escaping, null versus zero, disabled and real-store guards, lost-response retry, partial/malformed ACKs, conflicts, lease recovery, VIN metadata revisions, migration, deletion, bounded batches, 413 splitting, and retry/cancellation policy. See the PR validation results for checks actually executed.
-These tests do not validate a remote service. A later increment must implement and verify HTTPS/authentication, response decoding, server-side authorization/deduplication/revision rules, scheduling and recovery controls, then explicitly authorize real synchronization.
+Meaningful JVM and Room checks cover mapping, ACK decoding, null/zero values, HTTPS endpoint validation, fake transport isolation, terminal-only eligibility, immutable retries, leases, conflicts, splits, metadata revisions, deletion, recovery and persisted retry controls. Android UI checks cover configuration and queue state independently of history. Backend integration tests exercise real MongoDB transactions and indexes against a disposable replica set, including concurrent/idempotent retries and content conflicts. See the PR for checks actually executed.
+
+The MongoDB database stores vehicles, revisioned session metadata, immutable samples and batch receipts. Transactions use majority durability before acknowledgment. No database credentials or telemetry bodies are emitted in logs. Deployment requires the owner's Atlas network access configuration, backend environment and an HTTPS reverse proxy; see [`api/README.md`](../api/README.md).
+
+Actual server deployment and phone uploads remain deferred. A successful Atlas connectivity ping proves connection only, not end-to-end trip delivery.

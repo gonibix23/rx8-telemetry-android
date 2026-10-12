@@ -5,6 +5,17 @@ labels:
   - type:task
   - status:triage
 body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Android app
+        - API / MongoDB
+        - Shared contract / synchronization
+        - Documentation / CI
+    validations:
+      required: true
   - type: textarea
     id: goal
     attributes:

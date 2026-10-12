@@ -91,10 +91,11 @@ sealed interface RemoteReply {
     data class BatchAck(val acknowledgment: SyncResult.BatchAck) : RemoteReply
     data class HttpError(val statusCode: Int, val retryAfterMillis: Long? = null) : RemoteReply
     data object Unavailable : RemoteReply
+    data object InvalidAcknowledgment : RemoteReply
     data object Disabled : RemoteReply
 }
 
-/** HTTP and authentication deliberately have no implementation in this increment. */
+/** Prepared bodies are immutable across network attempts. */
 interface SyncTransport {
     val enabled: Boolean
     suspend fun send(request: PreparedRequest): RemoteReply

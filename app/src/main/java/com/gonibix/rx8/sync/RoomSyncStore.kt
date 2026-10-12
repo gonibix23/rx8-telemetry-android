@@ -13,6 +13,28 @@ class RoomSyncStore(
 ) : SyncStore {
     private val dao get() = database.sync()
 
+    suspend fun hasReadyWork(nowEpochMillis: Long): Boolean = database.withTransaction {
+        dao.expired(nowEpochMillis).isNotEmpty() ||
+            SyncRequestKind.entries.any { dao.nextWork(it.name, nowEpochMillis) != null } || dao.nextUnbatchedSession() != null
+    }
+
+    suspend fun needsAnotherRun(): Boolean = database.withTransaction {
+        dao.nextEligibleTime() != null || dao.nextUnbatchedSession() != null
+    }
+
+    suspend fun hasBlocked(): Boolean = dao.hasBlocked()
+
+    /** Only exhausted transient attempts are reset; immutable bodies and permanent blocks survive. */
+    suspend fun retryExhausted() {
+        do {
+            val count = database.withTransaction {
+                val page = dao.exhausted()
+                page.forEach { work -> release(work.copy(attempt = 0), PENDING, 0, null) }
+                page.size
+            }
+        } while (count == 100)
+    }
+
     override suspend fun summary(): SyncQueueSummary {
         val counts = dao.counts().associate { it.state to it.count }
         return SyncQueueSummary(counts[PENDING] ?: 0, counts[SENDING] ?: 0, counts[ACKNOWLEDGED] ?: 0, counts[BLOCKED] ?: 0)

@@ -10,6 +10,7 @@ import com.gonibix.rx8.vehicle.VehicleProfile
 import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
@@ -239,6 +240,36 @@ class TripRecorderTest {
         assertNull(recorder.state.value.session)
     }
 
+    @Test fun uploadRecoveryBarrierWaitsForStartupAndDoesNotRecoverAnActiveJourney() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val repo = Repository().apply { recoveryGate = gate }
+        val recorder = TripRecorder(repo, backgroundScope, clock)
+        val waiting = async { recorder.awaitInitialRecovery() }
+        runCurrent()
+        assertFalse(waiting.isCompleted)
+        gate.complete(Unit)
+        assertTrue(waiting.await())
+        recorder.startConnected(vehicle, 10_000, 1_000)
+        runCurrent()
+        assertTrue(recorder.awaitInitialRecovery())
+        assertEquals(1, repo.recoveries)
+        assertEquals(TripStatus.RECORDING, repo.session!!.status)
+    }
+
+    @Test fun failedStartupRecoveryCanRetryThroughTheRecorderWithoutInterruptingALaterStart() = runTest {
+        val repo = Repository().apply { failRecovery = true }
+        val recorder = TripRecorder(repo, backgroundScope, clock)
+        runCurrent()
+        assertFalse(recorder.awaitInitialRecovery())
+        repo.failRecovery = false
+        recorder.startConnected(vehicle, 10_000, 1_000)
+        runCurrent()
+        val attempts = repo.recoveries
+        assertTrue(recorder.awaitInitialRecovery())
+        assertEquals(attempts, repo.recoveries)
+        assertEquals(TripStatus.RECORDING, repo.session!!.status)
+    }
+
     private class Clock : ObdClock {
         var now = 1_000L
         var utc = 10_000L
@@ -249,11 +280,13 @@ class TripRecorderTest {
         var session: TripSession? = null
         val saved = mutableListOf<TripSample>()
         var recoveries = 0
+        var failRecovery = false
+        var recoveryGate: CompletableDeferred<Unit>? = null
         var failAppend = false
         var failProtocol = false
         var protocolUpdates = 0
         var creation: CompletableDeferred<Unit>? = null
-        override suspend fun recoverInterrupted() { recoveries++ }
+        override suspend fun recoverInterrupted() { recoveries++; recoveryGate?.await(); if (failRecovery) throw IOException("Synthetic recovery failure") }
         override suspend fun create(session: TripSession) { creation?.await(); this.session = session }
         override suspend fun updateProtocol(tripId: String, protocolLabel: String) {
             if (failProtocol) throw IOException("Synthetic metadata failure")

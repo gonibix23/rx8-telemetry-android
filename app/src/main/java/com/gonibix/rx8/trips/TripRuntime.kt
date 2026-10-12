@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.StatFs
 import com.gonibix.rx8.BuildConfig
 import com.gonibix.rx8.sync.RoomSyncStore
+import com.gonibix.rx8.sync.SyncRuntime
 import com.gonibix.rx8.vehicle.VehicleDatabase
 import com.gonibix.rx8.vehicle.RoomVehicleRepository
 import com.gonibix.rx8.vehicle.VehicleProfile
@@ -14,7 +15,8 @@ import kotlinx.coroutines.SupervisorJob
 /** Process lifetime allows final queued writes to finish after a service loses its last binding. */
 class TripRuntime private constructor(context: Context) {
     private val database = VehicleDatabase.open(context)
-    val repository: TripRepository = RoomTripRepository(database)
+    private val syncRuntime = SyncRuntime.get(context)
+    val repository: TripRepository = RoomTripRepository(database, syncRuntime::onTerminalCommit)
     val syncStore = RoomSyncStore(database)
     suspend fun selectedVehicle(): VehicleProfile? {
         val vehicles = RoomVehicleRepository(database).load()

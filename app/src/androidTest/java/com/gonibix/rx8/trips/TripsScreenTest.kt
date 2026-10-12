@@ -28,6 +28,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.gonibix.rx8.obd.ObdMetric
 import com.gonibix.rx8.sync.SyncQueueSummary
+import com.gonibix.rx8.sync.SyncSettingsUiState
+import com.gonibix.rx8.sync.UploadSettings
 import com.gonibix.rx8.ui.theme.Rx8Theme
 import com.gonibix.rx8.vehicle.VehicleProfile
 import java.io.File
@@ -165,20 +167,40 @@ class TripsScreenTest {
     @Test fun confirmedCountRequiresAcknowledgedRecords() {
         show(state = history().copy(syncStatus = TripSyncStatus(summary = SyncQueueSummary(acknowledged = 4), isLoading = false)))
         scrollToTag("trip_sync_acknowledged").assertTextEquals("Confirmed by server: 4 samples")
-        compose.onNodeWithTag("trip_sync_disabled").assertTextEquals("Uploads disabled")
+        compose.onNodeWithText("Saved sample queue").assertIsDisplayed()
     }
 
-    @Test fun syntheticQueueScreenshotShowsWaitingAttentionAndDisabledUploads() {
+    @Test fun uploadSettingsFailureDoesNotDisableRecordingOrLocalHistory() {
+        show(
+            state = history(),
+            canStart = true,
+            syncSettings = SyncSettingsUiState(isLoading = false, error = "Upload settings could not be loaded."),
+        )
+        compose.onNodeWithTag("start_recording").assertIsEnabled()
+        scrollToTag("upload_settings_error").assertTextEquals("Upload settings could not be loaded.")
+        scrollToTag("trip_details_${trip.id}").assertIsEnabled()
+        scrollToTag("trip_delete_${trip.id}").assertIsEnabled()
+    }
+
+    @Test fun emptySampleQueueDoesNotClaimMetadataOrWholeTripDelivery() {
+        show(state = history().copy(syncStatus = TripSyncStatus(summary = SyncQueueSummary(), isLoading = false)))
+        scrollToTag("trip_sync_status").assertIsDisplayed()
+        compose.onNodeWithTag("trip_sync_waiting").assertTextEquals("Waiting locally: 0 samples")
+        compose.onNodeWithText("These counts describe samples, not complete trips or vehicle details. A zero waiting count does not confirm that everything was uploaded.").assertIsDisplayed()
+        compose.onNodeWithTag("trip_sync_acknowledged").assertDoesNotExist()
+    }
+
+    @Test fun syntheticQueueScreenshotShowsWaitingAttentionAndUnconfiguredServer() {
         show(
             state = history().copy(syncStatus = TripSyncStatus(summary = SyncQueueSummary(pending = 12, sending = 3, blocked = 2), isLoading = false)),
             recording = TripRecordingState(session = trip.copy(status = TripStatus.RECORDING), savedSamples = 17),
             fixtureBanner = true,
             fixtureLabel = "UI TEST FIXTURE · SYNTHETIC QUEUE",
+            syncSettings = SyncSettingsUiState(settings = UploadSettings(), isLoading = false),
         )
-        scrollToTag("trip_sync_status").assertIsDisplayed()
-        compose.onNodeWithText("Future uploads").assertIsDisplayed()
-        compose.onNodeWithTag("trip_sync_disabled").assertTextEquals("Uploads disabled").assertIsDisplayed()
-        compose.onNodeWithText("Recorded samples stay on this device. No server is configured.").assertIsDisplayed()
+        scrollToTag("upload_settings").assertIsDisplayed()
+        compose.onNodeWithTag("upload_settings_status").assertTextEquals("Server not configured").assertIsDisplayed()
+        compose.onNodeWithText("Saved sample queue").assertIsDisplayed()
         compose.onNodeWithTag("trip_sync_waiting").assertTextEquals("Waiting locally: 15 samples").assertIsDisplayed()
         compose.onNodeWithTag("trip_sync_blocked").assertTextEquals("Needs attention: 2 samples").assertIsDisplayed()
         compose.onNodeWithTag("trip_sync_acknowledged").assertDoesNotExist()
@@ -235,6 +257,7 @@ class TripsScreenTest {
         fixtureLabel: String = "UI TEST FIXTURE · FAKE TRIP",
         automaticMessage: String? = null,
         canStop: Boolean = true,
+        syncSettings: SyncSettingsUiState? = null,
     ) {
         compose.setContent {
             Rx8Theme {
@@ -242,7 +265,7 @@ class TripsScreenTest {
                     Column(Modifier.safeDrawingPadding()) {
                         if (fixtureBanner) Text(fixtureLabel)
                         TripsContent(state, selected, recording, canStart, onStart, onStop, {}, {}, {}, {}, {}, onDelete, onExport, Modifier.weight(1f),
-                            automaticMessage = automaticMessage, canStop = canStop)
+                            automaticMessage = automaticMessage, canStop = canStop, syncSettings = syncSettings)
                     }
                 }
             }

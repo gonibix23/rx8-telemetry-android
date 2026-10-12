@@ -29,6 +29,32 @@ jobs:
       - run: npm ci
       - run: npm run lint:docs
 
+  api:
+    name: API build and database tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: api
+    env:
+      MONGOMS_DOWNLOAD_DIR: ${{ runner.temp }}/mongodb-binaries
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm run check
+      - run: npm run build
+      - run: npm test
+      - run: npm run test:integration
+      - name: Build production API container
+        run: docker build -t rx8-telemetry-api:ci .
+
   android:
     name: Android build and tests
     runs-on: ubuntu-24.04

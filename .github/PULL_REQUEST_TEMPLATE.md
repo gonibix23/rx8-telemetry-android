@@ -15,6 +15,7 @@
 ## Validation
 
 <!-- Commands run and results. Distinguish simulated tests from vehicle tests. -->
+<!-- Separate Android, API/database and documentation checks. Disposable MongoDB tests do not validate Atlas or deployment. -->
 <!-- For hardware: phone/Android, adapter, protocol, and sensors tested. Do not include real VINs or MAC addresses. -->
 
 ## Limitations and risks
@@ -31,4 +32,5 @@
 - [ ] The diff and affected documentation have been reviewed.
 - [ ] Relevant checks have been run.
 - [ ] No secrets, real VINs, or private logs are included.
+- [ ] App/API contract, offline behavior and database compatibility are covered when affected.
 - [ ] Simulator evidence is clearly distinguished from hardware validation.
