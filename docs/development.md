@@ -166,7 +166,7 @@ Stop/disconnect releases resources after the trip's final writes. `START_NOT_STI
 
 VIN support on the actual car remains unverified. NO DATA, unsupported, or malformed complete replies allow sensor polling to continue; a timeout or missing prompt closes the link and requires manual reconnection.
 VIN validation checks format, not ownership, check digit, or vehicle specifications. A Bluetooth MAC is never a vehicle ID.
-Profiles, their active selection, dashboard favorites, and recorded trips/samples are saved. Finished-trip export and deletion are available in Trips. Profile deletion, uploads, and app import/restore remain unimplemented.
+Profiles, their active selection, dashboard favorites, and recorded trips/samples are saved. Finished-trip export, deletion and configurable completed-trip uploads are available in Trips. Profile deletion and app import/restore remain unimplemented.
 Backups/device transfer are disabled. Clearing app data or reinstalling removes the saved UUIDs, with no current recovery workflow.
 
 Room schema version 3 adds API metadata revisions, recording app version, and pending work through an explicit 2-to-3 migration. Version 4 adds only two composite history indexes through a 3-to-4 migration. The complete 1-to-2-to-3-to-4 chain is retained. Existing profiles, selection, trips, samples, metadata revisions, and queue state survive the index upgrade. Legacy samples become pending during the earlier 2-to-3 migration, and old recording app versions remain unknown. Exported schemas remain under `app/schemas`. Future database changes need explicit migrations; destructive migration fallback is prohibited.

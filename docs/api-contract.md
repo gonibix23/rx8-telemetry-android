@@ -72,7 +72,7 @@ Vehicle: schemaVersion, vehicleId, revision, nullable vin, vinSource (obd/manual
 The mapper leaves unconfirmed make/model/year/market/power null. The project car's known specifications are not automatically assigned to every stored profile, and OBD is not assumed to supply them.
 Adding a VIN preserves vehicleId and creates a new metadata revision. VIN and provenance are either both present or both null; structural validation does not require a North American check digit.
 
-Session: schemaVersion, sessionId, vehicleId, revision, startedAt, nullable endedAt, nullable durationMs, status, nullable appVersion, nullable obdProtocol, and dataOrigin (real/simulated).
+Session: schemaVersion, sessionId, vehicleId, revision, startedAt, nullable endedAt, nullable durationMs, status, nullable appVersion, nullable obdProtocol, and dataOrigin. The production API accepts `real` only; the DTO's `simulated` value is reserved for isolated fixtures and is rejected by the server.
 States: recording, completed, interrupted.
 Duration uses a monotonic clock; wall-clock changes must not produce negative durations.
 Recording-session metadata has null endedAt and durationMs. Appending samples does not change that metadata revision; first protocol discovery creates an immutable metadata revision when an automatic journey started before initialization; completion or interruption creates the next revision with the saved duration. Earlier queued JSON bodies remain unchanged. New recordings capture their actual app version at start. Existing recordings migrated from version 2 have appVersion null, never the version installed during migration.
@@ -123,7 +123,7 @@ Each sample has its own timestamp. service, pid, and ecuAddress are optional.
 status accepts ok, timeout, unsupported, parse_error, no_data, and adapter_error. If it is not ok, value is null. A valid zero remains zero; an ok value must be finite and present.
 A stale reading is a display state, not a new sample containing the last value.
 
-source accepts obd_standard, obd_vendor, adapter, and derived.
+The production API accepts `source: obd_standard` only. DTO values obd_vendor, adapter and derived are reserved extensions and are rejected until their metrics and semantics are implemented.
 A calculated metric must document its formula and version before being added.
 Voltage measured by the adapter uses a different metric from voltage reported by the ECU.
 
@@ -195,7 +195,8 @@ An expired lease can be reclaimed with a new token while retaining the same requ
 | 401/403 | Block as server access rejected; no app login flow exists |
 | 409 | Block and preserve the conflicting data/body |
 | 413 | Halve sample count, preserve the configured byte ceiling, create new batchId values; a rejected singleton is blocked |
-| Permanent validation error | Block the affected sample and retain it locally |
+| HTTP permanent validation error | Block the entire immutable request and its sample references; retain all local data |
+| Explicit per-sample rejected ACK | Block only the identified sample and retain it locally |
 
 Synchronization does not delete local history.
 Exports include pending and blocked records.
