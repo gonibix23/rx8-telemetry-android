@@ -62,8 +62,14 @@ Errors contain only a bounded machine-readable `{code}`: 400 validation/identity
 
 ## Later deployment
 
+The production image includes the project's MIT license at `/app/LICENSE`. Third-party packages retain their own licenses.
+
 Build with `docker build -t rx8-telemetry-api ./api` from the repository root, or `docker compose -f deploy/compose.yaml build` from `api/`. The image runs as the nonroot `node` user and excludes local credentials/tests. The Compose example binds only loopback, drops capabilities, makes the root filesystem read-only and enables init/signal forwarding. It is an example, not a deployment performed by these files. Runtime host environment supplies Atlas credentials.
 
 For a public endpoint later: create DNS for the chosen domain, run an HTTPS reverse proxy (example `deploy/Caddyfile`), keep port 3000 private, allow only the API host's egress address in Atlas, and grant the database user only the intended database's required read/write/index privileges. Configure backups/retention and deployment monitoring explicitly. Rebuild the Node 22 image for security updates and pin an approved image digest in the deployment environment. No backend URL is inferred from an Atlas cluster hostname; the Android app talks to the HTTPS API, never directly to MongoDB.
 
 Primary references checked during implementation: [Fastify v5 migration/Node support](https://fastify.dev/docs/latest/Guides/Migration-Guide-V5/), [Fastify server limits](https://fastify.dev/docs/latest/Reference/Server/), [Fastify validation](https://fastify.dev/docs/latest/Reference/Validation-and-Serialization/), [MongoDB driver transactions](https://www.mongodb.com/docs/drivers/node/current/crud/transactions/), [MongoDB unique indexes](https://www.mongodb.com/docs/manual/core/index-unique/), [mongodb-memory-server replica-set fixtures](https://typegoose.github.io/mongodb-memory-server/docs/guides/quick-start-guide/).
+
+## License
+
+Original API code and documentation are licensed under [MIT](LICENSE), matching the [repository license](../LICENSE). Dependency licenses and external reference materials remain separate.

@@ -44,6 +44,8 @@ The reported live-reading and 0.5.1-dev success allow dashboard development to p
 
 ## Repository status
 
+- The repository is public. Original Android/API code and documentation use the [MIT License](../LICENSE); third-party components retain their existing licenses.
+
 - Initial documentation, issue forms, and PR template.
 - Android foundation with deterministic simulation in normal, timeout, and missing-data modes; foreground-only sampling.
 - Bounded Classic discovery, paired and nearby device selection with names and MAC addresses, separate scan/connection permissions, secure SPP connection, cancellation, and manual reconnection. No BLE transport.
@@ -69,7 +71,6 @@ The reported live-reading and 0.5.1-dev success allow dashboard development to p
 - A53 trip recording across lock/background, notification Stop, Bluetooth loss, storage interruption, upgrade preservation, and JSON/CSV document-provider behavior. Retention is manual deletion; real storage growth remains to be measured.
 - MongoDB Atlas is selected and the API has no login as requested. Actual server hosting and public HTTPS URL remain deferred.
 - Individual A53 0.8.0-dev upgrade, count, export/deletion scenarios beyond the broad successful test; 0.9.0-dev capability reports and 0.10.0-dev sensor charts. The user has deferred phone validation while development continues.
-- Distribution license.
 
 ## Next verifiable outcome
 
