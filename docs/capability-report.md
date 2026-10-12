@@ -2,7 +2,7 @@
 
 ## Purpose and limits
 
-RX8-010 / 0.9.0-dev adds Vehicle capabilities inside Adapter. It previews the already-discovered Mode 01 PIDs for each ECU and the latest displayed states of the implemented scalar metrics. A user can explicitly save that snapshot as JSON.
+RX8-010 / 0.9.0-dev adds Vehicle capabilities inside Live. It previews the already-discovered Mode 01 PIDs for each ECU and the latest displayed states of the implemented scalar metrics. A user can explicitly save that snapshot as JSON.
 
 Opening, capturing, or exporting a report sends no additional OBD command. It neither reconnects nor requires a saved vehicle or trip. It does not change recording, history, favorites, or the pending API queue. There is no server, upload, automatic sharing, or raw diagnostic logging.
 

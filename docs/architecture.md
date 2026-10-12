@@ -1,5 +1,17 @@
 # Architecture
 
+## RX8-020 display and delivery changes
+
+Version 0.14.0-dev supersedes fixed primary cards and the last-adapter-only reconnect policy described in the implementation history below. Persistent ordered card configurations extend private preferences without changing Room v4. The legacy basic sensors and saved extra favourites migrate together; afterwards every implemented metric is selectable/removable. Card rendering preserves source, canonical units, age and quality across digital, dial and bar views and two sizes. Display changes never affect acquisition or recorded coverage.
+
+An optional TYPE_APPLICATION_OVERLAY window shares the existing foreground session and its snapshot. Explicit permission/enablement precedes showing it outside the visible app; drag/close and cleanup are owned by a manager attached to that service. Permission revocation, lock, disconnection and destruction remove the window. It does not own another connection, polling loop or GPS feed. Card overlay selection persists; session enablement does not.
+
+The favourite adapter is private and unrelated to vehicle identity. A bounded retry policy feeds the existing visible-Activity connection promotion path every 30 seconds when eligible. Hidden apps, unavailable permission/radio, active attempts/scanning and explicit pause prevent starts. Disconnect/notification Stop pauses until Resume. The no-favourite path retains one last-successful-adapter attempt per process.
+
+Delivery feedback counts terminal trips using one SQL snapshot over durable metadata/sample acknowledgments. It requires current vehicle and terminal-session revisions and every saved sample; missing references, partial ACKs, blocked work and empty metadata-only trips cannot become success by observing zero pending samples. The visible banner refreshes at most once every two seconds and stops observing when the UI is absent. Query errors remain unknown, never zero. No queue body, migration or ACK contract changes.
+
+The API logs bounded allowlisted request lifecycle/error events and generated correlation IDs. It does not log raw errors, bodies, headers, actual paths/query strings, VINs or database configuration. The owner-added Portainer pipeline publishes and redeploys API changes after merge; its MongoDB setting can differ from ignored local Atlas configuration.
+
 ## Status
 
 Version 0.13.0-dev adds an independently developed Atlas API and optional completed-trip uploads. Sensor search remains available. It implements automatic real-car sessions, a broader verified standard scalar catalog and a real RPM dial. It retains paged history, vehicle filtering, offline charts/exports, capability snapshots, explicit vehicle identity and immutable upload work. Production navigation has four tabs; synthetic telemetry is confined to development fixtures.
@@ -41,7 +53,7 @@ The Android transport lists paired devices and performs user-started bounded Cla
 
 Connection attempts allow 15 seconds for bonded devices or 45 seconds for pairing. Discovery allows 15 seconds after up to two seconds stopping another inquiry. Byte operations are bounded and cancellable; closing the socket cancels blocked operations.
 
-The service privately stores the last successful adapter. The process-level automatic policy allows one visible-app attempt when connection permission and Bluetooth are available. Manual connection and explicit disconnection consume that opportunity; failures do not loop. Tab switches, recreation and document results do not start a new session. A new process may attempt a fresh connection; it never restores a killed service/session.
+The service privately stores the last successful adapter and a separately selected favourite. A favourite enables the visible-only retry policy; without one, the process-level policy allows one visible-app attempt. Manual Stop/Disconnect pauses favourite retries. Changing tabs does not duplicate a connection; process death never restores a killed service/session.
 
 The non-exported connectedDevice service is promoted while the app is visible, before connecting. Its controller runs an authorized continuation after the socket opens: freeze connection time, prepare automatic recording, then initialize OBD. Generation/cancellation checks prevent late connections or profile loads from starting obsolete work. This continuation can finish after the app backgrounds without treating it as a new background connection.
 
@@ -94,17 +106,17 @@ RX8-010 maps an existing completed-discovery `ObdSessionSnapshot` into a dedicat
 
 The Activity-scoped `CapabilityReportViewModel` owns the captured preview and pending immutable JSON. A root-level `CreateDocument` registration remains active across navigation/recreation. A pending export refuses another capture or picker until it is resolved. IO runs outside the UI thread; success follows write/flush/close, while process loss or failed providers produce generic errors without exporting a substitute report. Returning from a picker does not reconnect, query, or start recording.
 
-Capabilities remains a child of Adapter, with explicit Back and Capture latest snapshot controls. It does not own a screen-awake flag. Retained stopped/error snapshots stay labeled historical; the preview remains frozen even if live acquisition continues. No Room/schema, trip-export contract, or synchronization change is involved. See [Capability reports](capability-report.md).
+Capabilities remains a child of Live, with explicit Back and Capture latest snapshot controls. It does not own a screen-awake flag. Retained stopped/error snapshots stay labeled historical; the preview remains frozen even if live acquisition continues. No Room/schema, trip-export contract, or synchronization change is involved. See [Capability reports](capability-report.md).
 
 ## Current dashboard and preferences
 
-The Live dashboard consumes service snapshots without owning a socket or another polling loop. Its per-ECU RPM dial uses real quality/value/age, and the displayed scale does not claim an engine limit. Speed/coolant stay primary; supported extra scalar sensors are selectable favorites. Stopped/error values remain historical, missing values remain absent, and valid zero/negative values survive formatting.
+The Live dashboard consumes service snapshots without owning a socket or another polling loop. Its per-ECU RPM dial uses real quality/value/age, and the displayed scale does not claim an engine limit. All implemented metrics, including speed/coolant/RPM, are selectable and removable with persistent card configuration. Stopped/error values remain historical, missing values remain absent, and valid zero/negative values survive formatting.
 
 Four single-line tabs replace the previous five-tab layout. Larger labels can scroll horizontally. Restored Simulator or unknown routes resolve to Live; production no longer instantiates the Simulator ViewModel. Internal labelled fixtures retain synthetic scenarios for tests only.
 
-Private app-wide `dashboard_preferences` stores stable `favorite_metric_ids_v1`, independent of profile or ECU identity. Existing IDs remain valid. Fixed primary metrics cannot become favorites; unknown IDs are ignored, unavailable saved choices remain removable. Favorites never change acquisition or recording coverage. Serialized commits publish success only after saving, with loading/error states. No readings are stored in these preferences.
+Private app-wide `dashboard_preferences` stores stable `favorite_metric_ids_v1`, independent of profile or ECU identity. Existing IDs remain valid. In 0.14.0-dev the ordered layout includes primary metrics too; unknown IDs are ignored and unavailable saved choices remain removable. Favorites never change acquisition or recording coverage. Serialized commits publish success only after saving, with loading/error states. No readings are stored in these preferences.
 
-The sensor search is presentation state saved with rememberSaveable. It intersects the existing eligible extras and unavailable saved favorites, then matches every case-insensitive query word against the label or exact two-digit hexadecimal PID. An optional PID/0x prefix is accepted. Query changes never call the preference writer or alter acquisition/recording. Clear search restores all eligible choices; Activity state restoration and closing/reopening the picker retain the query.
+The sensor search is presentation state saved with rememberSaveable. The production picker searches all implemented metrics and labels unsupported choices, then matches every case-insensitive query word against the label or exact two-digit hexadecimal PID. An optional PID/0x prefix is accepted. Query changes never call the preference writer or alter acquisition/recording. Clear search restores all eligible choices; Activity state restoration and closing/reopening the picker retain the query.
 
 ## Local model
 

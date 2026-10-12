@@ -31,7 +31,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.gonibix.rx8.bluetooth.BluetoothAvailability
 import com.gonibix.rx8.connection.BluetoothConnectionPhase
-import com.gonibix.rx8.connection.BluetoothConnectionScreen
+import com.gonibix.rx8.connection.VehicleDiagnosticsPanel
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import com.gonibix.rx8.connection.BluetoothConnectionUiState
 import com.gonibix.rx8.obd.ObdEcuCapabilities
 import com.gonibix.rx8.obd.ObdMetric
@@ -195,13 +197,15 @@ class CapabilityReportScreenTest {
         assertEquals(1, backs)
     }
 
-    @Test fun adapterEntryRequiresCompletedDiscoveryAndOnlyOpensOnClick() {
+    @Test fun liveEntryRequiresCompletedDiscoveryAndOnlyOpensOnClick() {
         var opens = 0
         var readRequests = 0
         val state = mutableStateOf(BluetoothConnectionUiState(availability = BluetoothAvailability.READY, phase = BluetoothConnectionPhase.CONNECTED, isForeground = true))
         compose.setContent {
             Fixture {
-                BluetoothConnectionScreen(state.value, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, onOpenCapabilities = { opens++ })
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    VehicleDiagnosticsPanel(state.value, {}, { readRequests++ }, {}, { opens++ })
+                }
             }
         }
         compose.onNodeWithTag("open_capabilities").assertDoesNotExist()

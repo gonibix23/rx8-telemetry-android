@@ -42,11 +42,24 @@ internal fun normalizedAdapterAddress(address: String?): String? =
 
 internal object AutomaticConnectionRuntime {
     val policy = AutomaticConnectionPolicy()
+    // Serialize queued favorite writes and subsequent service loads across owner recreation.
+    val favoriteOperations = Mutex()
+    // A failed disk commit must not erase an explicit Stop when only the service is recreated.
+    // Keys isolate injected stores in tests; the production store lives for the whole process.
+    private val pendingFavoritePauses = java.util.WeakHashMap<FavoriteAdapterStore, Boolean>()
+    @Synchronized fun pauseFavoriteUntilSaved(store: FavoriteAdapterStore) { pendingFavoritePauses[store] = true }
+    @Synchronized fun isFavoritePausePending(store: FavoriteAdapterStore): Boolean = pendingFavoritePauses[store] == true
+    @Synchronized fun favoritePreferenceSaved(store: FavoriteAdapterStore) { pendingFavoritePauses.remove(store) }
     // Saving a successful adapter must survive an immediate Disconnect/service unbind.
     val preferenceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     @Volatile private var preferences: LastAdapterStore? = null
+    @Volatile private var favorites: FavoriteAdapterStore? = null
 
     fun lastAdapter(context: Context): LastAdapterStore = preferences ?: synchronized(this) {
         preferences ?: PrivateLastAdapterStore(context).also { preferences = it }
+    }
+
+    fun favoriteAdapter(context: Context): FavoriteAdapterStore = favorites ?: synchronized(this) {
+        favorites ?: PrivateFavoriteAdapterStore(context).also { favorites = it }
     }
 }

@@ -20,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -453,6 +454,48 @@ class SyncPersistenceTest {
         sql("DROP TRIGGER reject_terminal")
         repository.finish(trip.id, 12_000, 2_000, TripStatus.COMPLETED, "Stopped")
         assertEquals(listOf(TripStatus.COMPLETED), statuses)
+    }
+
+    @Test fun deliveryCountsExcludeActiveTripsAndRequireTerminalMetadataEvenWithoutSamples() = runBlocking {
+        val active = record(0, terminal = false)
+        assertEquals(UploadDeliveryCounts(0, 0, 0, 0), database.sync().observeDelivery().first())
+        trips().finish(active.id, 10_000, 0, TripStatus.COMPLETED, "Stopped")
+        assertEquals(UploadDeliveryCounts(1, 0, 1, 0), database.sync().observeDelivery().first())
+        acknowledgeMetadata(claim()!!)
+        acknowledgeMetadata(claim()!!)
+        assertEquals(UploadDeliveryCounts(1, 0, 1, 0), database.sync().observeDelivery().first())
+        acknowledgeMetadata(claim()!!)
+        assertEquals(UploadDeliveryCounts(1, 1, 0, 0), database.sync().observeDelivery().first())
+        reopen()
+        assertEquals(UploadDeliveryCounts(1, 1, 0, 0), database.sync().observeDelivery().first())
+        vehicles().rename(vehicleId, "Updated synthetic vehicle")
+        assertEquals(UploadDeliveryCounts(1, 0, 1, 0), database.sync().observeDelivery().first())
+        acknowledgeMetadata(claim()!!)
+        assertEquals(UploadDeliveryCounts(1, 1, 0, 0), database.sync().observeDelivery().first())
+    }
+
+    @Test fun partialAckAndBlockedSamplesCannotBecomeSuccessfulTripDelivery() = runBlocking {
+        record(2)
+        val batch = claimBatch()
+        store().applyResult(batch, SyncResult.BatchAck(1, batch.request.resourceId,
+            listOf(SampleAck(batch.request.sampleIds.first(), AckStatus.STORED))), NOW)
+        assertEquals(UploadDeliveryCounts(1, 0, 1, 0), database.sync().observeDelivery().first())
+        val remaining = claim()!!
+        store().applyResult(remaining, SyncResult.Block("invalid_sample"), NOW)
+        assertEquals(UploadDeliveryCounts(1, 0, 0, 1), database.sync().observeDelivery().first())
+    }
+
+    @Test fun deliveryRequiresEverySampleReferenceAndSurvivesReopenAfterAck() = runBlocking {
+        val trip = record(2)
+        val batch = claimBatch()
+        store().applyResult(batch, allStored(batch), NOW)
+        assertEquals(UploadDeliveryCounts(1, 1, 0, 0), database.sync().observeDelivery().first())
+        reopen()
+        assertEquals(UploadDeliveryCounts(1, 1, 0, 0), database.sync().observeDelivery().first())
+        sql("DELETE FROM sync_samples")
+        assertEquals(UploadDeliveryCounts(1, 0, 1, 0), database.sync().observeDelivery().first())
+        trips().delete(trip.id)
+        assertEquals(UploadDeliveryCounts(0, 0, 0, 0), database.sync().observeDelivery().first())
     }
 
     private fun store() = RoomSyncStore(database, isIsolatedTestStore = true)

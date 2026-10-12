@@ -48,6 +48,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gonibix.rx8.connection.BluetoothConnectionScreen
 import com.gonibix.rx8.connection.BluetoothConnectionPhase
 import com.gonibix.rx8.connection.BluetoothSessionService
+import com.gonibix.rx8.connection.VehicleDiagnosticsPanel
 import com.gonibix.rx8.capabilities.CapabilityReportViewModel
 import com.gonibix.rx8.capabilities.CapabilityReportScreen
 import com.gonibix.rx8.capabilities.CapabilityReports
@@ -64,6 +65,7 @@ import com.gonibix.rx8.vehicle.VehicleProfileScreen
 import com.gonibix.rx8.vehicle.VehicleProfileViewModel
 import com.gonibix.rx8.sync.SyncRuntime
 import com.gonibix.rx8.sync.SyncSettingsViewModel
+import com.gonibix.rx8.sync.UploadFeedbackBanner
 import com.gonibix.rx8.trips.TripRuntime
 import com.gonibix.rx8.trips.TripsViewModel
 import com.gonibix.rx8.trips.TripsScreen
@@ -121,6 +123,12 @@ class MainActivity : ComponentActivity() {
     private var notificationPermissionPending by mutableStateOf(false)
     private var appForeground by mutableStateOf(false)
     private var notificationsAllowed by mutableStateOf(true)
+    private var enableOverlayAfterPermission by mutableStateOf(false)
+    private val overlayPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        sessionBinder?.refreshOverlayPermission()
+        // Binding can complete after this callback; the visible composition consumes the action.
+        if (!Settings.canDrawOverlays(this)) enableOverlayAfterPermission = false
+    }
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, service: IBinder) {
             sessionBinder = (service as BluetoothSessionService.LocalBinder).also { it.setAppForeground(appForeground) }
@@ -155,6 +163,7 @@ class MainActivity : ComponentActivity() {
         scanAfterPermission = savedInstanceState?.getBoolean("scan_after_permission") ?: false
         pendingConnection = savedInstanceState?.getString("pending_connection")?.takeIf { it == "manual" || it == "automatic" }
         notificationPermissionPending = savedInstanceState?.getBoolean("notification_permission_pending") ?: false
+        enableOverlayAfterPermission = savedInstanceState?.getBoolean("enable_overlay_after_permission") ?: false
         selectedTab = restoredMainDestination(savedInstanceState?.getString("selected_tab"))
         showCapabilityReport = savedInstanceState?.getBoolean("show_capability_report") ?: false
         if (savedInstanceState == null && intent.action == BluetoothSessionService.ACTION_OPEN_SESSION) {
@@ -169,20 +178,31 @@ class MainActivity : ComponentActivity() {
                 val showBluetooth = selectedTab == "adapter"
                 val vehicles by vehicleViewModel.uiState.collectAsStateWithLifecycle()
                 val favorites by dashboardPreferences.favorites.collectAsStateWithLifecycle()
+                val cards by dashboardPreferences.cards.collectAsStateWithLifecycle()
                 val favoritesError by dashboardPreferences.error.collectAsStateWithLifecycle()
                 val favoritesLoading by dashboardPreferences.isLoading.collectAsStateWithLifecycle()
                 val favoritesSaving by dashboardPreferences.isSaving.collectAsStateWithLifecycle()
                 val binder = sessionBinder
                 val controller = binder?.controller
                 val sessionState = controller?.uiState?.collectAsStateWithLifecycle()?.value
+                val overlayState = binder?.overlayState?.collectAsStateWithLifecycle()?.value
+                LaunchedEffect(binder, appForeground, enableOverlayAfterPermission, overlayState?.permissionGranted) {
+                    if (binder != null && appForeground && enableOverlayAfterPermission && Settings.canDrawOverlays(this@MainActivity)) {
+                        enableOverlayAfterPermission = false
+                        binder.setOverlayEnabled(true)
+                    }
+                }
                 val recording by tripRuntime.recorder.state.collectAsStateWithLifecycle()
+                val uploadSettings by syncSettingsViewModel.uiState.collectAsStateWithLifecycle()
+                val uploadDelivery by SyncRuntime.get(applicationContext).delivery.collectAsStateWithLifecycle()
                 // Document results must survive navigation to Adapter from the session notification.
                 val tripExportActions = rememberTripExportActions(tripsViewModel)
                 val tripPresentation = rememberSaveableStateHolder()
                 val capabilityState by capabilityReportViewModel.uiState.collectAsStateWithLifecycle()
                 // Keep document registration stable while tabs change or the Activity is recreated.
                 val capabilityExport = rememberCapabilityReportExportAction(capabilityReportViewModel)
-                LaunchedEffect(binder, appForeground, sessionState?.automaticConnectionReady, pendingConnection, notificationPermissionPending) {
+                LaunchedEffect(binder, appForeground, sessionState?.automaticConnectionReady,
+                    sessionState?.automaticConnectionRequestId, pendingConnection, notificationPermissionPending) {
                     if (binder != null && appForeground) {
                         if (pendingConnection == null && sessionState?.automaticConnectionReady == true) {
                             requestSessionConnection(automatic = true)
@@ -200,10 +220,10 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(binder, vehicles.isLoading, vehicles.vehicles.activeVehicleId) {
                     if (!vehicles.isLoading) binder?.refreshSelectedVehicle()
                 }
-                BackHandler(enabled = showBluetooth && showCapabilityReport) { showCapabilityReport = false }
+                BackHandler(enabled = selectedTab == "dashboard" && showCapabilityReport) { showCapabilityReport = false }
                 // One owner for the shared View flag avoids competing effects when tabs change.
                 KeepScreenAwake(
-                    (showBluetooth && !showCapabilityReport || selectedTab == "dashboard") && sessionState?.obd?.phase in setOf(
+                    (showBluetooth || selectedTab == "dashboard" && !showCapabilityReport) && sessionState?.obd?.phase in setOf(
                         ObdPhase.INITIALIZING, ObdPhase.DISCOVERING, ObdPhase.LIVE,
                     ),
                 )
@@ -220,8 +240,9 @@ class MainActivity : ComponentActivity() {
                     Column(Modifier.fillMaxSize().safeDrawingPadding()) {
                         MainNavigationTabs(selectedTab, onSelect = { destination ->
                             selectedTab = destination
-                            if (destination == "adapter") showCapabilityReport = false
+                            if (destination != "dashboard") showCapabilityReport = false
                         })
+                        UploadFeedbackBanner(uploadSettings.settings, uploadSettings.runtime, uploadDelivery)
                         if (selectedTab == "dashboard") {
                             if (favoritesError != null) {
                                 Text(requireNotNull(favoritesError), color = MaterialTheme.colorScheme.error)
@@ -234,7 +255,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         Box(Modifier.weight(1f)) {
-                            if (showBluetooth && showCapabilityReport) {
+                            if (selectedTab == "dashboard" && showCapabilityReport) {
                                 val currentSnapshot = sessionState?.obd ?: ObdSessionSnapshot()
                                 CapabilityReportScreen(
                                     state = capabilityState,
@@ -273,20 +294,11 @@ class MainActivity : ComponentActivity() {
                                         onSelectDevice = controller::selectDevice,
                                         onConnect = { requestSessionConnection() },
                                         onDisconnect = { binder?.disconnect() },
-                                        onOpenVehicles = { selectedTab = "vehicles" },
-                                        onOpenCapabilities = {
-                                            capabilityReportViewModel.capture(controller.uiState.value.obd)
-                                            showCapabilityReport = true
-                                        },
-                                        onReadVin = controller::readVin,
                                         notificationsAllowed = notificationsAllowed,
-                                        canReviewVin = !vehicles.isLoading && !vehicles.isSaving,
-                                        onReviewVin = { candidate ->
-                                            val current = controller.uiState.value.obd
-                                            if (current.phase == ObdPhase.LIVE && current.vin.status == ObdVinStatus.AVAILABLE &&
-                                                candidate in current.vin.candidates && vehicleViewModel.offerObdVin(candidate)
-                                            ) selectedTab = "vehicles"
-                                        },
+                                        onSetFavorite = { binder?.setFavoriteAdapter() },
+                                        onClearFavorite = { binder?.clearFavoriteAdapter() },
+                                        onPauseAutomatic = { binder?.pauseAutomaticConnection() },
+                                        onResumeAutomatic = { binder?.resumeAutomaticConnection() },
                                         onScan = ::requestDiscovery,
                                         onStopScan = controller::stopDiscovery,
                                         onOpenLocationSettings = {
@@ -304,6 +316,29 @@ class MainActivity : ComponentActivity() {
                                     favorites = favorites,
                                     onToggleFavorite = dashboardPreferences::toggleFavorite,
                                     onOpenAdapter = { selectedTab = "adapter"; showCapabilityReport = false },
+                                    cards = cards,
+                                    onUpdateCard = dashboardPreferences::updateCard,
+                                    onMoveCard = dashboardPreferences::moveCard,
+                                    overlayState = overlayState,
+                                    onToggleOverlay = ::toggleOverlay,
+                                    additionalContent = {
+                                        if (state != null) VehicleDiagnosticsPanel(
+                                            state = state,
+                                            onOpenVehicles = { selectedTab = "vehicles" },
+                                            onReadVin = { binder?.readVin() },
+                                            canReviewVin = !vehicles.isLoading && !vehicles.isSaving,
+                                            onReviewVin = { candidate ->
+                                                val current = controller?.uiState?.value?.obd
+                                                if (current?.phase == ObdPhase.LIVE && current.vin.status == ObdVinStatus.AVAILABLE &&
+                                                    candidate in current.vin.candidates && vehicleViewModel.offerObdVin(candidate)
+                                                ) selectedTab = "vehicles"
+                                            },
+                                            onOpenCapabilities = {
+                                                capabilityReportViewModel.capture(controller?.uiState?.value?.obd ?: snapshot)
+                                                showCapabilityReport = true
+                                            },
+                                        )
+                                    },
                                     connectionStatus = when (state?.phase) {
                                         BluetoothConnectionPhase.CONNECTED -> "Bluetooth connected"
                                         BluetoothConnectionPhase.CONNECTING -> "Connecting Bluetooth"
@@ -363,6 +398,7 @@ class MainActivity : ComponentActivity() {
         sessionBinder?.setAppForeground(true)
         notificationsAllowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        sessionBinder?.refreshOverlayPermission()
         if (!serviceBound) {
             serviceBound = bindService(
                 Intent(this, BluetoothSessionService::class.java), serviceConnection, Context.BIND_AUTO_CREATE,
@@ -385,6 +421,7 @@ class MainActivity : ComponentActivity() {
         outState.putBoolean("notification_permission_pending", notificationPermissionPending)
         outState.putString("selected_tab", selectedTab)
         outState.putBoolean("show_capability_report", showCapabilityReport)
+        outState.putBoolean("enable_overlay_after_permission", enableOverlayAfterPermission)
         super.onSaveInstanceState(outState)
     }
 
@@ -403,6 +440,24 @@ class MainActivity : ComponentActivity() {
     private fun hasBluetoothPermission(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
             checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+
+    private fun toggleOverlay() {
+        val binder = sessionBinder ?: return
+        if (binder.overlayState.value.enabled) {
+            enableOverlayAfterPermission = false
+            binder.setOverlayEnabled(false)
+        } else if (Settings.canDrawOverlays(this)) {
+            binder.setOverlayEnabled(true)
+        } else {
+            enableOverlayAfterPermission = true
+            try {
+                overlayPermission.launch(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.fromParts("package", packageName, null)))
+            } catch (_: android.content.ActivityNotFoundException) {
+                enableOverlayAfterPermission = false
+                Toast.makeText(this, "Allow display over other apps in your phone's app settings, then enable the overlay.", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
 
     private fun requestBluetoothPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !hasBluetoothPermission()) {

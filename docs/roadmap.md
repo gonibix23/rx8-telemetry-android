@@ -77,3 +77,9 @@ The reported live-reading and 0.5.1-dev success allow dashboard development to p
 The owner broadly confirmed 0.12.1-dev works perfectly before explicitly requesting an anonymous Atlas API and offline synchronization. RX8-017 / issue #34 implements API and Android tracks in the same repository, with independent build/test commands and labels. Verify isolated MongoDB persistence/idempotency, terminal-only upload eligibility, offline recovery, strict ACKs and configurable HTTPS settings. Run all local checks and full Android 16 CI, inspect all eleven screenshots, and deliver 0.13.0-dev through the configured APK script.
 
 The actual API deployment and public URL are deferred. After deployment, configure the URL in Trips and validate real completed-trip delivery, offline queuing/reconnection, server persistence and retained local history. Phone/software evidence remains distinct; earlier broad success does not establish remote uploads or detailed sensor/battery behavior.
+
+## RX8-020: daily telemetry workflow
+
+[Issue #42](https://github.com/gonibix23/rx8-telemetry-android/issues/42) tracks 0.14.0-dev: structured API logging, durable delivery feedback, Bluetooth-only Adapter, a trip chart dropdown, configurable Live cards with every metric selectable, visible-app favourite reconnect, and an opt-in floating overlay. Root documentation describes the new behavior; older sections record the previous versions' contracts.
+
+The owner reported successful 0.13.0-dev use and supplied a private stationary start/rev/shutdown trip. Its 457 readings across 30 metrics passed export validation; three readings retain explicit error states. The original capture is not committed. The owner explicitly deferred real database storage verification and will perform it later; it is outside RX8-020. PRs #39-41 introduced the existing image publication and server redeployment workflow.

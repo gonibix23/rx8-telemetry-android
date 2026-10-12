@@ -240,3 +240,15 @@ Checked on October 10, 2026:
 - [Bluetooth permissions](https://developer.android.com/develop/connectivity/bluetooth/bt-permissions).
 - [Finding paired and nearby devices](https://developer.android.com/develop/connectivity/bluetooth/find-bluetooth-devices).
 - [RFCOMM client connections](https://developer.android.com/develop/connectivity/bluetooth/connect-bluetooth-devices#connect-as-a-client).
+
+## 0.13.0-dev private trip evidence and 0.14.0-dev checks
+
+The owner reports that the latest app worked correctly and supplied a private stationary start/rev/shutdown JSON export. It contains 457 samples across 30 metrics over 150.448 seconds, from one ECU: 454 valid, two no-data and one timeout. The trip is interrupted and speed remains zero. Structural, sequence, timestamp, unit, quality and domain checks passed; this does not calibrate sensor accuracy or establish sustained driving/battery behavior. No original capture, vehicle identity or exact timestamps are committed.
+
+New 0.14.0-dev phone checks remain open:
+
+- [ ] All basic/extra sensors can be selected/removed; card style, size and order survive relaunch.
+- [ ] Favourite attempts occur only while visible and eligible; Stop/Disconnect pauses until Resume.
+- [ ] Overlay permission denial/revocation, drag/close, navigation-app use, lock/unlock and disconnect behave correctly on the A53.
+- [ ] Trip dropdown preserves the selected parameter/ECU, gaps and statistics offline.
+- [ ] Upload feedback distinguishes offline waiting, active delivery, durable success and rejection while retaining local history.

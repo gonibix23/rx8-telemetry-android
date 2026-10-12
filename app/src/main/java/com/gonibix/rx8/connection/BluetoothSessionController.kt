@@ -43,8 +43,15 @@ data class BluetoothConnectionUiState(
     val discoveryMessage: String? = null,
     val obd: ObdSessionSnapshot = ObdSessionSnapshot(),
     val automaticConnectionReady: Boolean = false,
+    /** A new eligible opportunity survives StateFlow/Compose conflating an intervening false. */
+    val automaticConnectionRequestId: Long = 0L,
     val isAwaitingVehicle: Boolean = false,
     val automaticMessage: String? = null,
+    val favoriteAdapter: AdapterDevice? = null,
+    val favoriteAutoConnectPaused: Boolean = false,
+    val favoritePreferenceLoading: Boolean = true,
+    val favoritePreferenceSaving: Boolean = false,
+    val favoriteMessage: String? = null,
 )
 
 /** Service-owned link and acquisition state. Call actions on the owner dispatcher (Main in the app). */
@@ -231,17 +238,17 @@ class BluetoothSessionController(
     }
 
     /** Only the private last-success preference can enter here; UI selection remains list-based. */
-    internal fun selectRememberedDevice(address: String): Boolean {
+    internal fun selectRememberedDevice(address: String, fallbackName: String = "Last connected adapter"): Boolean {
         if (closed.get() || mutableState.value.phase != BluetoothConnectionPhase.DISCONNECTED) return false
         val normalized = normalizedAdapterAddress(address) ?: return false
         refresh()
         if (mutableState.value.availability != BluetoothAvailability.READY) return false
         val listed = mutableState.value.devices.firstOrNull { it.address.sameAddress(normalized) }
         if (listed == null) {
-            discovered[normalized] = AdapterDevice(normalized, "Last connected adapter", isPaired = false)
+            discovered[normalized] = AdapterDevice(normalized, fallbackName, isPaired = false)
             publishDevices()
         }
-        selectDevice(listed ?: AdapterDevice(normalized, "Last connected adapter", isPaired = false))
+        selectDevice(listed ?: AdapterDevice(normalized, fallbackName, isPaired = false))
         return mutableState.value.selectedDevice?.address?.equals(normalized, ignoreCase = true) == true
     }
 
@@ -378,9 +385,15 @@ class BluetoothSessionController(
     }
 
     fun readVin() {
+        if (!mutableState.value.isForeground) return
+        readVinFromVisibleApp()
+    }
+
+    /** Activity visibility is verified by the service; discovery remains Adapter-tab scoped. */
+    internal fun readVinFromVisibleApp() {
         if (closed.get()) return
         val current = mutableState.value
-        if (!current.isForeground || current.phase != BluetoothConnectionPhase.CONNECTED ||
+        if (current.phase != BluetoothConnectionPhase.CONNECTED ||
             current.obd.phase != ObdPhase.LIVE || current.obd.vin.status == ObdVinStatus.READING
         ) return
         if (obdSession?.requestVin() == true) {
@@ -502,7 +515,21 @@ class BluetoothSessionController(
     }
 
     internal fun setAutomaticConnectionReady(ready: Boolean) {
-        if (!closed.get()) mutableState.value = mutableState.value.copy(automaticConnectionReady = ready)
+        if (closed.get()) return
+        val previous = mutableState.value
+        mutableState.value = previous.copy(
+            automaticConnectionReady = ready,
+            automaticConnectionRequestId = if (ready && !previous.automaticConnectionReady) {
+                previous.automaticConnectionRequestId + 1L
+            } else previous.automaticConnectionRequestId,
+        )
+    }
+
+    internal fun setFavoriteState(preference: FavoriteAdapterPreference, loading: Boolean, saving: Boolean, message: String? = null) {
+        if (!closed.get()) mutableState.value = mutableState.value.copy(
+            favoriteAdapter = preference.adapter, favoriteAutoConnectPaused = preference.paused,
+            favoritePreferenceLoading = loading, favoritePreferenceSaving = saving, favoriteMessage = message,
+        )
     }
 
     internal fun setConnectionMessage(message: String) {

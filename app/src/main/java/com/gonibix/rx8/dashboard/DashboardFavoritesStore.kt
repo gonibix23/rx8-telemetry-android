@@ -13,12 +13,13 @@ import kotlinx.coroutines.launch
 internal interface DashboardFavoritesStorage {
     suspend fun read(): Set<String>
     suspend fun write(ids: Set<String>): Boolean
+    suspend fun readCards(): List<DashboardCardConfig>? = null
+    suspend fun writeCards(cards: List<DashboardCardConfig>): Boolean = write(FavoriteMetricIds.encode(cards.map { it.metric }.toSet()))
 }
 
 internal object FavoriteMetricIds {
     // Existing IDs stay byte-for-byte identical; new fields append stable enum-name IDs.
     private val ids = ObdMetric.entries
-        .filterNot { it in setOf(ObdMetric.ENGINE_RPM, ObdMetric.SPEED, ObdMetric.COOLANT_TEMPERATURE) }
         .associateWith { it.name.lowercase(java.util.Locale.ROOT) }
 
     fun accepts(metric: ObdMetric): Boolean = metric in ids
@@ -31,7 +32,14 @@ internal class DashboardFavoritesStore(
     private val storage: DashboardFavoritesStorage,
     scope: CoroutineScope,
 ) {
-    private val changes = Channel<ObdMetric>(Channel.UNLIMITED)
+    private sealed interface Change {
+        data class Toggle(val metric: ObdMetric) : Change
+        data class Update(val card: DashboardCardConfig) : Change
+        data class Move(val metric: ObdMetric, val delta: Int) : Change
+    }
+    private val changes = Channel<Change>(Channel.UNLIMITED)
+    private val mutableCards = MutableStateFlow<List<DashboardCardConfig>>(emptyList())
+    val cards: StateFlow<List<DashboardCardConfig>> = mutableCards.asStateFlow()
     private val pendingLock = Any()
     private var pendingChanges = 0
     private val mutableFavorites = MutableStateFlow<Set<ObdMetric>>(emptySet())
@@ -46,14 +54,28 @@ internal class DashboardFavoritesStore(
     init {
         scope.launch {
             var confirmed = load()
-            for (metric in changes) {
+            for (change in changes) {
                 try {
                     if (confirmed == null) confirmed = load()
                     val previous = confirmed ?: continue
-                    val updated = if (metric in previous) previous - metric else previous + metric
-                    if (storage.write(FavoriteMetricIds.encode(updated))) {
+                    val updated = when (change) {
+                        is Change.Toggle -> if (previous.any { it.metric == change.metric }) previous.filterNot { it.metric == change.metric }
+                            else previous + defaultCard(change.metric)
+                        is Change.Update -> {
+                            if (change.card.showInOverlay && previous.count { it.showInOverlay && it.metric != change.card.metric } >= DashboardLayoutCodec.MAX_OVERLAY_METRICS) {
+                                mutableError.value = "Choose at most six floating sensors. Remove one before adding another."
+                                continue
+                            }
+                            previous.map { if (it.metric == change.card.metric) change.card else it }
+                        }
+                        is Change.Move -> previous.toMutableList().apply {
+                            val from = indexOfFirst { it.metric == change.metric }
+                            if (from >= 0) add((from + change.delta.coerceIn(-1, 1)).coerceIn(0, lastIndex), removeAt(from))
+                        }.toList()
+                    }
+                    if (storage.writeCards(updated)) {
                         confirmed = updated
-                        mutableFavorites.value = updated
+                        publish(updated)
                         mutableError.value = null
                     } else {
                         mutableError.value = SAVE_ERROR
@@ -79,12 +101,15 @@ internal class DashboardFavoritesStore(
         }
     }
 
-    fun toggleFavorite(metric: ObdMetric) {
-        if (!FavoriteMetricIds.accepts(metric)) return
+    fun toggleFavorite(metric: ObdMetric) = enqueue(Change.Toggle(metric))
+    fun updateCard(card: DashboardCardConfig) = enqueue(Change.Update(card))
+    fun moveCard(metric: ObdMetric, delta: Int) = enqueue(Change.Move(metric, delta))
+
+    private fun enqueue(change: Change) {
         synchronized(pendingLock) {
             pendingChanges++
             mutableSaving.value = true
-            if (changes.trySend(metric).isFailure) {
+            if (changes.trySend(change).isFailure) {
                 pendingChanges--
                 mutableSaving.value = pendingChanges > 0
                 mutableError.value = SAVE_ERROR
@@ -92,11 +117,16 @@ internal class DashboardFavoritesStore(
         }
     }
 
-    private suspend fun load(): Set<ObdMetric>? {
+    private fun publish(cards: List<DashboardCardConfig>) {
+        mutableCards.value = cards.toList()
+        mutableFavorites.value = cards.map { it.metric }.toSet()
+    }
+
+    private suspend fun load(): List<DashboardCardConfig>? {
         mutableLoading.value = true
         return try {
-            FavoriteMetricIds.decode(storage.read()).also {
-                mutableFavorites.value = it
+            (storage.readCards() ?: FavoriteMetricIds.decode(storage.read()).map(::defaultCard)).also {
+                publish(it)
                 mutableError.value = null
             }
         } catch (cancelled: CancellationException) {

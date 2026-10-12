@@ -24,6 +24,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -85,6 +89,36 @@ class BluetoothSessionControllerTest {
         controller.close()
         ownerScope.cancel()
         Dispatchers.resetMain()
+    }
+
+    @Test
+    fun automaticOpportunitySurvivesConflatedStopAndResumeWithoutRearmingUnchangedReadiness() = controllerTest {
+        val observed = mutableListOf<Pair<Boolean, Long>>()
+        val collector = ownerScope.launch {
+            controller.uiState.map { it.automaticConnectionReady to it.automaticConnectionRequestId }
+                .distinctUntilChanged().collect { observed += it }
+        }
+        runCurrent()
+        controller.setAutomaticConnectionReady(true)
+        runCurrent()
+        assertEquals(listOf(false to 0L, true to 1L), observed)
+
+        // Stop and Resume can complete between UI frames. The observer misses false, but must
+        // still see a distinct eligible request instead of treating the final true as unchanged.
+        controller.setAutomaticConnectionReady(false)
+        controller.setAutomaticConnectionReady(true)
+        runCurrent()
+        assertEquals(listOf(false to 0L, true to 1L, true to 2L), observed)
+
+        repeat(20) { controller.setAutomaticConnectionReady(true) }
+        runCurrent()
+        assertEquals(3, observed.size)
+        assertEquals(2L, controller.uiState.value.automaticConnectionRequestId)
+        controller.setAutomaticConnectionReady(false)
+        controller.setAutomaticConnectionReady(false)
+        runCurrent()
+        assertEquals(false to 2L, observed.last())
+        collector.cancel()
     }
 
     @Test

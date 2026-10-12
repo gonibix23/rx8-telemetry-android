@@ -9,6 +9,13 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -16,11 +23,16 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.unit.dp
 import com.gonibix.rx8.obd.ObdMetric
 import com.gonibix.rx8.ui.theme.AccentColor
@@ -29,7 +41,7 @@ import com.gonibix.rx8.ui.theme.MutedColor
 import java.util.Locale
 
 /** Renders one recorded source. It neither observes live telemetry nor reads the repository. */
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 internal fun TripSensorChart(
     options: List<TripSeriesKey>,
@@ -49,18 +61,31 @@ internal fun TripSensorChart(
             Text("No sensor readings were recorded in this trip.", color = MutedColor, modifier = Modifier.testTag("empty_trip_series"))
             return@Column
         }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-            options.map { it.metric }.distinct().forEach { metric ->
-                FilterChip(
-                    selected = selected?.metric == metric,
-                    onClick = {
-                        val next = options.firstOrNull { it.metric == metric && it.ecuId == selected?.ecuId }
-                            ?: options.first { it.metric == metric }
-                        if (next != selected) onSelectSeries(next)
-                    },
-                    label = { Text(metric.chartChoiceLabel()) },
-                    modifier = Modifier.testTag("trip_metric_${metric.name.lowercase(Locale.ROOT)}"),
-                )
+        var expanded by rememberSaveable { mutableStateOf(false) }
+        ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+            OutlinedTextField(
+                value = selected?.metric?.label.orEmpty(),
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Chart parameter") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                    .testTag("trip_parameter_select"),
+            )
+            ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, modifier = Modifier.heightIn(max = 320.dp)) {
+                options.map { it.metric }.distinct().forEach { metric ->
+                    DropdownMenuItem(
+                        text = { Text(metric.label) },
+                        onClick = {
+                            expanded = false
+                            val next = options.firstOrNull { it.metric == metric && it.ecuId == selected?.ecuId }
+                                ?: options.first { it.metric == metric }
+                            if (next != selected) onSelectSeries(next)
+                        },
+                        modifier = Modifier.testTag("trip_metric_${metric.name.lowercase(Locale.ROOT)}")
+                            .semantics { this.selected = selected?.metric == metric },
+                    )
+                }
             }
         }
         if (selected != null && selected in options) {
@@ -186,15 +211,6 @@ internal fun tripChartSegments(series: TripSeriesAnalysis, durationMillis: Long)
     return segments
 }
 
-private fun ObdMetric.chartChoiceLabel(): String = when (this) {
-    ObdMetric.ENGINE_RPM -> "RPM"
-    ObdMetric.SPEED -> "Speed"
-    ObdMetric.COOLANT_TEMPERATURE -> "Coolant"
-    ObdMetric.INTAKE_TEMPERATURE -> "Intake"
-    ObdMetric.THROTTLE_POSITION -> "Throttle"
-    ObdMetric.ENGINE_LOAD -> "Load"
-    else -> label
-}
 private fun ObdMetric.chartValue(value: Double): String =
     String.format(Locale.ROOT, "%.${displayDecimals}f", value)
 private fun chartDuration(millis: Long): String {

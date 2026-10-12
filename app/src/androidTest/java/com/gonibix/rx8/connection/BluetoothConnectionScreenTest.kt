@@ -49,7 +49,7 @@ class BluetoothConnectionScreenTest {
         compose.setContent {
             Rx8Theme {
                 BluetoothConnectionScreen(
-                    state = BluetoothConnectionUiState(availability = BluetoothAvailability.PERMISSION_REQUIRED),
+                    state = BluetoothConnectionUiState(favoritePreferenceLoading = false, availability = BluetoothAvailability.PERMISSION_REQUIRED),
                     onRefresh = {},
                     onRequestPermission = { permissionRequests++ },
                     onOpenBluetoothSettings = {},
@@ -65,7 +65,7 @@ class BluetoothConnectionScreenTest {
             }
         }
         compose.onNodeWithTag("bluetooth_connection_status").assertTextEquals("Bluetooth permission needed")
-        compose.onNodeWithTag("request_bluetooth_permission").performClick()
+        compose.onNodeWithTag("request_bluetooth_permission").performScrollTo().performClick()
         compose.onNodeWithTag("open_app_settings").performScrollTo().performClick()
         compose.runOnIdle {
             assertEquals(1, permissionRequests)
@@ -77,7 +77,7 @@ class BluetoothConnectionScreenTest {
 
     @Test
     fun offAndUnsupportedStatesAreExplicit() {
-        val state = mutableStateOf(BluetoothConnectionUiState(availability = BluetoothAvailability.OFF))
+        val state = mutableStateOf(BluetoothConnectionUiState(favoritePreferenceLoading = false, availability = BluetoothAvailability.OFF))
         var settingsRequests = 0
         compose.setContent {
             Rx8Theme {
@@ -112,7 +112,7 @@ class BluetoothConnectionScreenTest {
         compose.setContent {
             Rx8Theme {
                 BluetoothConnectionScreen(
-                    state = BluetoothConnectionUiState(
+                    state = BluetoothConnectionUiState(favoritePreferenceLoading = false,
                         availability = BluetoothAvailability.READY,
                         isForeground = true,
                     ),
@@ -130,7 +130,7 @@ class BluetoothConnectionScreenTest {
                 )
             }
         }
-        compose.onNodeWithTag("no_paired_devices").assertIsDisplayed()
+        compose.onNodeWithTag("no_paired_devices").performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("connect_adapter").assertIsNotEnabled()
         compose.onNodeWithTag("open_bluetooth_settings").performScrollTo().assertIsDisplayed()
     }
@@ -139,7 +139,7 @@ class BluetoothConnectionScreenTest {
     fun selectedDeviceEnablesConnectAndAdapterSuccessDoesNotClaimEcuSuccess() {
         val device = AdapterDevice("02:00:00:00:00:01", "Test OBD adapter")
         val state = mutableStateOf(
-            BluetoothConnectionUiState(
+            BluetoothConnectionUiState(favoritePreferenceLoading = false,
                 availability = BluetoothAvailability.READY,
                 devices = listOf(device),
                 isForeground = true,
@@ -168,7 +168,7 @@ class BluetoothConnectionScreenTest {
             }
         }
         compose.onNodeWithTag("connect_adapter").assertIsNotEnabled()
-        compose.onNodeWithText("Test OBD adapter").performClick()
+        compose.onNodeWithText("Test OBD adapter").performScrollTo().performClick()
         compose.onNodeWithTag("connect_adapter").assertIsEnabled().performScrollTo().performClick()
         compose.onNodeWithTag("bluetooth_connection_status").assertTextEquals("Connecting to adapter")
         compose.onNodeWithTag("disconnect_adapter").performScrollTo().performClick()
@@ -177,7 +177,7 @@ class BluetoothConnectionScreenTest {
             state.value = state.value.copy(phase = BluetoothConnectionPhase.CONNECTED)
         }
         compose.onNodeWithTag("bluetooth_connection_status").assertTextEquals("Bluetooth connected")
-        compose.onNodeWithTag("ecu_status").assertTextEquals("ECU not checked")
+        compose.onNodeWithTag("ecu_status").assertDoesNotExist()
         compose.onNodeWithTag("reading_engine_rpm").assertDoesNotExist()
         compose.onNodeWithText("SIMULATOR").assertDoesNotExist()
         compose.onNodeWithTag("disconnect_adapter").performScrollTo().performClick()
@@ -186,7 +186,7 @@ class BluetoothConnectionScreenTest {
     @Test
     fun scanControlsShowProgressAndKeepNoResultsGuidance() {
         val state = mutableStateOf(
-            BluetoothConnectionUiState(
+            BluetoothConnectionUiState(favoritePreferenceLoading = false,
                 availability = BluetoothAvailability.READY,
                 isForeground = true,
             ),
@@ -241,7 +241,7 @@ class BluetoothConnectionScreenTest {
                     Column(Modifier.safeDrawingPadding()) {
                         Text("UI TEST FIXTURE · SYNTHETIC DISCOVERY", style = MaterialTheme.typography.labelMedium)
                         BluetoothConnectionScreen(
-                            state = BluetoothConnectionUiState(
+                            state = BluetoothConnectionUiState(favoritePreferenceLoading = false,
                                 availability = BluetoothAvailability.READY,
                                 devices = listOf(device),
                                 selectedDevice = device,
@@ -277,7 +277,7 @@ class BluetoothConnectionScreenTest {
     fun scanPermissionAndLocationRecoveryLeavePairedConnectEnabled() {
         val device = AdapterDevice("02:00:00:00:00:01", "Test adapter")
         val state = mutableStateOf(
-            BluetoothConnectionUiState(
+            BluetoothConnectionUiState(favoritePreferenceLoading = false,
                 availability = BluetoothAvailability.READY,
                 devices = listOf(device),
                 selectedDevice = device,
@@ -317,68 +317,55 @@ class BluetoothConnectionScreenTest {
     }
 
 
-    @Test
-    fun automaticReadingsKeepEcuProgressDistinctAndOfferVehicleSelection() {
-        val state = mutableStateOf(
-            BluetoothConnectionUiState(
-                availability = BluetoothAvailability.READY,
-                phase = BluetoothConnectionPhase.CONNECTED,
-                isForeground = true,
-            ),
-        )
-        var vehicleSelections = 0
+    @Test fun adapterDoesNotExposeVehicleDiagnosticsAndFavoriteIsExplicit() {
+        val adapter = AdapterDevice("02:00:00:00:00:42", "Synthetic favorite")
+        val state = mutableStateOf(BluetoothConnectionUiState(
+            favoritePreferenceLoading = false, availability = BluetoothAvailability.READY,
+            selectedDevice = adapter, devices = listOf(adapter), isForeground = true,
+            phase = BluetoothConnectionPhase.CONNECTED, isAwaitingVehicle = true,
+            automaticMessage = "Choose a vehicle to record.", obd = ObdSessionSnapshot(phase = ObdPhase.LIVE),
+        ))
+        var favorites = 0
+        var resumes = 0
+        var pauses = 0
+        var clears = 0
         compose.setContent {
             Rx8Theme {
-                Surface(
-                    color = MaterialTheme.colorScheme.background,
-                    contentColor = MaterialTheme.colorScheme.onBackground,
-                ) {
-                    BluetoothConnectionScreen(
-                        state = state.value,
-                        onRefresh = {},
-                        onRequestPermission = {},
-                        onOpenBluetoothSettings = {},
-                        onOpenAppSettings = {},
-                        onSelectDevice = {},
-                        onConnect = {},
-                        onDisconnect = {},
-                        onScan = {},
-                        onStopScan = {},
-                        onOpenLocationSettings = {},
-                        onOpenVehicles = { vehicleSelections++ },
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
+                BluetoothConnectionScreen(
+                    state = state.value, onRefresh = {}, onRequestPermission = {}, onOpenBluetoothSettings = {},
+                    onOpenAppSettings = {}, onSelectDevice = {}, onConnect = {}, onDisconnect = {}, onScan = {},
+                    onStopScan = {}, onOpenLocationSettings = {}, modifier = Modifier.fillMaxSize(),
+                    onSetFavorite = { favorites++; state.value = state.value.copy(favoriteAdapter = adapter) },
+                    onPauseAutomatic = { pauses++; state.value = state.value.copy(favoriteAutoConnectPaused = true) },
+                    onResumeAutomatic = { resumes++; state.value = state.value.copy(favoriteAutoConnectPaused = false) },
+                    onClearFavorite = { clears++; state.value = state.value.copy(favoriteAdapter = null) },
+                )
             }
         }
-        compose.onNodeWithTag("ecu_status").assertTextEquals("ECU not checked")
-        compose.onNodeWithTag("obd_session_status").assertDoesNotExist()
-        compose.onNodeWithTag("start_obd").assertDoesNotExist()
-        compose.onNodeWithTag("automatic_obd_guidance").assertIsDisplayed()
-        compose.runOnIdle {
-            state.value = state.value.copy(obd = ObdSessionSnapshot(phase = ObdPhase.INITIALIZING, statusMessage = "Preparing the adapter."))
-        }
-        compose.onNodeWithTag("obd_session_status").assertTextEquals("Preparing the adapter")
-        compose.onNodeWithTag("start_obd").assertDoesNotExist()
-        compose.onNodeWithTag("disconnect_adapter").assertIsEnabled()
-        compose.runOnIdle {
-            state.value = state.value.copy(
-                obd = ObdSessionSnapshot(phase = ObdPhase.DISCOVERING, statusMessage = "Checking the ECU."),
-            )
-        }
-        compose.onNodeWithTag("obd_session_status").assertTextEquals("Finding protocol and ECU capabilities")
+        compose.onNodeWithTag("ecu_status").assertDoesNotExist()
+        compose.onNodeWithTag("automatic_choose_vehicle").assertDoesNotExist()
+        compose.onNodeWithTag("open_capabilities").assertDoesNotExist()
+        compose.onNodeWithTag("set_favorite_adapter").performScrollTo().performClick()
+        compose.onNodeWithTag("toggle_favorite_automatic").performScrollTo().performClick()
+        compose.onNodeWithText("Resume automatic connections").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("clear_favorite_adapter").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(listOf(1, 1, 1, 1), listOf(favorites, pauses, resumes, clears)) }
+    }
+
+    @Test fun liveDiagnosticsOfferVehicleSelectionAndEcuStateWithoutSensorCards() {
+        val state = mutableStateOf(BluetoothConnectionUiState(favoritePreferenceLoading = false,
+            phase = BluetoothConnectionPhase.CONNECTED, isAwaitingVehicle = true,
+            automaticMessage = "Choose a vehicle to begin recording.",
+            obd = ObdSessionSnapshot(phase = ObdPhase.DISCOVERING),
+        ))
+        var vehicles = 0
+        compose.setContent { Rx8Theme {
+            VehicleDiagnosticsPanel(state.value, { vehicles++ }, {}, {}, {}, Modifier.fillMaxSize())
+        } }
         compose.onNodeWithTag("ecu_status").assertTextEquals("ECU check in progress")
-        compose.runOnIdle {
-            state.value = state.value.copy(
-                obd = ObdSessionSnapshot(phase = ObdPhase.ERROR, statusMessage = "The ECU did not respond."),
-            )
-        }
-        compose.onNodeWithTag("obd_session_status").assertTextEquals("Unable to continue reading")
-        compose.onNodeWithTag("obd_session_message").assertTextEquals("The ECU did not respond.")
-        compose.onNodeWithTag("start_obd").assertDoesNotExist()
-        compose.runOnIdle { state.value = state.value.copy(isAwaitingVehicle = true, automaticMessage = "Choose a vehicle to begin recording.") }
-        compose.onNodeWithTag("automatic_choose_vehicle").performScrollTo().performClick()
-        compose.runOnIdle { assertEquals(1, vehicleSelections) }
+        compose.onNodeWithTag("automatic_choose_vehicle").performClick()
+        compose.onNodeWithTag("reading_engine_rpm").assertDoesNotExist()
+        compose.runOnIdle { assertEquals(1, vehicles) }
     }
 
     @Test fun syntheticConnectionScreenshotHasNoManualReadAction() {
@@ -388,7 +375,7 @@ class BluetoothConnectionScreenTest {
                     Column(Modifier.safeDrawingPadding()) {
                         Text("UI TEST FIXTURE · SYNTHETIC CONNECTION", style = MaterialTheme.typography.labelMedium)
                         BluetoothConnectionScreen(
-                            state = BluetoothConnectionUiState(
+                            state = BluetoothConnectionUiState(favoritePreferenceLoading = false,
                                 availability = BluetoothAvailability.READY, phase = BluetoothConnectionPhase.CONNECTED,
                                 isForeground = true, isAwaitingVehicle = true,
                                 automaticMessage = "Choose a saved vehicle to begin the automatic journey.",
@@ -403,7 +390,7 @@ class BluetoothConnectionScreenTest {
             }
         }
         compose.onNodeWithTag("bluetooth_connection_status").assertTextEquals("Bluetooth connected")
-        compose.onNodeWithTag("ecu_status").assertTextEquals("ECU check in progress")
+        compose.onNodeWithTag("ecu_status").assertDoesNotExist()
         compose.onNodeWithTag("start_obd").assertDoesNotExist()
         compose.onNodeWithText("UI TEST FIXTURE · SYNTHETIC CONNECTION").assertIsDisplayed()
         captureDiscoveryScreen("connection")

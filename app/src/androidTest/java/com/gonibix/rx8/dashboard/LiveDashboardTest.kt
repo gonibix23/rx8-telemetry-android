@@ -261,13 +261,13 @@ class LiveDashboardTest {
         show(simulatorDashboardSnapshot(source.advanceBy(2_000L)), setOf(ObdMetric.INTAKE_TEMPERATURE), simulated = true, screenshotFixture = true)
         compose.onNodeWithTag("dashboard_origin").assertTextEquals("SIMULATOR · SYNTHETIC DATA")
         compose.onNodeWithTag("live_dashboard").performScrollToIndex(1)
-        compose.onNodeWithTag("dashboard_value_SIMULATOR_speed").assertTextEquals("0").assertIsDisplayed()
-        compose.onNodeWithTag("dashboard_value_SIMULATOR_intake_temperature").assertTextEquals("28").assertIsDisplayed()
+        scrollTo("dashboard_value_SIMULATOR_speed").assertTextEquals("0").assertIsDisplayed()
+        scrollTo("dashboard_value_SIMULATOR_intake_temperature").assertTextEquals("28").assertIsDisplayed()
         compose.onNodeWithText("UI TEST FIXTURE · SYNTHETIC DASHBOARD").assertIsDisplayed()
         scrollTo("dashboard_choose_sensors").performClick()
-        search("intake")
+        search("PID 0F")
         scrollTo("dashboard_sensor_search").assertIsDisplayed()
-        scrollTo("dashboard_sensor_search_count").assertTextEquals("1 of 3 sensors").assertIsDisplayed()
+        scrollTo("dashboard_sensor_search_count").assertTextEquals("1 of 120 sensors").assertIsDisplayed()
         scrollTo("dashboard_favorite_intake_temperature").assertIsOn().assertIsDisplayed()
         captureFavoritesScreen()
     }
@@ -278,7 +278,7 @@ class LiveDashboardTest {
             reading(ObdMetric.COOLANT_TEMPERATURE, 88.0),
         ), screenshotFixture = true)
         compose.onNodeWithTag("dashboard_origin").assertTextEquals("VEHICLE · OBD")
-        compose.onNodeWithTag("dashboard_gauge_7E8_engine_rpm").assertIsDisplayed()
+        scrollTo("dashboard_dial_7E8_engine_rpm").assertIsDisplayed()
         compose.onNodeWithTag("dashboard_value_7E8_engine_rpm").assertTextEquals("2450")
         compose.onNodeWithText("UI TEST FIXTURE · SYNTHETIC DASHBOARD").assertIsDisplayed()
         captureFavoritesScreen("dashboard")
@@ -295,7 +295,9 @@ class LiveDashboardTest {
                     Column {
                         if (screenshotFixture) Text("UI TEST FIXTURE · SYNTHETIC DASHBOARD")
                         else if (!simulated) Text("UI TEST FIXTURE · SYNTHETIC VALUES")
-                        LiveDashboard(snapshot, favorites, {}, {}, modifier = Modifier.weight(1f), isSimulated = simulated)
+                        val configured = if (screenshotFixture) (primaryDashboardMetrics + favorites).distinct().map(::defaultCard) else null
+                        LiveDashboard(snapshot, configured?.map { it.metric }?.toSet() ?: favorites, {}, {},
+                            modifier = Modifier.weight(1f), isSimulated = simulated, cards = configured)
                     }
                 }
             }
