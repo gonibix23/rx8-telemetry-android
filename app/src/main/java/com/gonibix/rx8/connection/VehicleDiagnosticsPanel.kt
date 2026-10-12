@@ -15,7 +15,7 @@ import com.gonibix.rx8.telemetry.obd.VinResponse
 import com.gonibix.rx8.ui.theme.MutedColor
 import com.gonibix.rx8.vehicle.VinDetectionPanel
 
-/** Live-only diagnostics and explicit actions; sensor values belong to the configured cards. */
+/** Vehicle actions in Live edit mode; adapter diagnostics belong to Adapter. */
 @Composable
 fun VehicleDiagnosticsPanel(
     state: BluetoothConnectionUiState,
@@ -34,8 +34,6 @@ fun VehicleDiagnosticsPanel(
             ObdPhase.ERROR -> "ECU reading error"
             ObdPhase.STOPPED -> "ECU readings stopped"
         }, modifier = Modifier.testTag("ecu_status"))
-        state.obd.protocolLabel?.let { Text(it, color = MutedColor, style = MaterialTheme.typography.bodySmall) }
-        Text(state.obd.statusMessage, color = MutedColor, style = MaterialTheme.typography.bodySmall)
         state.automaticMessage?.let {
             Text(it, color = MutedColor, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("automatic_session_message"))
         }

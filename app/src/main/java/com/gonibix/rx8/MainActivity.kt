@@ -179,6 +179,7 @@ class MainActivity : ComponentActivity() {
                 val vehicles by vehicleViewModel.uiState.collectAsStateWithLifecycle()
                 val favorites by dashboardPreferences.favorites.collectAsStateWithLifecycle()
                 val cards by dashboardPreferences.cards.collectAsStateWithLifecycle()
+                val dashboardColumns by dashboardPreferences.columns.collectAsStateWithLifecycle()
                 val favoritesError by dashboardPreferences.error.collectAsStateWithLifecycle()
                 val favoritesLoading by dashboardPreferences.isLoading.collectAsStateWithLifecycle()
                 val favoritesSaving by dashboardPreferences.isSaving.collectAsStateWithLifecycle()
@@ -242,7 +243,7 @@ class MainActivity : ComponentActivity() {
                             selectedTab = destination
                             if (destination != "dashboard") showCapabilityReport = false
                         })
-                        UploadFeedbackBanner(uploadSettings.settings, uploadSettings.runtime, uploadDelivery)
+                        if (selectedTab != "dashboard") UploadFeedbackBanner(uploadSettings.settings, uploadSettings.runtime, uploadDelivery)
                         if (selectedTab == "dashboard") {
                             if (favoritesError != null) {
                                 Text(requireNotNull(favoritesError), color = MaterialTheme.colorScheme.error)
@@ -311,6 +312,7 @@ class MainActivity : ComponentActivity() {
                                 val snapshot = state?.obd ?: ObdSessionSnapshot(
                                     statusMessage = "Open Adapter to connect. Live readings start automatically.",
                                 )
+                                tripPresentation.SaveableStateProvider("dashboard") {
                                 LiveDashboard(
                                     snapshot = snapshot,
                                     favorites = favorites,
@@ -319,6 +321,8 @@ class MainActivity : ComponentActivity() {
                                     cards = cards,
                                     onUpdateCard = dashboardPreferences::updateCard,
                                     onMoveCard = dashboardPreferences::moveCard,
+                                    columns = dashboardColumns,
+                                    onColumnsChange = dashboardPreferences::setColumns,
                                     overlayState = overlayState,
                                     onToggleOverlay = ::toggleOverlay,
                                     additionalContent = {
@@ -339,13 +343,8 @@ class MainActivity : ComponentActivity() {
                                             },
                                         )
                                     },
-                                    connectionStatus = when (state?.phase) {
-                                        BluetoothConnectionPhase.CONNECTED -> "Bluetooth connected"
-                                        BluetoothConnectionPhase.CONNECTING -> "Connecting Bluetooth"
-                                        BluetoothConnectionPhase.DISCONNECTED -> "Bluetooth disconnected"
-                                        null -> "Preparing Bluetooth controls"
-                                    },
                                 )
+                                }
                             } else if (selectedTab == "trips") {
                                 tripPresentation.SaveableStateProvider("trips") {
                                     TripsScreen(

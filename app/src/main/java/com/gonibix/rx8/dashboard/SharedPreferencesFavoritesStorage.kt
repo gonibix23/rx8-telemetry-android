@@ -31,6 +31,15 @@ internal class SharedPreferencesFavoritesStorage(
             .distinct().map(::defaultCard)
     }
 
+    override suspend fun readColumns(): DashboardColumns = withContext(Dispatchers.IO) {
+        DashboardColumns.entries.firstOrNull { it.name == preferences.getString(COLUMNS_KEY, null) } ?: DashboardColumns.ONE
+    }
+
+    @SuppressLint("ApplySharedPref", "UseKtx")
+    override suspend fun writeColumns(columns: DashboardColumns): Boolean = withContext(Dispatchers.IO) {
+        preferences.edit().putString(COLUMNS_KEY, columns.name).commit()
+    }
+
     @SuppressLint("ApplySharedPref", "UseKtx")
     override suspend fun writeCards(cards: List<DashboardCardConfig>): Boolean = withContext(Dispatchers.IO) {
         preferences.edit().putString(LAYOUT_KEY, DashboardLayoutCodec.encode(cards))
@@ -41,6 +50,7 @@ internal class SharedPreferencesFavoritesStorage(
         const val PREFERENCES_NAME = "dashboard_preferences"
         const val LAYOUT_KEY = "dashboard_layout_v2"
         const val FAVORITES_KEY = "favorite_metric_ids_v1"
+        const val COLUMNS_KEY = "dashboard_columns_v1"
     }
 }
 

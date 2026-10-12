@@ -368,6 +368,24 @@ class BluetoothConnectionScreenTest {
         compose.runOnIdle { assertEquals(1, vehicles) }
     }
 
+    @Test fun adapterDiagnosticsRetainTheSpecificReadingFailureAndReportedMetadata() {
+        val message = "The adapter did not respond. Reconnect to retry."
+        compose.setContent { Rx8Theme {
+            BluetoothConnectionScreen(
+                state = BluetoothConnectionUiState(favoritePreferenceLoading = false,
+                    availability = BluetoothAvailability.READY,
+                    obd = ObdSessionSnapshot(phase = ObdPhase.ERROR, statusMessage = message,
+                        adapterIdentity = "Synthetic ELM fixture", protocolLabel = "Synthetic protocol fixture")),
+                onRefresh = {}, onRequestPermission = {}, onOpenBluetoothSettings = {}, onOpenAppSettings = {},
+                onSelectDevice = {}, onConnect = {}, onDisconnect = {}, onScan = {}, onStopScan = {}, onOpenLocationSettings = {},
+            )
+        } }
+        compose.onNodeWithTag("adapter_session_diagnostic").assertTextEquals(message)
+        compose.onNodeWithTag("adapter_identification").assertTextEquals("Adapter identification: Synthetic ELM fixture")
+        compose.onNodeWithTag("adapter_protocol").assertTextEquals("Protocol reported by adapter: Synthetic protocol fixture")
+        compose.onNodeWithTag("dashboard_value_7E8_speed").assertDoesNotExist()
+    }
+
     @Test fun syntheticConnectionScreenshotHasNoManualReadAction() {
         compose.setContent {
             Rx8Theme {

@@ -1,5 +1,15 @@
 # Architecture
 
+## RX8-021 Live presentation modes
+
+Version 0.15.0-dev separates normal viewing from editing in the modular dashboard. Saveable presentation state retains mode/search across tab navigation and recreation; normal is the initial mode. The Activity keeps preference errors visible and shows upload feedback on the other tabs. Adapter metadata is rendered only in Adapter; Live edit mode retains vehicle actions and reports.
+
+The application-owned ordered preference worker persists a one/two-column choice independently of card configurations. It publishes only confirmed writes and preserves the previous layout on failure; no Room or wire migration is involved. Compact cards form stable lazy rows, large cards span the width, and available width/font scale determine a safe one-column fallback. All rendering uses the same source/quality/age models.
+
+The overlay host renders compact accessible rows. A gesture controller owns the cancellable stationary-hold deadline; movement beyond touch slop, extra pointers, up/cancel, detach and hide invalidate it. Short lists drag from any row; scrolling lists use parameter labels as drag regions and leave values available for scrolling. Accessible dismiss and long-click actions replace the visible Close button. The existing service continues owning acquisition and permission/lifecycle cleanup.
+
+A synthetic integration regression exercises Elm327Session through BluetoothSessionController directly into TripRecorder while changing the actual dashboard preference store, hiding all cards and selecting an unsupported card. Fresh hidden/compound fields from separate ECUs still record, failed values remain null and cached ticker snapshots are not saved. Stop recording commits a terminal journey while live polling continues. Room durability remains covered separately.
+
 ## RX8-020 display and delivery changes
 
 Version 0.14.0-dev supersedes fixed primary cards and the last-adapter-only reconnect policy described in the implementation history below. Persistent ordered card configurations extend private preferences without changing Room v4. The legacy basic sensors and saved extra favourites migrate together; afterwards every implemented metric is selectable/removable. Card rendering preserves source, canonical units, age and quality across digital, dial and bar views and two sizes. Display changes never affect acquisition or recorded coverage.

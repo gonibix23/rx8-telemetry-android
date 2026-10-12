@@ -14,8 +14,8 @@ android {
         applicationId = "com.gonibix.rx8"
         minSdk = 26
         targetSdk = 36
-        versionCode = 16
-        versionName = "0.14.0-dev"
+        versionCode = 17
+        versionName = "0.15.0-dev"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
