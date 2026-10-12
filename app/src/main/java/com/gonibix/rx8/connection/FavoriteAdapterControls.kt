@@ -1,9 +1,11 @@
 package com.gonibix.rx8.connection
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -13,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import com.gonibix.rx8.ui.theme.BorderColor
 import com.gonibix.rx8.ui.theme.CardColor
 import com.gonibix.rx8.ui.theme.MutedColor
 
@@ -26,7 +29,12 @@ internal fun FavoriteAdapterControls(
 ) {
     val favorite = state.favoriteAdapter
     val editable = !state.favoritePreferenceLoading && !state.favoritePreferenceSaving
-    Surface(color = CardColor, modifier = Modifier.fillMaxWidth()) {
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = CardColor,
+        border = BorderStroke(1.dp, BorderColor),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Favorite adapter", style = MaterialTheme.typography.titleSmall)
             Text(
