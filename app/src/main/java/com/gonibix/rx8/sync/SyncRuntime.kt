@@ -101,7 +101,8 @@ class SyncRuntime private constructor(private val context: Application) {
         val coordinator = SyncCoordinator(store, HttpsSyncTransport(endpoint))
         mutableStatus.value = UploadRuntimeStatus(isRunning = true, message = "Uploading finished trips.")
         try {
-            for (attempt in 0 until MAX_REQUESTS_PER_RUN) {
+            val budget = UploadRunBudget()
+            while (budget.tryStartRequest()) {
                 val current = persistentSettings.settings.value
                 if (!current.enabled || current.baseUrl != endpoint) break
                 val step = coordinator.runOnce()
@@ -124,7 +125,6 @@ class SyncRuntime private constructor(private val context: Application) {
     }
 
     companion object {
-        internal const val MAX_REQUESTS_PER_RUN = 25
         @Volatile private var instance: SyncRuntime? = null
         fun get(context: Context): SyncRuntime = instance ?: synchronized(this) {
             instance ?: SyncRuntime(context.applicationContext as Application).also { instance = it }

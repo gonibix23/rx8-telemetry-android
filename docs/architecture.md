@@ -202,6 +202,8 @@ The production HTTPS transport sends the exact prepared body to the configured s
 
 WorkManager requires connectivity and processes bounded work in vehicle/session/sample dependency order. Terminal eligibility covers both prepared requests and unbatched sample references. Completed/interrupted trips may replay their historical recording metadata revisions before the closing revision; active local trips cannot be sent. Samples wait for all required session metadata acknowledgments. Finishing and startup recovery schedule delivery after commits, including metadata-only empty trips.
 
+Each run starts at most 250 requests and stops starting requests after four monotonic minutes. The last started request retains its ten-second timeout. This permits large saved trips to progress without excessive delays between small chunks while keeping each background run bounded. Pending retry times remain enforced by Room.
+
 Leases, immutable batch membership, per-sample ACK validation and retry backoff remain durable. An entire response must match its request before any ACK is committed. Only stored/already_stored sample results confirm delivery. Partial ACKs and oversized requests create new batches without changing attempted bodies. Offline work remains local; storage and queue failures do not become empty-history claims. Explicit retry can recover exhausted transient attempts, while permanent conflicts remain blocked.
 
 ### API development and storage
