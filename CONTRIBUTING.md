@@ -4,6 +4,8 @@
 
 Write documentation, UI text, source comments, issues, PRs, and commit messages in English.
 
+Original project code and documentation use the [MIT License](LICENSE). Preserve its copyright and permission notice when redistributing, and retain third-party license notices.
+
 ## Before you start
 
 Read the [scope](docs/product.md) and [architecture](docs/architecture.md).

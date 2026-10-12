@@ -115,4 +115,5 @@ These commands check Markdown. Android build, unit-test, and lint commands are l
 
 ## License
 
-Private repository. No distribution license has been selected.
+Original project code and documentation are licensed under the [MIT License](LICENSE). This public repository includes both the Android app and API.
+Third-party dependencies and the Gradle wrapper retain their own licenses and copyright notices. Externally linked manuals and reference documents are not covered by this grant.
