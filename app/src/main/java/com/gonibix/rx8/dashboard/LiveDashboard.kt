@@ -70,12 +70,15 @@ fun LiveDashboard(
     overlayState: OverlayUiState? = null,
     onToggleOverlay: () -> Unit = {},
     additionalContent: @Composable () -> Unit = {},
+    columns: DashboardColumns = DashboardColumns.ONE,
+    onColumnsChange: (DashboardColumns) -> Unit = {},
 ) {
-    val model = if (cards == null) dashboardModel(snapshot, favorites) else modularDashboardModel(snapshot, cards)
-    var editingMetric by rememberSaveable { mutableStateOf<String?>(null) }
-    val editing = cards?.firstOrNull { it.metric.name == editingMetric }
-    if (editing != null) CardEditor(editing, cards.indexOf(editing), cards.size, cards.count { it.showInOverlay },
-        onUpdateCard, { onMoveCard(editing.metric, it) }, { onToggleFavorite(editing.metric) }, { editingMetric = null })
+    if (cards != null) {
+        ModularLiveDashboard(snapshot, cards, onToggleFavorite, onUpdateCard, onMoveCard, columns, onColumnsChange,
+            overlayState, onToggleOverlay, modifier, isSimulated, additionalContent)
+        return
+    }
+    val model = dashboardModel(snapshot, favorites)
     var showPicker by rememberSaveable { mutableStateOf(false) }
     var sensorQuery by rememberSaveable { mutableStateOf("") }
     var showDetails by rememberSaveable { mutableStateOf(false) }
@@ -159,7 +162,7 @@ fun LiveDashboard(
         item {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(if (cards == null) "Favorite sensors" else "Dashboard sensors", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text("Favorite sensors", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     TextButton(onClick = {
                         if (showPicker) finishSearch()
                         showPicker = !showPicker
@@ -175,9 +178,7 @@ fun LiveDashboard(
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.testTag("dashboard_unavailable_favorites"),
                 )
-                if (cards != null && cards.isEmpty()) Text("Your dashboard is empty. Choose sensors to add cards.", color = MutedColor)
-                if (cards != null && !model.hasCapabilities && cards.isNotEmpty()) Text("Saved layout: ${cards.joinToString { it.metric.label }}. Values will appear after capability discovery.", color = MutedColor)
-                if (showPicker) SensorPicker(model, favorites, sensorQuery, { sensorQuery = it }, finishSearch, onToggleFavorite, cards != null)
+                if (showPicker) SensorPicker(model, favorites, sensorQuery, { sensorQuery = it }, finishSearch, onToggleFavorite)
                 if (overlayState != null) {
                     TextButton(onClick = onToggleOverlay, modifier = Modifier.testTag("dashboard_toggle_overlay")) {
                         Text(if (overlayState.enabled) "Close floating panel" else "Enable floating panel")
@@ -207,30 +208,6 @@ fun LiveDashboard(
                         color = MutedColor,
                         style = MaterialTheme.typography.bodySmall,
                     )
-                    if (cards != null) {
-                        val configurations = cards.associateBy { it.metric }
-                        BoxWithConstraints {
-                            val twoColumns = maxWidth >= 360.dp
-                            val rows = mutableListOf<List<DashboardReading>>()
-                            val compact = mutableListOf<DashboardReading>()
-                            ecu.readings.forEach { reading ->
-                                if (!twoColumns || configurations.getValue(reading.metric).size == DashboardCardSize.LARGE) {
-                                    if (compact.isNotEmpty()) { rows += compact.toList(); compact.clear() }
-                                    rows += listOf(reading)
-                                } else {
-                                    compact += reading
-                                    if (compact.size == 2) { rows += compact.toList(); compact.clear() }
-                                }
-                            }
-                            if (compact.isNotEmpty()) rows += compact.toList()
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                rows.forEach { readings -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    readings.forEach { reading -> CustomSensorCard(reading, configurations.getValue(reading.metric), model.stopped,
-                                        { editingMetric = reading.metric.name }, Modifier.weight(1f)) }
-                                } }
-                            }
-                        }
-                    } else {
                     ecu.readings.firstOrNull { it.metric == ObdMetric.ENGINE_RPM }?.let { rpm ->
                         RealRpmGauge(rpm, model.stopped, Modifier.fillMaxWidth())
                     }
@@ -252,7 +229,6 @@ fun LiveDashboard(
                             }
                         }
                     }
-                    }
                 }
             }
         }
@@ -269,7 +245,7 @@ fun LiveDashboard(
 }
 
 @Composable
-private fun SensorPicker(
+internal fun SensorPicker(
     model: DashboardModel,
     favorites: Set<ObdMetric>,
     query: String,

@@ -8,6 +8,7 @@ import java.util.Locale
 /** Display preferences only: never a source of acquisition capabilities or sensor values. */
 enum class DashboardCardStyle { DIGITAL, DIAL, BAR }
 enum class DashboardCardSize { COMPACT, LARGE }
+enum class DashboardColumns { ONE, TWO }
 data class DashboardCardConfig(
     val metric: ObdMetric,
     val style: DashboardCardStyle = DashboardCardStyle.DIGITAL,

@@ -14,6 +14,7 @@ class DashboardPreferencesViewModel internal constructor(
 
     val cards: StateFlow<List<DashboardCardConfig>> = store.cards
     val favorites: StateFlow<Set<ObdMetric>> = store.favorites
+    val columns: StateFlow<DashboardColumns> = store.columns
     val isLoading: StateFlow<Boolean> = store.isLoading
     val isSaving: StateFlow<Boolean> = store.isSaving
     val error: StateFlow<String?> = store.error
@@ -21,4 +22,5 @@ class DashboardPreferencesViewModel internal constructor(
     fun toggleFavorite(metric: ObdMetric) = store.toggleFavorite(metric)
     fun updateCard(card: DashboardCardConfig) = store.updateCard(card)
     fun moveCard(metric: ObdMetric, delta: Int) = store.moveCard(metric, delta)
+    fun setColumns(columns: DashboardColumns) = store.setColumns(columns)
 }

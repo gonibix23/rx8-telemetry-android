@@ -15,6 +15,8 @@ internal interface DashboardFavoritesStorage {
     suspend fun write(ids: Set<String>): Boolean
     suspend fun readCards(): List<DashboardCardConfig>? = null
     suspend fun writeCards(cards: List<DashboardCardConfig>): Boolean = write(FavoriteMetricIds.encode(cards.map { it.metric }.toSet()))
+    suspend fun readColumns(): DashboardColumns = DashboardColumns.ONE
+    suspend fun writeColumns(columns: DashboardColumns): Boolean = false
 }
 
 internal object FavoriteMetricIds {
@@ -36,10 +38,13 @@ internal class DashboardFavoritesStore(
         data class Toggle(val metric: ObdMetric) : Change
         data class Update(val card: DashboardCardConfig) : Change
         data class Move(val metric: ObdMetric, val delta: Int) : Change
+        data class Columns(val columns: DashboardColumns) : Change
     }
     private val changes = Channel<Change>(Channel.UNLIMITED)
     private val mutableCards = MutableStateFlow<List<DashboardCardConfig>>(emptyList())
     val cards: StateFlow<List<DashboardCardConfig>> = mutableCards.asStateFlow()
+    private val mutableColumns = MutableStateFlow(DashboardColumns.ONE)
+    val columns: StateFlow<DashboardColumns> = mutableColumns.asStateFlow()
     private val pendingLock = Any()
     private var pendingChanges = 0
     private val mutableFavorites = MutableStateFlow<Set<ObdMetric>>(emptySet())
@@ -58,6 +63,13 @@ internal class DashboardFavoritesStore(
                 try {
                     if (confirmed == null) confirmed = load()
                     val previous = confirmed ?: continue
+                    if (change is Change.Columns) {
+                        if (storage.writeColumns(change.columns)) {
+                            mutableColumns.value = change.columns
+                            mutableError.value = null
+                        } else mutableError.value = SAVE_ERROR
+                        continue
+                    }
                     val updated = when (change) {
                         is Change.Toggle -> if (previous.any { it.metric == change.metric }) previous.filterNot { it.metric == change.metric }
                             else previous + defaultCard(change.metric)
@@ -72,6 +84,7 @@ internal class DashboardFavoritesStore(
                             val from = indexOfFirst { it.metric == change.metric }
                             if (from >= 0) add((from + change.delta.coerceIn(-1, 1)).coerceIn(0, lastIndex), removeAt(from))
                         }.toList()
+                        is Change.Columns -> error("Column changes are handled separately")
                     }
                     if (storage.writeCards(updated)) {
                         confirmed = updated
@@ -104,6 +117,7 @@ internal class DashboardFavoritesStore(
     fun toggleFavorite(metric: ObdMetric) = enqueue(Change.Toggle(metric))
     fun updateCard(card: DashboardCardConfig) = enqueue(Change.Update(card))
     fun moveCard(metric: ObdMetric, delta: Int) = enqueue(Change.Move(metric, delta))
+    fun setColumns(columns: DashboardColumns) = enqueue(Change.Columns(columns))
 
     private fun enqueue(change: Change) {
         synchronized(pendingLock) {
@@ -125,14 +139,16 @@ internal class DashboardFavoritesStore(
     private suspend fun load(): List<DashboardCardConfig>? {
         mutableLoading.value = true
         return try {
+            val columns = storage.readColumns()
             (storage.readCards() ?: FavoriteMetricIds.decode(storage.read()).map(::defaultCard)).also {
                 publish(it)
+                mutableColumns.value = columns
                 mutableError.value = null
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            mutableError.value = "Saved favorites could not be loaded. Try selecting a favorite again."
+            mutableError.value = "Dashboard preferences could not be loaded. Try editing the layout again."
             null
         } finally {
             mutableLoading.value = false
@@ -140,7 +156,7 @@ internal class DashboardFavoritesStore(
     }
 
     private companion object {
-        const val SAVE_ERROR = "Favorites could not be saved. Your last confirmed selection is shown. Try again."
+        const val SAVE_ERROR = "Dashboard preferences could not be saved. Your last confirmed layout is shown. Try again."
     }
 }
 

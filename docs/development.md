@@ -1,11 +1,19 @@
 # Development
 
-## Testing 0.14.0-dev
+## Testing 0.15.0-dev
+
+Install over existing app data. Normal Live shows configured cards and the Edit action. Enter Edit to search/add/remove sensors, change card appearance/size/order and choose One column or Two columns. Done returns to readings. Verify the layout survives relaunch and controls remain usable in a narrow window or larger font; full-width large cards and per-ECU separation remain intentional.
+
+Enable the selected floating sensors in Edit mode during a connected session. Outside the app, check compact labels, value/unit, age and explicit stale/error states. Drag the panel, or a parameter label when it scrolls; hold it still to close. Moving before the hold deadline must cancel dismissal. Test accessible dismissal, lock, disconnect and permission revocation independently. The compact overlay omits vehicle/ECU text and visible Close/drag controls.
+
+Recording still covers every advertised implemented scalar sensor, including hidden cards. Confirm using saved trip export, then Stop recording and confirm Live continues. Initial/unsupported/cached/stale states are excluded; actual failed outcomes preserve null values and quality. The software regression uses synthetic transport/storage; A53/car validation remains explicitly deferred to the owner.
+
+## Testing 0.14.0-dev (previous increment)
 
 Install the update over existing app data. This increment changes presentation/preferences and delivery feedback without a Room migration or wire/export format change.
 
-1. In Live, search all sensors and remove/re-add RPM, speed and coolant. Long-press a card or choose Edit; try digital/dial/bar style, compact/large size, earlier/later ordering and relaunch persistence. Unsupported choices must say unavailable and preserve ECU separation.
-2. Select up to six card metrics for the overlay. Enable while connected, grant Android overlay permission, and switch to a navigation app. Drag the header, test close, return to the app, lock/unlock and disconnect. Permission denial/revocation must leave acquisition usable and remove the floating window. These are A53 checks, not established by emulator tests.
+1. In Live, search all sensors and remove/re-add RPM, speed and coolant. In Edit mode, long-press a card or choose its Edit action; try digital/dial/bar style, compact/large size, earlier/later ordering and relaunch persistence. Unsupported choices must say unavailable and preserve ECU separation.
+2. Select up to six card metrics for the overlay. Enable while connected, grant Android overlay permission, and switch to a navigation app. Drag the panel, hold it to close, return to the app, lock/unlock and disconnect. Permission denial/revocation must leave acquisition usable and remove the floating window. These are A53 checks, not established by emulator tests.
 3. In Adapter, save the selected device as favourite. With the app visible and no connection, observe bounded attempts about every 30 seconds. Hide the app and confirm no new attempts. Disconnect/notification Stop pauses attempts until Resume. Scanning and connecting must never overlap a new retry.
 4. In Trips, open a finished trip, choose a Chart parameter from the dropdown, then another ECU where recorded. Preserve source-specific gaps, statistics, selection and offline export.
 5. Finish a trip offline and observe waiting feedback. Restore networking: feedback must show sending and only confirm completion after durable metadata/sample ACKs. Failed requests keep local copies and wait/retry or show attention. Check an empty trip too.
@@ -221,7 +229,7 @@ Full JVM/Room/Android tests exercise isolated storage, strict ACK parsing, termi
 
 ## Capturing capabilities without extra requests
 
-After real capability discovery, open Vehicle capabilities in Live. Review the capture time, protocol, elapsed acquisition time, successful ECU-response rate, advertised PIDs per ECU, and latest display states. Use Capture latest to refresh deliberately. Advertised PIDs outside the implemented scalar catalog must remain clearly undecoded, without fabricated readings or support claims.
+After real capability discovery, open Vehicle capabilities in Live > Edit. Review the capture time, protocol, elapsed acquisition time, successful ECU-response rate, advertised PIDs per ECU, and latest display states. Use Capture latest to refresh deliberately. Advertised PIDs outside the implemented scalar catalog must remain clearly undecoded, without fabricated readings or support claims.
 
 Choose Save JSON report and a destination. While the picker is open, switch tabs or recreate the Activity and verify that the original captured report is written. Cancel once and test a provider failure on a disposable destination; neither may show success. After stopping acquisition, capture retained data and check historical/stale labeling. A process restart loses the in-memory report and must not fabricate a replacement.
 

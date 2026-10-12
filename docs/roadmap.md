@@ -83,3 +83,9 @@ The actual API deployment and public URL are deferred. After deployment, configu
 [Issue #42](https://github.com/gonibix23/rx8-telemetry-android/issues/42) tracks 0.14.0-dev: structured API logging, durable delivery feedback, Bluetooth-only Adapter, a trip chart dropdown, configurable Live cards with every metric selectable, visible-app favourite reconnect, and an opt-in floating overlay. Root documentation describes the new behavior; older sections record the previous versions' contracts.
 
 The owner reported successful 0.13.0-dev use and supplied a private stationary start/rev/shutdown trip. Its 457 readings across 30 metrics passed export validation; three readings retain explicit error states. The original capture is not committed. The owner explicitly deferred real database storage verification and will perform it later; it is outside RX8-020. PRs #39-41 introduced the existing image publication and server redeployment workflow.
+
+## RX8-021: clean Live modes and compact overlay
+
+[Issue #44](https://github.com/gonibix23/rx8-telemetry-android/issues/44) tracks 0.15.0-dev: normal/edit Live modes, durable one/two-column layouts, adapter details in Adapter, and compact hold-to-dismiss floating readings. Acquisition and trip coverage remain independent of selected Live/overlay cards. Software validation includes a full engine/controller/recorder regression for hidden fields; phone/car checks remain deferred.
+
+Documentation dependency remediation in [PR #45](https://github.com/gonibix23/rx8-telemetry-android/pull/45) is merged and #27 is closed. The same Markdown engine/rules/coverage are retained with a smaller wrapper and a tested KaTeX override; the dated audit has zero known vulnerabilities.

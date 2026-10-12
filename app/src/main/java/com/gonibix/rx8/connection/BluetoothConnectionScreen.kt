@@ -95,6 +95,22 @@ fun BluetoothConnectionScreen(
                 }
             }
             ConnectionStatus(state)
+            if (state.obd.phase != com.gonibix.rx8.obd.ObdPhase.IDLE) Text(
+                state.obd.statusMessage, color = if (state.obd.phase == com.gonibix.rx8.obd.ObdPhase.ERROR) AccentColor else MutedColor,
+                style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("adapter_session_diagnostic"),
+            )
+            if (state.obd.adapterIdentity != null || state.obd.protocolLabel != null) {
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    state.obd.adapterIdentity?.let {
+                        Text("Adapter identification: $it", color = MutedColor, style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.testTag("adapter_identification"))
+                    }
+                    state.obd.protocolLabel?.let {
+                        Text("Protocol reported by adapter: $it", color = MutedColor, style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.testTag("adapter_protocol"))
+                    }
+                }
+            }
             FavoriteAdapterControls(state, onSetFavorite, onClearFavorite, onPauseAutomatic, onResumeAutomatic)
             if (!notificationsAllowed && state.phase != BluetoothConnectionPhase.DISCONNECTED) {
                 Text(

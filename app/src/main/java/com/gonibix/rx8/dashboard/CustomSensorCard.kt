@@ -58,21 +58,24 @@ import java.util.Locale
 
 @Composable
 internal fun CustomSensorCard(reading: DashboardReading, config: DashboardCardConfig, stopped: Boolean,
-    onEdit: () -> Unit, modifier: Modifier = Modifier) {
+    onEdit: () -> Unit, modifier: Modifier = Modifier, editingEnabled: Boolean = true, dense: Boolean = false) {
     val currentEdit by rememberUpdatedState(onEdit)
     val suffix = "${reading.ecuId}_${reading.metric.name.lowercase(Locale.ROOT)}"
     val large = config.size == DashboardCardSize.LARGE
     val value = metricDisplayValue(reading)
     val color = if (reading.status == ObdReadingStatus.VALID) WarmWhite else AccentColor
     val progress = metricProgress(reading)
-    Surface(modifier.heightIn(min = if (large) 220.dp else 168.dp)
+    val editingModifier = if (editingEnabled) Modifier
         .pointerInput(Unit) { detectTapGestures(onLongPress = { currentEdit() }) }
-        .semantics { onLongClick("Customize ${reading.metric.label}") { currentEdit(); true } }
+        .semantics { onLongClick("Customize ${reading.metric.label}") { currentEdit(); true } } else Modifier
+    Surface(modifier.heightIn(min = if (large) 220.dp else if (dense) 122.dp else 148.dp)
+        .then(editingModifier)
+        .semantics { contentDescription = "${reading.metric.label}, ECU ${reading.ecuId}" }
         .testTag("dashboard_card_$suffix"), color = CardColor, shape = RoundedCornerShape(18.dp)) {
-        Column(Modifier.padding(if (large) 18.dp else 12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Column(Modifier.padding(if (large) 18.dp else if (dense) 10.dp else 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(reading.metric.label, modifier = Modifier.weight(1f), color = MutedColor, style = MaterialTheme.typography.labelLarge)
-                TextButton(onClick = onEdit, modifier = Modifier.testTag("dashboard_edit_$suffix")
+                if (editingEnabled) TextButton(onClick = onEdit, modifier = Modifier.testTag("dashboard_edit_$suffix")
                     .semantics { contentDescription = "Customize ${reading.metric.label}, ECU ${reading.ecuId}" }) { Text("Edit") }
             }
             if (config.style == DashboardCardStyle.DIAL) {
@@ -89,36 +92,39 @@ internal fun CustomSensorCard(reading: DashboardReading, config: DashboardCardCo
                     SensorNumber(value, reading.metric.unit, large, color, suffix, dialWidth = innerWidth)
                 }
             } else {
-                SensorNumber(value, reading.metric.unit, large, color, suffix)
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    SensorNumber(value, reading.metric.unit, large, color, suffix, availableWidth = maxWidth)
+                }
                 if (config.style == DashboardCardStyle.BAR) Canvas(Modifier.fillMaxWidth().height(14.dp).testTag("dashboard_bar_$suffix")) {
                     drawRoundRect(BorderColor)
                     if (progress != null) drawRect(if (reading.status == ObdReadingStatus.VALID) MintColor else AccentColor,
                         size = Size(size.width * progress, size.height))
                 }
             }
-            if (config.style != DashboardCardStyle.DIGITAL) Text(
+            if (editingEnabled && config.style != DashboardCardStyle.DIGITAL) Text(
                 "Scale ${scaleNumber(reading.metric.minimumValue)}–${scaleNumber(reading.metric.maximumValue)} ${reading.metric.unit}",
                 color = MutedColor, fontSize = 10.sp)
             ReadingStatus(reading, reading.status != ObdReadingStatus.VALID, suffix)
             ReadingAge(reading, stopped, suffix)
-            Text("ECU ${reading.ecuId}", color = MutedColor, fontSize = 11.sp)
+            if (editingEnabled) Text("ECU ${reading.ecuId}", color = MutedColor, fontSize = 11.sp)
         }
     }
 }
 
 @Composable
 private fun SensorNumber(value: String, unit: String, large: Boolean, color: androidx.compose.ui.graphics.Color,
-    suffix: String, dialWidth: Dp? = null) {
+    suffix: String, dialWidth: Dp? = null, availableWidth: Dp? = dialWidth) {
     val digits = value.length.coerceAtLeast(4)
     val preferredSize = (if (large) 66f else 44f).coerceAtMost((if (large) 460f else 210f) / digits).coerceAtLeast(20f)
     val density = LocalDensity.current
-    val size = dialWidth?.let { width ->
+    val size = availableWidth?.let { width ->
         // Monospace digits use less than 0.65 em; reserve that width for each character.
         minOf(preferredSize, with(density) { (width / (digits * 0.65f)).toSp().value })
     } ?: preferredSize
     Column(modifier = if (dialWidth == null) Modifier else Modifier.widthIn(max = dialWidth),
         horizontalAlignment = if (dialWidth == null) Alignment.Start else Alignment.CenterHorizontally) {
         Text(value, color = color, fontFamily = FontFamily.Monospace, fontSize = size.sp, lineHeight = (size + 5).sp,
+            maxLines = 1, softWrap = false,
             modifier = Modifier.testTag("dashboard_value_$suffix"))
         Text(unit, color = MutedColor, style = MaterialTheme.typography.bodySmall)
     }
@@ -151,7 +157,7 @@ internal fun CardEditor(config: DashboardCardConfig, position: Int, total: Int, 
                         modifier = Modifier.testTag("card_overlay_selected"))
                     Text("Show in floating panel")
                 }
-                Text("Up to six floating sensors. Their card size controls the text size. Dial and bar scales are display domains, not engine safety limits.",
+                Text("Up to six floating sensors. Outside the app, hold the panel to close it. Dial and bar scales are display domains, not engine safety limits.",
                     style = MaterialTheme.typography.bodySmall)
                 Row {
                     TextButton({ onMove(-1) }, enabled = position > 0, modifier = Modifier.testTag("card_move_up")) { Text("Move up") }
