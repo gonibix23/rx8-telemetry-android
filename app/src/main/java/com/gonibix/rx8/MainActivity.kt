@@ -201,7 +201,8 @@ class MainActivity : ComponentActivity() {
                 val capabilityState by capabilityReportViewModel.uiState.collectAsStateWithLifecycle()
                 // Keep document registration stable while tabs change or the Activity is recreated.
                 val capabilityExport = rememberCapabilityReportExportAction(capabilityReportViewModel)
-                LaunchedEffect(binder, appForeground, sessionState?.automaticConnectionReady, pendingConnection, notificationPermissionPending) {
+                LaunchedEffect(binder, appForeground, sessionState?.automaticConnectionReady,
+                    sessionState?.automaticConnectionRequestId, pendingConnection, notificationPermissionPending) {
                     if (binder != null && appForeground) {
                         if (pendingConnection == null && sessionState?.automaticConnectionReady == true) {
                             requestSessionConnection(automatic = true)

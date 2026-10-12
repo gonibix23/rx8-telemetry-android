@@ -704,7 +704,9 @@ class BluetoothSessionServiceTest {
         awaitMain { favoriteAdapter.preference.paused && !binding.binder.hasForegroundSession }
         assertEquals(device.address, favoriteAdapter.preference.adapter!!.address)
         assertEquals(tripVehicle, persistedVehicle)
+        val stoppedRequestId = binding.binder.controller.uiState.value.automaticConnectionRequestId
         main { binding.binder.resumeAutomaticConnection() }
+        awaitMain { binding.binder.controller.uiState.value.automaticConnectionRequestId > stoppedRequestId }
         awaitUi("Resume should reconnect") { binding.binder.controller.uiState.value.obd.phase == ObdPhase.LIVE }
         main { binding.binder.disconnect() }
         awaitMain { favoriteAdapter.preference.paused && !binding.binder.hasForegroundSession }
@@ -790,7 +792,7 @@ class BluetoothSessionServiceTest {
             main {
                 bindings.lastOrNull { it.bound }?.binder?.controller?.uiState?.value?.let {
                     stateSummary = "attempts=${gateway.attempts}, phase=${it.phase}, availability=${it.availability}, " +
-                        "automaticReady=${it.automaticConnectionReady}, scanning=${it.isScanning}, " +
+                        "automaticReady=${it.automaticConnectionReady}, requestId=${it.automaticConnectionRequestId}, scanning=${it.isScanning}, " +
                         "favoriteSet=${it.favoriteAdapter != null}, paused=${it.favoriteAutoConnectPaused}, " +
                         "loading=${it.favoritePreferenceLoading}, saving=${it.favoritePreferenceSaving}, obd=${it.obd.phase}"
                 }

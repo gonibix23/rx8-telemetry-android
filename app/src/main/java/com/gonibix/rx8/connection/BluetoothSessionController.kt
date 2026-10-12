@@ -43,6 +43,8 @@ data class BluetoothConnectionUiState(
     val discoveryMessage: String? = null,
     val obd: ObdSessionSnapshot = ObdSessionSnapshot(),
     val automaticConnectionReady: Boolean = false,
+    /** A new eligible opportunity survives StateFlow/Compose conflating an intervening false. */
+    val automaticConnectionRequestId: Long = 0L,
     val isAwaitingVehicle: Boolean = false,
     val automaticMessage: String? = null,
     val favoriteAdapter: AdapterDevice? = null,
@@ -513,7 +515,14 @@ class BluetoothSessionController(
     }
 
     internal fun setAutomaticConnectionReady(ready: Boolean) {
-        if (!closed.get()) mutableState.value = mutableState.value.copy(automaticConnectionReady = ready)
+        if (closed.get()) return
+        val previous = mutableState.value
+        mutableState.value = previous.copy(
+            automaticConnectionReady = ready,
+            automaticConnectionRequestId = if (ready && !previous.automaticConnectionReady) {
+                previous.automaticConnectionRequestId + 1L
+            } else previous.automaticConnectionRequestId,
+        )
     }
 
     internal fun setFavoriteState(preference: FavoriteAdapterPreference, loading: Boolean, saving: Boolean, message: String? = null) {
