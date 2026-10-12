@@ -2,13 +2,13 @@
 
 ## Status
 
-Version 0.12.1-dev adds search to the dashboard sensor picker. It implements automatic real-car sessions, a broader verified standard scalar catalog and a real RPM dial. It retains paged history, vehicle filtering, offline charts/exports, capability snapshots, explicit vehicle identity and disabled API preparation. Production navigation has four tabs; synthetic telemetry is confined to development fixtures.
+Version 0.13.0-dev adds an independently developed Atlas API and optional completed-trip uploads. Sensor search remains available. It implements automatic real-car sessions, a broader verified standard scalar catalog and a real RPM dial. It retains paged history, vehicle filtering, offline charts/exports, capability snapshots, explicit vehicle identity and immutable upload work. Production navigation has four tabs; synthetic telemetry is confined to development fixtures.
 
 The visible app attempts a privately saved successful Classic adapter once per process when permission and Bluetooth are available. A connected socket continues directly into ELM initialization and a journey for the selected persisted vehicle. Socket success remains distinct from ECU communication. Connection/acquisition/recording continue across tabs, background and lock through the foreground service.
 
 The reference hardware is the European 2004 RX-8, 231 PS, Samsung A53 on Android 16 and iLC B0BDRHRR22. The user reported working Bluetooth, live readings over ISO 15765-CAN (11 bit, 500 kbaud), and broad success of earlier increments through 0.10.0-dev. Those reports do not establish new sensor support, individual lifecycle scenarios or measured rates/battery behavior. New phone validation is deferred.
 
-The diagram includes future API integration. Local storage, pending work and isolated synchronization logic exist; no HTTP transport, upload worker, server or remote database is enabled. No GPS is collected.
+The diagram shows local-first storage and configurable synchronization after trips end. Actual server deployment is deferred. No GPS is collected.
 
 ## Components
 
@@ -24,11 +24,13 @@ flowchart LR
   DB --> UI
   DB --> Export[Export]
   DB --> Outbox[Persistent queue]
-  Outbox -. Future integration .-> API[API]
+  Outbox --> Worker[Network-constrained work]
+  Worker --> API[Anonymous HTTPS API]
+  API --> Atlas[(MongoDB Atlas)]
 ```
 
 Use Kotlin and Jetpack Compose for the interface, ViewModel/StateFlow for its state, and coroutines for asynchronous work.
-Room stores vehicle profiles, active selection, trips, samples, and synchronization preparation; dashboard favorites use private SharedPreferences. Broader settings and real uploads remain future work.
+Room stores vehicle profiles, active selection, trips, samples, and synchronization preparation; dashboard favorites use private SharedPreferences. Private synchronization settings retain the configured HTTPS server identity. Broader acquisition/storage settings remain future work.
 Components can start as packages; there is no need to create a Gradle module for each component from day one.
 
 ## Transport and OBD engine
@@ -148,7 +150,7 @@ Android backups and device transfer are excluded. Clearing app data or reinstall
 On Android 12/API 31 and later, connecting requires `BLUETOOTH_CONNECT`, and discovery also requires `BLUETOOTH_SCAN`, through Nearby devices runtime prompts.
 Scan access uses `neverForLocation`; the app does not derive physical location from scan results.
 On API 26-30, legacy `BLUETOOTH` and `BLUETOOTH_ADMIN` apply, and discovery requires foreground fine-location permission and enabled location services.
-Those legacy permissions are limited to API 30. Android 12+ does not request location permission. No GPS collection, advertising, or Internet permission is implemented.
+Those legacy permissions are limited to API 30. Android 12+ does not request location permission. No GPS collection or advertising is implemented. INTERNET and network-state access support optional API synchronization, without a runtime permission prompt.
 Android can present pairing during connection. Bluetooth and permission settings remain available for recovery.
 See Android's [Bluetooth permission guidance](https://developer.android.com/develop/connectivity/bluetooth/bt-permissions).
 
@@ -172,7 +174,7 @@ Automatic start initially has no detected protocol. Its first known protocol is 
 
 Stop recording completes the trip while acquisition continues and suppresses automatic restart for that connection. Explicit manual start can resume as a separate journey. Disconnect/notification Stop completes; loss/OBD failure interrupts. A fresh connection creates a new journey and never joins across the gap. Startup marks unfinished rows interrupted using the last saved reading or the start of an empty trip, not a guessed termination time. It never appends to the old trip.
 
-Journeys contain telemetry only, without GPS. WorkManager remains reserved for future synchronization.
+Journeys contain telemetry only, without GPS. WorkManager runs network-constrained completed-trip synchronization independently of Bluetooth acquisition.
 
 ### Trip summaries and charts
 
@@ -192,23 +194,29 @@ Each selected series reads pages of at most 500 samples and retains at most 500 
 
 The Activity-owned Trips ViewModel loads summaries and selected series separately. Selection cancels previous chart work and advances a generation token; trip changes, closing details, and successful deletion invalidate outstanding work. Both generation and selected identity must match before accepting a result, including A-to-B-to-A changes and reopening the same trip. Chart errors retain the trip overview and offer a chart-only retry. Activity recreation retains selection; process-death restoration is not promised. Analysis and export support coroutine cancellation and reject broken page ordering or foreign-trip samples. History navigation does not change chart analysis, export v1, acquisition, or API preparation.
 
-## Current API preparation
+## Completed-trip synchronization
 
-RX8-008 introduces pure Kotlin versioned wire models, explicit field/unit/quality mapping, a transport interface, a disabled transport, an isolated coordinator, and a durable Room store. No HTTP client or fake server is packaged in the app. `TripRuntime` exposes a production `RoomSyncStore` only for the Trips status query; it does not create or schedule a coordinator.
+Pure Kotlin v1 DTOs and deterministic JSON retain explicit field/unit/quality mapping. `RoomTripRepository.append` commits the original sample and its pending reference together. Profile and trip mutations freeze metadata revisions atomically; retries never regenerate an older body from current data. Legacy app versions and unconfirmed vehicle specifications stay null.
 
-`RoomTripRepository.append` inserts immutable samples and pending sample references in the same transaction. Vehicle create/rename/VIN attachment and trip start/protocol-discovery/finish/recovery create immutable metadata snapshots in their source transaction. Selection alone is not a metadata revision. A recording session has null wire end/duration; finish/recovery increments its revision so an old retry cannot reopen it. New recordings snapshot their app version. Legacy versions and unconfirmed make/model/year/market/power remain null.
+The production HTTPS transport sends the exact prepared body to the configured server, refuses redirects, bounds response size and strictly decodes ACKs. A real Room store requires this concrete transport; fake acknowledgments remain isolated in test stores. The endpoint starts absent and its durable identity is locked before its first attempt. Pause/resume retains identity, preventing prior acknowledgments from being silently reassigned to another server.
 
-`sync_samples` references original samples instead of duplicating the history. `sync_work` retains immutable JSON for metadata revisions and prepared batches, attempts, retry time, lease identity/expiry, state, and a bounded diagnostic code. Requests are claimed transactionally in vehicle/session/sample dependency order. Batches use configurable sample and UTF-8 byte bounds. A lost response reuses the exact saved payload and identity; partial ACKs or splitting create new batches without editing previously attempted bodies.
+WorkManager requires connectivity and processes bounded work in vehicle/session/sample dependency order. Terminal eligibility covers both prepared requests and unbatched sample references. Completed/interrupted trips may replay their historical recording metadata revisions before the closing revision; active local trips cannot be sent. Samples wait for all required session metadata acknowledgments. Finishing and startup recovery schedule delivery after commits, including metadata-only empty trips.
 
-An entire response must match its request before any acknowledgment is committed. Only explicit stored/already_stored sample results acknowledge delivery. Rejected samples are blocked; omitted samples remain pending. Expired leases can be reclaimed, and stale or deleted work cannot be acknowledged by a late response. Conflicts/permanent failures preserve local data. The coordinator applies bounded retry delays and supports Retry-After; future HTTP parsing/authentication remains outside this increment.
+Each run starts at most 250 requests and stops starting requests after four monotonic minutes. The last started request retains its ten-second timeout. This permits large saved trips to progress without excessive delays between small chunks while keeping each background run bounded. Pending retry times remain enforced by Room.
 
-The disabled transport and the coordinator's non-isolated-store guard return before claiming or mutating work. Fake-server exercises use isolated fixtures only, including persistence/restart tests. There is no Internet permission, endpoint, credential, WorkManager job, upload switch, or route by which these tests mark production samples uploaded.
+Leases, immutable batch membership, per-sample ACK validation and retry backoff remain durable. An entire response must match its request before any ACK is committed. Only stored/already_stored sample results confirm delivery. Partial ACKs and oversized requests create new batches without changing attempted bodies. Offline work remains local; storage and queue failures do not become empty-history claims. Explicit retry can recover exhausted transient attempts, while permanent conflicts remain blocked.
 
-Trips queries sample-state totals independently of history loading and labels uploads disabled. The count is a last-refresh snapshot, not a per-reading database subscription. Query errors remain explicit without changing the history or manufacturing zero counts. See [the contract](api-contract.md) for wire fields, states, limits, and the future integration boundary.
+### API development and storage
+
+The independently buildable `api/` package uses TypeScript, Fastify and the official MongoDB driver. There is no login/authentication flow as requested; resource UUIDs are identifiers, not credentials. The HTTPS reverse proxy and actual server deployment are configured later. Atlas credentials belong only to backend environment configuration, excluded from version control and the APK.
+
+Vehicle and session revisions reject conflicting content, immutable identity changes and terminal-to-recording transitions. Transactional batch writes preserve each sample's content, prevent duplicate session sequences and retain idempotency results. Unique indexes protect resource/sample/batch identities. Durable ACKs follow transaction commits; a lost response is retried with unchanged IDs/body. Read routes use bounded keyset pages. Health/readiness checks reveal no credentials or telemetry.
+
+Tests use disposable MongoDB replica sets and synthetic data, never the owner's Atlas database. Root CI validates Android, documentation and API independently. See [the API contract](api-contract.md) and [backend setup](../api/README.md) for routes, validation, deployment and operational limits.
 
 ## Retention and export
 
-Trips remain stored until explicitly deleted. Deletion requires confirmation and removes that trip, its samples, and related pending/prepared work in a transaction; it does not delete vehicle profiles or previously exported files. Database space may be retained for reuse rather than immediately shrinking the file. Local deletion is not a request to a future server.
+Trips remain stored until explicitly deleted. Deletion requires confirmation and removes that trip, its samples, and related pending/prepared work in a transaction; it does not delete vehicle profiles or previously exported files. Database space may be retained for reuse rather than immediately shrinking the file. Local deletion does not delete server copies.
 
 The user chooses a JSON or CSV destination through Android's document picker, without a broad storage permission or automatic upload. Exports stream sequence-ordered pages instead of materializing the full history. Success is reported only after writing, flushing, and closing the destination; a failed or cancelled write may leave a partial file and is not reported as saved.
 

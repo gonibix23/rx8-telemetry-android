@@ -2,7 +2,7 @@
 
 Android app in development for viewing live vehicle data and recording trips without an Internet connection.
 
-**Current implementation (0.12.1-dev): automatic connection, reading and telemetry journeys; a much broader standard OBD sensor catalog; a real RPM dashboard; and paged trip history with vehicle filters. Uploads remain disabled.**
+**Current implementation (0.13.0-dev): offline Android telemetry and an independently developed MongoDB Atlas API in the same repository. Configure an HTTPS server URL to upload finished trips automatically, without a login. Deployment is deferred.**
 
 The four tabs are **Adapter**, **Live**, **Trips**, and **Vehicles**, with single-line labels. The Simulator tab has been removed; its RPM dial now displays real per-ECU readings in Live. Synthetic data remains confined to development fixtures.
 
@@ -20,7 +20,7 @@ Acquisition and recording continue across tabs, backgrounding, screen lock and A
 
 **Trips** records every fresh supported reading, independently of visible cards or favorite choices. History shows up to 50 trips per page, with Newer/Older/Newest controls and a vehicle filter independent of recording selection. Refresh, details, tabs and Activity recreation preserve browsing context. Finished trips provide metric/ECU charts, full-stream statistics, estimated distance, JSON/CSV export to a chosen document destination, and confirmed deletion. Distance is an estimate, not an odometer reading.
 
-Everything stays local: no GPS, Internet permission, backend or uploads. Future API models and pending work are prepared, with uploads visibly disabled. Exports omit VIN/MAC but include vehicle IDs/names, timestamps and readings. Profiles, selections, favorites and trips persist; backups/device transfer and import/restore are not implemented. Clearing app data or reinstalling loses saved data.
+Recording, charts and history work offline. Trips stay saved on the phone; a configured HTTPS API receives completed/interrupted journeys when network access is available. With no server configured, data waits locally. MongoDB credentials belong only to the API. No GPS is collected. Exports omit VIN/MAC but include vehicle IDs/names, timestamps and readings. Profiles, selections, favorites and trips persist; backups/device transfer and import/restore are not implemented. Clearing app data or reinstalling loses saved data.
 On October 10, 2026, the user reported that the app worked after testing the simulator foundation.
 The user confirmed that the Samsung A53 runs Android 16. The paired-only Bluetooth build failed to list the adapter.
 The user reports that Car Scanner finds it through an in-app search with plain Bluetooth selected, displaying OBDII and its MAC address.
@@ -48,16 +48,17 @@ A working simulator does not prove that the adapter or car supports any particul
 - Vehicle profile with a permanent ID and an optional vehicle identification number (VIN).
 - Automatic journeys for the selected vehicle, with Stop recording, manual resume, local history, charts, and export.
 - Service-owned acquisition and recording through screen lock, with explicit Disconnect and notification Stop controls.
-- Data models and a queue for a future API, with uploads disabled.
+- Durable local uploads with a configurable HTTPS URL, completed-trip gating and network-constrained retries.
+- Separate TypeScript API in `api/`, storing vehicles, sessions and readings in MongoDB Atlas without a login.
 
 These features describe the implemented MVP scope; detailed phone checks remain pending.
-Fault diagnostics, Mazda-specific sensors, GPS/maps, and a server are deferred to later phases.
+Fault diagnostics, Mazda-specific sensors, GPS/maps, and actual server deployment are deferred.
 The first version does not include actuator control, ECU reprogramming, or clearing fault codes.
 
 ## Getting started
 
 Open the repository in Android Studio with JDK 17 or 21 and Android SDK Platform 36.
-The project contains the Android `:app` module and the pure Kotlin `:core:telemetry` module.
+Android development uses `:app` and the pure Kotlin `:core:telemetry` module. API development has its own package, lockfile, tests and deployment files in [`api/`](api/README.md); it does not depend on the Android toolchain.
 
 See [Development](docs/development.md) for pinned tool versions, SDK setup, automatic session behavior, build commands, and pending device checks.
 Build and test results belong in the relevant PR; setup instructions alone are not evidence that checks passed.
@@ -68,8 +69,8 @@ Build and test results belong in the relevant PR; setup instructions alone are n
 | --- | --- |
 | [Development](docs/development.md) | Android setup, automatic sessions, commands, and device validation |
 | [Product](docs/product.md) | Target scope, screens, and acceptance criteria |
-| [Architecture](docs/architecture.md) | Transport, OBD, local profiles/trips, pending work, and future upload boundaries |
-| [API contract](docs/api-contract.md) | Future integration design; not an existing service |
+| [Architecture](docs/architecture.md) | Transport, OBD, local records and completed-trip synchronization |
+| [API contract](docs/api-contract.md) | Implemented anonymous v1 API, wire acknowledgments and local export formats |
 | [Capability reports](docs/capability-report.md) | Snapshot semantics, privacy exclusions, and explicit JSON export |
 | [Roadmap](docs/roadmap.md) | Phases, current status, priorities, and dependencies |
 | [Hardware validation](docs/hardware-validation.md) | Evidence needed to confirm compatibility |
@@ -91,13 +92,14 @@ Each issue has a scope and acceptance criteria. Implementation changes go throug
 [RX8-005](https://github.com/gonibix23/rx8-telemetry-android/issues/5) tracks permanent vehicle profiles and optional VINs, implemented in merged [PR #15](https://github.com/gonibix23/rx8-telemetry-android/pull/15). Its device checks remain open.
 [RX8-006](https://github.com/gonibix23/rx8-telemetry-android/issues/6) tracks the dashboard, saved favorites, and pending A53 layout checks.
 [RX8-007](https://github.com/gonibix23/rx8-telemetry-android/issues/7) tracks trip recording, offline history, exports, and pending device validation.
-[RX8-008](https://github.com/gonibix23/rx8-telemetry-android/issues/8) tracks versioned API models, the persistent queue, and isolated retry/ACK tests. No backend is deployed or contacted.
+[RX8-008](https://github.com/gonibix23/rx8-telemetry-android/issues/8) tracks versioned API models, the persistent queue, and isolated retry/ACK tests. The original preparation shipped without a backend. RX8-017 now implements synchronization; deployment remains deferred.
 [RX8-010](https://github.com/gonibix23/rx8-telemetry-android/issues/21) adds the capabilities view and report to help collect evidence for future sensor work.
 [RX8-012](https://github.com/gonibix23/rx8-telemetry-android/issues/24) adds offline trip charts selectable by recorded metric and ECU.
 [RX8-014](https://github.com/gonibix23/rx8-telemetry-android/issues/28) adds bounded history pages, an independent vehicle filter, and an index-only Room 3-to-4 upgrade in merged [PR #30](https://github.com/gonibix23/rx8-telemetry-android/pull/30). Existing saved trips and pending work remain local.
 [RX8-015](https://github.com/gonibix23/rx8-telemetry-android/issues/29) is merged in [PR #31](https://github.com/gonibix23/rx8-telemetry-android/pull/31) for 0.12.0-dev: automatic connection, acquisition and journeys, broader standard readings, the real RPM dial, and four single-line tabs.
 [PR #25](https://github.com/gonibix23/rx8-telemetry-android/pull/25) is merged after the user reported that 0.10.0-dev works well. This is broad build confirmation; individual phone scenarios remain tracked in RX8-012. [RX8-011](https://github.com/gonibix23/rx8-telemetry-android/issues/23) maintains the automated build/test environment without changing the app version.
 [RX8-016](https://github.com/gonibix23/rx8-telemetry-android/issues/32) adds sensor search and selection feedback in 0.12.1-dev.
+[RX8-017](https://github.com/gonibix23/rx8-telemetry-android/issues/34) adds the Atlas API and offline completed-trip uploads. The user broadly confirmed 0.12.1-dev works perfectly before requesting this increment.
 [RX8-001](https://github.com/gonibix23/rx8-telemetry-android/issues/1) tracks separate validation with the real car and adapter.
 
 ## Documentation checks

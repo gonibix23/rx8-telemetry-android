@@ -12,11 +12,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import com.gonibix.rx8.ui.theme.AccentColor
 import com.gonibix.rx8.ui.theme.CardColor
 import com.gonibix.rx8.ui.theme.MutedColor
 
-/** Read-only local preparation status; this component has no synchronization action. */
+/** Sample acknowledgment counts are independent of settings and metadata delivery. */
 @Composable
 internal fun TripSyncStatusCard(
     status: TripSyncStatus,
@@ -29,9 +28,8 @@ internal fun TripSyncStatusCard(
         shape = RoundedCornerShape(16.dp),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-            Text("Future uploads", style = MaterialTheme.typography.titleMedium)
-            Text("Uploads disabled", color = AccentColor, modifier = Modifier.testTag("trip_sync_disabled"))
-            Text("Recorded samples stay on this device. No server is configured.", color = MutedColor, style = MaterialTheme.typography.bodySmall)
+            Text("Saved sample queue", style = MaterialTheme.typography.titleMedium)
+            Text("These counts describe samples, not complete trips or vehicle details. A zero waiting count does not confirm that everything was uploaded.", color = MutedColor, style = MaterialTheme.typography.bodySmall)
             when {
                 status.isLoading -> Text("Reading local status…", color = MutedColor, modifier = Modifier.testTag("trip_sync_loading"))
                 status.error != null -> Text(status.error, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("trip_sync_error"))
@@ -45,14 +43,13 @@ internal fun TripSyncStatusCard(
                 }
                 else -> Text("Local status is not available. Refresh Trips to try again.", color = MutedColor, modifier = Modifier.testTag("trip_sync_error"))
             }
-            if (isRecording) {
-                Text(
-                    "Counts are from the last refresh. Refresh Trips after recording to update them.",
-                    color = MutedColor,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.testTag("trip_sync_snapshot"),
-                )
-            }
+            Text(
+                if (isRecording) "Counts are from the last refresh. The current trip waits until recording has finished."
+                else "Counts are from the last refresh. Refresh Trips to update them; saved trips stay on this device.",
+                color = MutedColor,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.testTag("trip_sync_snapshot"),
+            )
         }
     }
 }

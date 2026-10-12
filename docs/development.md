@@ -2,14 +2,15 @@
 
 ## Current implementation
 
-Version 0.12.1-dev (code 14) adds search to the sensor picker alongside automatic connection/read/recording, a broad standard scalar OBD catalog and the real RPM dial. The four tabs are Adapter, Live, Trips and Vehicles. History pages and independent vehicle filtering from 0.11.0-dev remain available. Phone validation is deferred at the user's request; record actual software outcomes in each PR.
+Version 0.13.0-dev (code 15) adds a separately developed Atlas API and optional offline completed-trip synchronization. The user broadly confirmed 0.12.1-dev works perfectly. Sensor search remains available alongside automatic connection/read/recording, a broad standard scalar OBD catalog and the real RPM dial. The four tabs are Adapter, Live, Trips and Vehicles. History pages and independent vehicle filtering from 0.11.0-dev remain available. Phone validation is deferred at the user's request; record actual software outcomes in each PR.
 
 | Module | Responsibility |
 | --- | --- |
-| `:app` | Compose screens, foreground Bluetooth/OBD, automatic journeys, Room records, offline charts/exports and disabled API preparation |
+| `:app` | Compose screens, foreground Bluetooth/OBD, automatic journeys, Room records, offline charts/exports and optional completed-trip uploads |
+| `api/` | Independent TypeScript API, MongoDB storage, bounded reads, deployment packaging and isolated integration tests |
 | `:core:telemetry` | Pure standard OBD/VIN parsing, verified metric definitions, VIN validation and deterministic test telemetry |
 
-Synthetic fixtures have no production navigation destination and never feed the recorder. No GPS, Internet permission, upload worker or backend is included.
+Synthetic fixtures have no production navigation destination and never feed the recorder. No GPS is collected. The API is implemented separately; server deployment is deferred.
 
 ## Toolchain
 
@@ -27,14 +28,15 @@ Use the checked-in Gradle wrapper rather than a separately installed Gradle vers
 | Android SDK Build-Tools | 35.0.0, the Android Gradle Plugin default |
 | Compose BOM | 2025.12.01 |
 | Room runtime/compiler/plugin | 2.8.5 |
+| WorkManager | 2.11.2 |
 | Kotlin Symbol Processing (KSP) | 2.3.10 |
 
 A first build needs Internet access to download dependencies.
-The app does not request Internet access; acquisition, profiles, saved-trip history, and local document export work without it.
+The app requests Internet access for optional synchronization. Acquisition, profiles, saved-trip history and local document export work without network access or API configuration.
 
 ## Continuous integration environment
 
-All three repository-check jobs use the explicit `ubuntu-24.04` x64 GitHub-hosted runner. This avoids automatic OS migrations through `ubuntu-latest`; runner software and installed image packages still receive updates. Linux runners support Android hardware acceleration. The emulator job retains the KVM permission rule and API 36 Google APIs x86_64 image, with the documented `swiftshader` software renderer instead of deprecated `swiftshader_indirect`. Its explicit `-no-metrics` option disables emulator metrics collection and avoids a future interactive consent prompt in unattended CI.
+All four repository-check jobs use the explicit `ubuntu-24.04` x64 GitHub-hosted runner. This avoids automatic OS migrations through `ubuntu-latest`; runner software and installed image packages still receive updates. Linux runners support Android hardware acceleration. The emulator job retains the KVM permission rule and API 36 Google APIs x86_64 image, with the documented `swiftshader` software renderer instead of deprecated `swiftshader_indirect`. Its explicit `-no-metrics` option disables emulator metrics collection and avoids a future interactive consent prompt in unattended CI.
 
 The workflow pins actions to full commit SHAs from these stable releases, verified on October 11, 2026:
 
@@ -51,6 +53,8 @@ The workflow pins actions to full commit SHAs from these stable releases, verifi
 Node 24 actions require Actions Runner 2.327.1 or newer, provided by GitHub-hosted runners. Their embedded runtime is independent of the installed project tools: documentation still uses Node 22 with `npm ci`, and Android uses Temurin 17 and the Gradle 8.13 wrapper. Command-line tools remain pinned to `13114758` (19.0) in an isolated SDK directory, with SDK 36 and Build-Tools 35.0.0. The emulator action additionally installs Build-Tools 37; that does not change the app's AGP-selected Build-Tools version.
 
 Gradle explicitly uses `cache-provider: basic` to retain Actions cache behavior instead of opting into the newer enhanced cache. Artifact uploads explicitly retain ZIP archives, existing names, and 14-day APK / seven-day report retention. Build and UI reports are collected even on failure. All eleven screenshots remain required, including the history browsing fixture; neither passing screenshot capture nor report upload can hide a failing test run. Workflow permissions remain `contents: read`, and checkout does not persist credentials.
+
+The independent API job uses Node 22 and `api/package-lock.json`, runs type/catalog checks, builds, unit/HTTP tests and real MongoDB integration tests on a disposable local replica set, then builds the production container. It receives no Atlas credentials. The API's exact dependencies and commands are documented in [`api/`](../api/README.md).
 
 When updating this baseline, run documentation checks, all JVM tests, lint, both debug APK assemblies, and the complete Android 16 suite. Inspect every screenshot and the final run's annotations. Record remaining upstream notices in the PR: an older Gradle wrapper notice or package advisory is separate from action-runtime deprecation. Do not describe a run as warning-free without checking it. A CI-only update does not require a new application version or phone test.
 
@@ -162,7 +166,7 @@ Stop/disconnect releases resources after the trip's final writes. `START_NOT_STI
 
 VIN support on the actual car remains unverified. NO DATA, unsupported, or malformed complete replies allow sensor polling to continue; a timeout or missing prompt closes the link and requires manual reconnection.
 VIN validation checks format, not ownership, check digit, or vehicle specifications. A Bluetooth MAC is never a vehicle ID.
-Profiles, their active selection, dashboard favorites, and recorded trips/samples are saved. Finished-trip export and deletion are available in Trips. Profile deletion, uploads, and app import/restore remain unimplemented.
+Profiles, their active selection, dashboard favorites, and recorded trips/samples are saved. Finished-trip export, deletion and configurable completed-trip uploads are available in Trips. Profile deletion and app import/restore remain unimplemented.
 Backups/device transfer are disabled. Clearing app data or reinstalling removes the saved UUIDs, with no current recovery workflow.
 
 Room schema version 3 adds API metadata revisions, recording app version, and pending work through an explicit 2-to-3 migration. Version 4 adds only two composite history indexes through a 3-to-4 migration. The complete 1-to-2-to-3-to-4 chain is retained. Existing profiles, selection, trips, samples, metadata revisions, and queue state survive the index upgrade. Legacy samples become pending during the earlier 2-to-3 migration, and old recording app versions remain unknown. Exported schemas remain under `app/schemas`. Future database changes need explicit migrations; destructive migration fallback is prohibited.
@@ -186,19 +190,21 @@ Use the current update with existing app data intact; do not clear the user's da
 History shows one page of up to 50 sessions, ordered newest first by start time and trip ID. Choose Older or Newer to browse, or Newest to return to the latest matching trips. Refresh reloads the current page and refreshes storage/queue information independently. The vehicle filter defaults to All vehicles and uses stable IDs; it does not change the selected recording profile. Filter choices use current names and distinguish identities, while existing trips keep their recorded names. A filter with no matches is different from a load failure; Retry repeats a failed history request. Same-filter failures retain the confirmed page, and obsolete requests cannot replace a newer filter or page.
 
 The Activity-owned ViewModel retains browsing context across details, tabs, the document picker, and recreation. A process restart returns to the newest page for all vehicles. New trips become visible on the newest matching page; an older page does not jump merely because recording changes. Confirmed deletion refills the current page, or returns to newest if the page has become empty. Detailed analysis/export requires a completed or interrupted trip, so sample reads operate on a finished dataset. Recording uses ordered bounded sample buffering; the displayed saved count advances only after database commits. Insufficient space or failed writes stops recording and reports that some samples may not have been saved. A failed history query does not replace stored data with an empty database.
-Exports reveal the vehicle UUID and recorded alias, times, and readings even though they exclude VIN/MAC values. Choose destinations and recipients deliberately. Android backups/device transfer remain disabled; trip export is not an app backup, and import/restore is not implemented. No GPS, simulator recording, backend, Internet permission, or API upload is added.
+Exports reveal the vehicle UUID and recorded alias, times, and readings even though they exclude VIN/MAC values. Choose destinations and recipients deliberately. Android backups/device transfer remain disabled; trip export is not an app backup, and import/restore is not implemented. No GPS or simulator recording is added. API uploads preserve local history and the export format.
 The user broadly confirmed 0.7.0-dev worked, and PR #19 is merged. Detailed measured A53 recording/export/storage scenarios remain open. Unit and Android 16 CI results belong in the PR; this guide makes no new pass-count claim.
 
-## Checking API preparation without a server
+## Checking offline uploads and the API
 
-1. Install 0.8.0-dev over the current app. Keep existing app data so the Room 2-to-3 migration can be checked. Confirm profiles, selected UUID, favorites, and previous trips remain available.
-2. Open Trips and choose Refresh. Future uploads must say Uploads disabled and show the last-refreshed sample counts. Existing recorded samples are included as waiting locally; migration never acknowledges them. A failed status read must remain an error, not zero.
-3. Record and stop a new trip, then refresh. Check that the waiting count includes its saved samples. Background recording and existing offline features should remain usable without API configuration.
-4. Restart the app and verify the count persists. Export an old and a new finished trip; local export schema version 1 is unchanged and does not filter samples by queue state. On a disposable trip, confirm deletion removes its related pending work without affecting other trips or profiles.
+See [`api/README.md`](../api/README.md) for backend-only setup, independent checks and later server deployment. The API has its own lockfile; root `npm ci` installs documentation tools only. Never copy Atlas credentials into Android or committed configuration.
 
-There is no upload button, server URL, account, Internet permission, HTTP client, or scheduled worker. `TripRuntime` exposes only a default non-isolated `RoomSyncStore` to the UI. Do not opt the real database into test synchronization. `SyncCoordinator` refuses a non-isolated store or disabled transport before leasing work; fake-server tests use isolated in-memory or disposable file-backed databases.
+1. Upgrade without clearing app data and confirm saved profiles, UUIDs and trips remain.
+2. With no server URL configured, record and stop a trip offline. Review charts and export it; pending work must remain local and no upload is attempted.
+3. After later HTTPS deployment, enter the server base URL in Trips. Finished historical trips become eligible. An active trip must continue recording locally without upload until its terminal commit.
+4. Disconnect network access before ending a journey. Confirm its local history immediately, then restore connectivity and check eventual server persistence without duplicate IDs after retries.
+5. Pause and resume uploads. The saved server identity must remain; changes to another server after an attempt must be rejected. Check empty completed trips and startup-recovered interrupted trips too.
+6. Invalid ACKs, conflicts and storage failures must remain visible; exports include pending/blocked samples. Deleting a local trip does not imply remote deletion.
 
-The isolated verification covers immutable retries after lost responses, partial/rejected ACKs, malformed/foreign ACKs, 409 conflicts, 413 splits, metadata revisions, expired leases, deletion, restart recovery, and disabled operation. Authentication/HTTPS configuration remains documented future work in [the contract](api-contract.md), with no credentials or deployable endpoint. The user broadly confirmed 0.8.0-dev worked; individual [upgrade checklist](hardware-validation.md#api-preparation-upgrade-checklist-rx8-008) scenarios were not separately reported.
+Full JVM/Room/Android tests exercise isolated storage, strict ACK parsing, terminal gating, immutable retries and settings. Backend integration tests use a disposable replica set, never Atlas credentials. Record actual results in the PR. A database connectivity ping is separate from deploying an API or verifying uploads on the A53.
 
 ## Capturing capabilities without extra requests
 
@@ -234,7 +240,7 @@ The user has confirmed the simulator, Bluetooth connection, and general live rea
 - [Issue #16](https://github.com/gonibix23/rx8-telemetry-android/issues/16) is closed at the user's request with all issue checks complete. The broader hardware checklist still has no measured duration or battery log; this does not reopen the completed fix.
 - [RX8-006](https://github.com/gonibix23/rx8-telemetry-android/issues/6): validate the dashboard layout, favorite persistence/unavailability, ECU separation, simulator preview, and navigation on the A53.
 - [RX8-007](https://github.com/gonibix23/rx8-telemetry-android/issues/7): validate explicit recording, screen lock/background, committed-data recovery, gaps, summaries, document exports, deletion, and storage errors on the A53.
-- [RX8-008](https://github.com/gonibix23/rx8-telemetry-android/issues/8): verify the 0.8.0-dev upgrade, preserved history, local queue counts, exports/deletion, and uploads-disabled behavior on the A53. Real API integration remains a later task.
+- [RX8-008](https://github.com/gonibix23/rx8-telemetry-android/issues/8): verify the 0.8.0-dev upgrade, preserved history, local queue counts, exports/deletion, and uploads-disabled behavior on the A53. RX8-017 adds real integration; actual deployment/phone uploads remain unverified.
 - [RX8-010](https://github.com/gonibix23/rx8-telemetry-android/issues/21): validate capability preview, frozen JSON export, retained stopped state, and continued live/trip operation on the A53.
 - [RX8-012](https://github.com/gonibix23/rx8-telemetry-android/issues/24): the user broadly confirmed 0.10.0-dev works well. Detailed recorded metric/ECU, selection retention, gaps, and overview/export scenarios remain unreported while verified software development continues.
 

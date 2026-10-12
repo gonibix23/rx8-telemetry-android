@@ -1,0 +1,19 @@
+{
+  "name": "rx8-telemetry-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.20.0 <23" },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsc --noEmit && node scripts/catalog.mjs --check",
+    "catalog": "node scripts/catalog.mjs",
+    "test": "tsx --test test/*.test.ts",
+    "test:integration": "tsx --test test/integration/*.test.ts",
+    "start": "node --env-file-if-exists=.env dist/server.js",
+    "dev": "node --env-file-if-exists=.env --import tsx src/server.ts",
+    "check:database": "node --env-file-if-exists=.env --import tsx src/check-database.ts"
+  },
+  "dependencies": { "fastify": "5.12.5", "mongodb": "7.7.0" },
+  "devDependencies": { "@types/node": "22.20.5", "mongodb-memory-server": "11.3.0", "tsx": "4.23.15", "typescript": "7.0.2" }
+}

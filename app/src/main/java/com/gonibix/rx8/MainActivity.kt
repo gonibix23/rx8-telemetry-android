@@ -62,6 +62,8 @@ import com.gonibix.rx8.vehicle.RoomVehicleRepository
 import com.gonibix.rx8.vehicle.VehicleDatabase
 import com.gonibix.rx8.vehicle.VehicleProfileScreen
 import com.gonibix.rx8.vehicle.VehicleProfileViewModel
+import com.gonibix.rx8.sync.SyncRuntime
+import com.gonibix.rx8.sync.SyncSettingsViewModel
 import com.gonibix.rx8.trips.TripRuntime
 import com.gonibix.rx8.trips.TripsViewModel
 import com.gonibix.rx8.trips.TripsScreen
@@ -84,6 +86,15 @@ class MainActivity : ComponentActivity() {
         ViewModelProvider(this)[DashboardPreferencesViewModel::class.java]
     }
     private val tripRuntime by lazy { TripRuntime.get(applicationContext) }
+    private val syncSettingsViewModel by lazy {
+        val runtime = SyncRuntime.get(applicationContext)
+        ViewModelProvider(this, object : ViewModelProvider.Factory {
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                require(modelClass == SyncSettingsViewModel::class.java)
+                return requireNotNull(modelClass.cast(SyncSettingsViewModel(runtime.settingsRepository, runtime.status, runtime::retry)))
+            }
+        })[SyncSettingsViewModel::class.java]
+    }
     private val capabilityReportViewModel by lazy {
         ViewModelProvider(this, object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
@@ -304,6 +315,7 @@ class MainActivity : ComponentActivity() {
                                 tripPresentation.SaveableStateProvider("trips") {
                                     TripsScreen(
                                         viewModel = tripsViewModel,
+                                        syncSettingsViewModel = syncSettingsViewModel,
                                         exportActions = tripExportActions,
                                         selectedVehicle = vehicles.vehicles.profiles.firstOrNull { it.id == vehicles.vehicles.activeVehicleId },
                                         recording = recording,

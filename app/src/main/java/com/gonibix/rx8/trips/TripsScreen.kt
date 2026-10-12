@@ -44,6 +44,9 @@ import com.gonibix.rx8.ui.theme.CardColor
 import com.gonibix.rx8.ui.theme.MintColor
 import com.gonibix.rx8.ui.theme.MutedColor
 import com.gonibix.rx8.vehicle.VehicleProfile
+import com.gonibix.rx8.sync.SyncSettingsPanel
+import com.gonibix.rx8.sync.SyncSettingsUiState
+import com.gonibix.rx8.sync.SyncSettingsViewModel
 import java.io.IOException
 import java.time.Instant
 import java.time.ZoneId
@@ -135,8 +138,10 @@ fun TripsScreen(
     historyVehicles: List<VehicleProfile> = emptyList(),
     automaticMessage: String? = null,
     canStop: Boolean = true,
+    syncSettingsViewModel: SyncSettingsViewModel? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val syncSettings = syncSettingsViewModel?.uiState?.collectAsStateWithLifecycle()?.value
     LifecycleStartEffect(viewModel) {
         viewModel.refresh()
         onStopOrDispose { }
@@ -169,6 +174,10 @@ fun TripsScreen(
         onRetryHistory = viewModel::retryHistory,
         automaticMessage = automaticMessage,
         canStop = canStop,
+        syncSettings = syncSettings,
+        onSaveSyncSettings = { url, enabled -> syncSettingsViewModel?.save(url, enabled) },
+        onRetryUploads = { syncSettingsViewModel?.retry() },
+        onReloadSyncSettings = { syncSettingsViewModel?.load() },
     )
 }
 
@@ -202,6 +211,10 @@ internal fun TripsContent(
     onRetryHistory: () -> Unit = {},
     automaticMessage: String? = null,
     canStop: Boolean = true,
+    syncSettings: SyncSettingsUiState? = null,
+    onSaveSyncSettings: (String?, Boolean) -> Unit = { _, _ -> },
+    onRetryUploads: () -> Unit = {},
+    onReloadSyncSettings: () -> Unit = {},
 ) {
     var deleteId by rememberSaveable(state.historyVehicleId, state.historyRevision, state.selectedTripId) { mutableStateOf<String?>(null) }
     val historyScroll = rememberLazyListState()
@@ -213,7 +226,7 @@ internal fun TripsContent(
             shownRevision = state.historyRevision
             shownFilter = state.historyVehicleId
             // The history header follows recording, storage, and the optional upload status.
-            historyScroll.scrollToItem(if (state.syncStatus == null) 3 else 4)
+            historyScroll.scrollToItem(if (state.syncStatus == null && syncSettings == null) 3 else 4)
         }
     }
     BackHandler(enabled = state.selectedTripId != null && deleteId == null) { onCloseDetails() }
@@ -224,7 +237,7 @@ internal fun TripsContent(
         AlertDialog(
             onDismissRequest = { if (!state.isDeleting) deleteId = null },
             title = { Text("Delete this trip?") },
-            text = { Text("Delete ${deletion.vehicleAlias}'s trip from ${tripDate(deletion.startedAtEpochMillis)} and all its saved samples? This cannot be undone. Exported files are not deleted.") },
+            text = { Text("Delete ${deletion.vehicleAlias}'s trip from ${tripDate(deletion.startedAtEpochMillis)} and all its saved samples from this device? This cannot be undone. Exported files and server copies are not deleted.") },
             confirmButton = {
                 TextButton(
                     enabled = deletable,
@@ -245,7 +258,7 @@ internal fun TripsContent(
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text("LOCAL · OFFLINE", color = MintColor, style = MaterialTheme.typography.labelMedium)
                 Text("Trips", style = MaterialTheme.typography.headlineMedium)
-                Text("Automatic telemetry journeys for the selected vehicle. No GPS or uploads.", color = MutedColor, style = MaterialTheme.typography.bodySmall)
+                Text("Automatic telemetry journeys for the selected vehicle. Recording and history work offline. No GPS.", color = MutedColor, style = MaterialTheme.typography.bodySmall)
             }
         }
         item {
@@ -289,8 +302,17 @@ internal fun TripsContent(
                 if (state.isExporting || state.isDeleting) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
         }
-        state.syncStatus?.let { status ->
-            item { TripSyncStatusCard(status, isRecording = recording.session != null) }
+        if (state.syncStatus != null || syncSettings != null) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    syncSettings?.let { settings ->
+                        SyncSettingsPanel(settings, onSaveSyncSettings, onRetryUploads, onReloadSyncSettings)
+                    }
+                    state.syncStatus?.let { status ->
+                        TripSyncStatusCard(status, isRecording = recording.session != null)
+                    }
+                }
+            }
         }
         if (state.selectedTripId != null) {
             item {

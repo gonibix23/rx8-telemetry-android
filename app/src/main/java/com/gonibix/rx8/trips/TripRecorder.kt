@@ -9,6 +9,7 @@ import com.gonibix.rx8.obd.SystemObdClock
 import com.gonibix.rx8.vehicle.VehicleProfile
 import java.io.IOException
 import java.util.UUID
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
@@ -26,6 +27,7 @@ class TripRecorder(
     private val appVersion: String? = null,
 ) {
     private sealed interface Command {
+        data class EnsureRecovery(val result: CompletableDeferred<Boolean>) : Command
         data class Start(val session: TripSession) : Command
         data class Protocol(val tripId: String, val label: String) : Command
         data class Samples(val tripId: String, val values: List<TripSample>) : Command
@@ -39,6 +41,15 @@ class TripRecorder(
         var accepting: Boolean = true,
         var protocolQueued: Boolean = session.protocolLabel != null,
     )
+
+    private val initialRecovery = CompletableDeferred<Boolean>()
+    suspend fun awaitInitialRecovery(): Boolean {
+        if (initialRecovery.await()) return true
+        // Retry a failed startup through this owner, serialized with all Start/Stop/sample writes.
+        val result = CompletableDeferred<Boolean>()
+        commands.send(Command.EnsureRecovery(result))
+        return result.await()
+    }
 
     private val lock = Any()
     // Only one Start and Stop can be queued per active trip. Sample count is explicitly bounded.
@@ -58,13 +69,30 @@ class TripRecorder(
                 recovered = true
                 synchronized(lock) { mutableState.value = mutableState.value.copy(revision = mutableState.value.revision + 1) }
             } catch (cancelled: CancellationException) {
+                initialRecovery.cancel(cancelled)
                 throw cancelled
             } catch (_: Exception) {
                 synchronized(lock) { mutableState.value = mutableState.value.copy(error = "Trip storage could not be opened. Try again after freeing storage.") }
             }
+            initialRecovery.complete(recovered)
             for (command in commands) {
                 try {
                     when (command) {
+                        is Command.EnsureRecovery -> {
+                            try {
+                                if (!recovered && persistedId == null) {
+                                    repository.recoverInterrupted()
+                                    recovered = true
+                                    synchronized(lock) { mutableState.value = mutableState.value.copy(revision = mutableState.value.revision + 1) }
+                                }
+                                command.result.complete(recovered)
+                            } catch (cancelled: CancellationException) {
+                                command.result.cancel(cancelled)
+                                throw cancelled
+                            } catch (_: Exception) {
+                                command.result.complete(false)
+                            }
+                        }
                         is Command.Start -> {
                             if (!recovered) {
                                 repository.recoverInterrupted()

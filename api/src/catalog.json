@@ -1,0 +1,722 @@
+{
+  "engine_rpm": {
+    "pid": "0C",
+    "unit": "rpm",
+    "minimum": 0,
+    "maximum": 16383.75
+  },
+  "speed": {
+    "pid": "0D",
+    "unit": "km/h",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "coolant_temperature": {
+    "pid": "05",
+    "unit": "Cel",
+    "minimum": -40,
+    "maximum": 215
+  },
+  "intake_temperature": {
+    "pid": "0F",
+    "unit": "Cel",
+    "minimum": -40,
+    "maximum": 215
+  },
+  "throttle_position": {
+    "pid": "11",
+    "unit": "%",
+    "minimum": 0,
+    "maximum": 100
+  },
+  "engine_load": {
+    "pid": "04",
+    "unit": "%",
+    "minimum": 0,
+    "maximum": 100
+  },
+  "short_term_fuel_trim_bank_1": {
+    "pid": "06",
+    "unit": "%",
+    "minimum": -100,
+    "maximum": 99.21875
+  },
+  "short_term_fuel_trim_bank_3": {
+    "pid": "06",
+    "unit": "%",
+    "minimum": -100,
+    "maximum": 99.21875
+  },
+  "long_term_fuel_trim_bank_1": {
+    "pid": "07",
+    "unit": "%",
+    "minimum": -100,
+    "maximum": 99.21875
+  },
+  "long_term_fuel_trim_bank_3": {
+    "pid": "07",
+    "unit": "%",
+    "minimum": -100,
+    "maximum": 99.21875
+  },
+  "short_term_fuel_trim_bank_2": {
+    "pid": "08",
+    "unit": "%",
+    "minimum": -100,
+    "maximum": 99.21875
+  },
+  "short_term_fuel_trim_bank_4": {
+    "pid": "08",
+    "unit": "%",
+    "minimum": -100,
+    "maximum": 99.21875
+  },
+  "long_term_fuel_trim_bank_2": {
+    "pid": "09",
+    "unit": "%",
+    "minimum": -100,
+    "maximum": 99.21875
+  },
+  "long_term_fuel_trim_bank_4": {
+    "pid": "09",
+    "unit": "%",
+    "minimum": -100,
+    "maximum": 99.21875
+  },
+  "fuel_pressure": {
+    "pid": "0A",
+    "unit": "kPa",
+    "minimum": 0,
+    "maximum": 765
+  },
+  "manifold_pressure": {
+    "pid": "0B",
+    "unit": "kPa",
+    "minimum": 0,
+    "maximum": 2550
+  },
+  "ignition_timing": {
+    "pid": "0E",
+    "unit": "deg",
+    "minimum": -64,
+    "maximum": 63.5
+  },
+  "mass_air_flow": {
+    "pid": "10",
+    "unit": "g/s",
+    "minimum": 0,
+    "maximum": 2550
+  },
+  "engine_run_time": {
+    "pid": "1F",
+    "unit": "s",
+    "minimum": 0,
+    "maximum": 65535
+  },
+  "distance_with_mil": {
+    "pid": "21",
+    "unit": "km",
+    "minimum": 0,
+    "maximum": 65535
+  },
+  "fuel_rail_pressure_relative": {
+    "pid": "22",
+    "unit": "kPa",
+    "minimum": 0,
+    "maximum": 5177.265
+  },
+  "fuel_rail_pressure_gauge": {
+    "pid": "23",
+    "unit": "kPa",
+    "minimum": 0,
+    "maximum": 655350
+  },
+  "commanded_egr": {
+    "pid": "2C",
+    "unit": "%",
+    "minimum": 0,
+    "maximum": 100
+  },
+  "egr_error": {
+    "pid": "2D",
+    "unit": "%",
+    "minimum": -100,
+    "maximum": 99.21875
+  },
+  "commanded_evap_purge": {
+    "pid": "2E",
+    "unit": "%",
+    "minimum": 0,
+    "maximum": 100
+  },
+  "fuel_level": {
+    "pid": "2F",
+    "unit": "%",
+    "minimum": 0,
+    "maximum": 100
+  },
+  "warm_ups_since_clear": {
+    "pid": "30",
+    "unit": "1",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "distance_since_clear": {
+    "pid": "31",
+    "unit": "km",
+    "minimum": 0,
+    "maximum": 65535
+  },
+  "evap_vapor_pressure": {
+    "pid": "32",
+    "unit": "Pa",
+    "minimum": -8192,
+    "maximum": 8191.75
+  },
+  "barometric_pressure": {
+    "pid": "33",
+    "unit": "kPa",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "control_module_voltage": {
+    "pid": "42",
+    "unit": "V",
+    "minimum": 0,
+    "maximum": 65.535
+  },
+  "absolute_engine_load": {
+    "pid": "43",
+    "unit": "%",
+    "minimum": 0,
+    "maximum": 25700
+  },
+  "commanded_equivalence_ratio": {
+    "pid": "44",
+    "unit": "1",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "relative_throttle_position": {
+    "pid": "45",
+    "unit": "%",
+    "minimum": 0,
+    "maximum": 100
+  },
+  "ambient_temperature": {
+    "pid": "46",
+    "unit": "Cel",
+    "minimum": -40,
+    "maximum": 215
+  },
+  "throttle_position_b": {
+    "pid": "47",
+    "unit": "%",
+    "minimum": 0,
+    "maximum": 100
+  },
+  "throttle_position_c": {
+    "pid": "48",
+    "unit": "%",
+    "minimum": 0,
+    "maximum": 100
+  },
+  "accelerator_position_d": {
+    "pid": "49",
+    "unit": "%",
+    "minimum": 0,
+    "maximum": 100
+  },
+  "accelerator_position_e": {
+    "pid": "4A",
+    "unit": "%",
+    "minimum": 0,
+    "maximum": 100
+  },
+  "accelerator_position_f": {
+    "pid": "4B",
+    "unit": "%",
+    "minimum": 0,
+    "maximum": 100
+  },
+  "commanded_throttle": {
+    "pid": "4C",
+    "unit": "%",
+    "minimum": 0,
+    "maximum": 100
+  },
+  "time_with_mil": {
+    "pid": "4D",
+    "unit": "min",
+    "minimum": 0,
+    "maximum": 65535
+  },
+  "time_since_clear": {
+    "pid": "4E",
+    "unit": "min",
+    "minimum": 0,
+    "maximum": 65535
+  },
+  "alcohol_percentage": {
+    "pid": "52",
+    "unit": "%",
+    "minimum": 0,
+    "maximum": 100
+  },
+  "evap_vapor_pressure_absolute": {
+    "pid": "53",
+    "unit": "kPa",
+    "minimum": 0,
+    "maximum": 327.675
+  },
+  "evap_vapor_pressure_wide": {
+    "pid": "54",
+    "unit": "Pa",
+    "minimum": -32768,
+    "maximum": 32767
+  },
+  "fuel_rail_pressure_absolute": {
+    "pid": "59",
+    "unit": "kPa",
+    "minimum": 0,
+    "maximum": 655350
+  },
+  "relative_accelerator_position": {
+    "pid": "5A",
+    "unit": "%",
+    "minimum": 0,
+    "maximum": 100
+  },
+  "hybrid_battery_remaining": {
+    "pid": "5B",
+    "unit": "%",
+    "minimum": 0,
+    "maximum": 100
+  },
+  "engine_oil_temperature": {
+    "pid": "5C",
+    "unit": "Cel",
+    "minimum": -40,
+    "maximum": 215
+  },
+  "fuel_injection_timing": {
+    "pid": "5D",
+    "unit": "deg",
+    "minimum": -210,
+    "maximum": 301.9921875
+  },
+  "engine_fuel_rate": {
+    "pid": "5E",
+    "unit": "L/h",
+    "minimum": 0,
+    "maximum": 3276.75
+  },
+  "driver_demand_torque": {
+    "pid": "61",
+    "unit": "%",
+    "minimum": -125,
+    "maximum": 130
+  },
+  "actual_engine_torque": {
+    "pid": "62",
+    "unit": "%",
+    "minimum": -125,
+    "maximum": 130
+  },
+  "engine_reference_torque": {
+    "pid": "63",
+    "unit": "N.m",
+    "minimum": 0,
+    "maximum": 65535
+  },
+  "oxygen_sensor_1_voltage": {
+    "pid": "14",
+    "unit": "V",
+    "minimum": 0,
+    "maximum": 1.275
+  },
+  "oxygen_sensor_1_fuel_trim": {
+    "pid": "14",
+    "unit": "%",
+    "minimum": -100,
+    "maximum": 99.21875
+  },
+  "wide_oxygen_sensor_1_ratio": {
+    "pid": "24",
+    "unit": "1",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "wide_oxygen_sensor_1_voltage": {
+    "pid": "24",
+    "unit": "V",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "current_oxygen_sensor_1_ratio": {
+    "pid": "34",
+    "unit": "1",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "current_oxygen_sensor_1_current": {
+    "pid": "34",
+    "unit": "mA",
+    "minimum": -255,
+    "maximum": 254.99221801757812
+  },
+  "oxygen_sensor_2_voltage": {
+    "pid": "15",
+    "unit": "V",
+    "minimum": 0,
+    "maximum": 1.275
+  },
+  "oxygen_sensor_2_fuel_trim": {
+    "pid": "15",
+    "unit": "%",
+    "minimum": -100,
+    "maximum": 99.21875
+  },
+  "wide_oxygen_sensor_2_ratio": {
+    "pid": "25",
+    "unit": "1",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "wide_oxygen_sensor_2_voltage": {
+    "pid": "25",
+    "unit": "V",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "current_oxygen_sensor_2_ratio": {
+    "pid": "35",
+    "unit": "1",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "current_oxygen_sensor_2_current": {
+    "pid": "35",
+    "unit": "mA",
+    "minimum": -255,
+    "maximum": 254.99221801757812
+  },
+  "oxygen_sensor_3_voltage": {
+    "pid": "16",
+    "unit": "V",
+    "minimum": 0,
+    "maximum": 1.275
+  },
+  "oxygen_sensor_3_fuel_trim": {
+    "pid": "16",
+    "unit": "%",
+    "minimum": -100,
+    "maximum": 99.21875
+  },
+  "wide_oxygen_sensor_3_ratio": {
+    "pid": "26",
+    "unit": "1",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "wide_oxygen_sensor_3_voltage": {
+    "pid": "26",
+    "unit": "V",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "current_oxygen_sensor_3_ratio": {
+    "pid": "36",
+    "unit": "1",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "current_oxygen_sensor_3_current": {
+    "pid": "36",
+    "unit": "mA",
+    "minimum": -255,
+    "maximum": 254.99221801757812
+  },
+  "oxygen_sensor_4_voltage": {
+    "pid": "17",
+    "unit": "V",
+    "minimum": 0,
+    "maximum": 1.275
+  },
+  "oxygen_sensor_4_fuel_trim": {
+    "pid": "17",
+    "unit": "%",
+    "minimum": -100,
+    "maximum": 99.21875
+  },
+  "wide_oxygen_sensor_4_ratio": {
+    "pid": "27",
+    "unit": "1",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "wide_oxygen_sensor_4_voltage": {
+    "pid": "27",
+    "unit": "V",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "current_oxygen_sensor_4_ratio": {
+    "pid": "37",
+    "unit": "1",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "current_oxygen_sensor_4_current": {
+    "pid": "37",
+    "unit": "mA",
+    "minimum": -255,
+    "maximum": 254.99221801757812
+  },
+  "oxygen_sensor_5_voltage": {
+    "pid": "18",
+    "unit": "V",
+    "minimum": 0,
+    "maximum": 1.275
+  },
+  "oxygen_sensor_5_fuel_trim": {
+    "pid": "18",
+    "unit": "%",
+    "minimum": -100,
+    "maximum": 99.21875
+  },
+  "wide_oxygen_sensor_5_ratio": {
+    "pid": "28",
+    "unit": "1",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "wide_oxygen_sensor_5_voltage": {
+    "pid": "28",
+    "unit": "V",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "current_oxygen_sensor_5_ratio": {
+    "pid": "38",
+    "unit": "1",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "current_oxygen_sensor_5_current": {
+    "pid": "38",
+    "unit": "mA",
+    "minimum": -255,
+    "maximum": 254.99221801757812
+  },
+  "oxygen_sensor_6_voltage": {
+    "pid": "19",
+    "unit": "V",
+    "minimum": 0,
+    "maximum": 1.275
+  },
+  "oxygen_sensor_6_fuel_trim": {
+    "pid": "19",
+    "unit": "%",
+    "minimum": -100,
+    "maximum": 99.21875
+  },
+  "wide_oxygen_sensor_6_ratio": {
+    "pid": "29",
+    "unit": "1",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "wide_oxygen_sensor_6_voltage": {
+    "pid": "29",
+    "unit": "V",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "current_oxygen_sensor_6_ratio": {
+    "pid": "39",
+    "unit": "1",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "current_oxygen_sensor_6_current": {
+    "pid": "39",
+    "unit": "mA",
+    "minimum": -255,
+    "maximum": 254.99221801757812
+  },
+  "oxygen_sensor_7_voltage": {
+    "pid": "1A",
+    "unit": "V",
+    "minimum": 0,
+    "maximum": 1.275
+  },
+  "oxygen_sensor_7_fuel_trim": {
+    "pid": "1A",
+    "unit": "%",
+    "minimum": -100,
+    "maximum": 99.21875
+  },
+  "wide_oxygen_sensor_7_ratio": {
+    "pid": "2A",
+    "unit": "1",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "wide_oxygen_sensor_7_voltage": {
+    "pid": "2A",
+    "unit": "V",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "current_oxygen_sensor_7_ratio": {
+    "pid": "3A",
+    "unit": "1",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "current_oxygen_sensor_7_current": {
+    "pid": "3A",
+    "unit": "mA",
+    "minimum": -255,
+    "maximum": 254.99221801757812
+  },
+  "oxygen_sensor_8_voltage": {
+    "pid": "1B",
+    "unit": "V",
+    "minimum": 0,
+    "maximum": 1.275
+  },
+  "oxygen_sensor_8_fuel_trim": {
+    "pid": "1B",
+    "unit": "%",
+    "minimum": -100,
+    "maximum": 99.21875
+  },
+  "wide_oxygen_sensor_8_ratio": {
+    "pid": "2B",
+    "unit": "1",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "wide_oxygen_sensor_8_voltage": {
+    "pid": "2B",
+    "unit": "V",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "current_oxygen_sensor_8_ratio": {
+    "pid": "3B",
+    "unit": "1",
+    "minimum": 0,
+    "maximum": 255
+  },
+  "current_oxygen_sensor_8_current": {
+    "pid": "3B",
+    "unit": "mA",
+    "minimum": -255,
+    "maximum": 254.99221801757812
+  },
+  "catalyst_temperature_b1_s1": {
+    "pid": "3C",
+    "unit": "Cel",
+    "minimum": -40,
+    "maximum": 6513.5
+  },
+  "catalyst_temperature_b2_s1": {
+    "pid": "3D",
+    "unit": "Cel",
+    "minimum": -40,
+    "maximum": 6513.5
+  },
+  "catalyst_temperature_b1_s2": {
+    "pid": "3E",
+    "unit": "Cel",
+    "minimum": -40,
+    "maximum": 6513.5
+  },
+  "catalyst_temperature_b2_s2": {
+    "pid": "3F",
+    "unit": "Cel",
+    "minimum": -40,
+    "maximum": 6513.5
+  },
+  "secondary_short_term_trim_bank_1": {
+    "pid": "55",
+    "unit": "%",
+    "minimum": -100,
+    "maximum": 99.21875
+  },
+  "secondary_short_term_trim_bank_3": {
+    "pid": "55",
+    "unit": "%",
+    "minimum": -100,
+    "maximum": 99.21875
+  },
+  "secondary_long_term_trim_bank_1": {
+    "pid": "56",
+    "unit": "%",
+    "minimum": -100,
+    "maximum": 99.21875
+  },
+  "secondary_long_term_trim_bank_3": {
+    "pid": "56",
+    "unit": "%",
+    "minimum": -100,
+    "maximum": 99.21875
+  },
+  "secondary_short_term_trim_bank_2": {
+    "pid": "57",
+    "unit": "%",
+    "minimum": -100,
+    "maximum": 99.21875
+  },
+  "secondary_short_term_trim_bank_4": {
+    "pid": "57",
+    "unit": "%",
+    "minimum": -100,
+    "maximum": 99.21875
+  },
+  "secondary_long_term_trim_bank_2": {
+    "pid": "58",
+    "unit": "%",
+    "minimum": -100,
+    "maximum": 99.21875
+  },
+  "secondary_long_term_trim_bank_4": {
+    "pid": "58",
+    "unit": "%",
+    "minimum": -100,
+    "maximum": 99.21875
+  },
+  "engine_torque_point_1": {
+    "pid": "64",
+    "unit": "%",
+    "minimum": -125,
+    "maximum": 130
+  },
+  "engine_torque_point_2": {
+    "pid": "64",
+    "unit": "%",
+    "minimum": -125,
+    "maximum": 130
+  },
+  "engine_torque_point_3": {
+    "pid": "64",
+    "unit": "%",
+    "minimum": -125,
+    "maximum": 130
+  },
+  "engine_torque_point_4": {
+    "pid": "64",
+    "unit": "%",
+    "minimum": -125,
+    "maximum": 130
+  },
+  "engine_torque_point_5": {
+    "pid": "64",
+    "unit": "%",
+    "minimum": -125,
+    "maximum": 130
+  }
+}

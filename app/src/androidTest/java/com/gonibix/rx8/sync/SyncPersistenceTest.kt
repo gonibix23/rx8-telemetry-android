@@ -51,7 +51,7 @@ class SyncPersistenceTest {
         context.deleteDatabase(name)
     }
 
-    @Test fun defaultStoreRefusesAnEnabledFakeBeforeClaimingOrSendingAndAppHasNoInternetPermission() = runBlocking {
+    @Test fun defaultStoreRefusesAnEnabledFakeBeforeClaimingOrSendingDespiteInternetPermission() = runBlocking {
         record(2)
         var sends = 0
         val fake = object : SyncTransport {
@@ -71,10 +71,11 @@ class SyncPersistenceTest {
         assertEquals(0, vehicle.attempt)
         assertEquals(PENDING, vehicle.state)
         assertNull(vehicle.leaseToken)
-        assertEquals(PackageManager.PERMISSION_DENIED, context.checkSelfPermission(Manifest.permission.INTERNET))
+        assertEquals(PackageManager.PERMISSION_GRANTED, context.checkSelfPermission(Manifest.permission.INTERNET))
     }
 
     @Test fun vehicleSnapshotsAndPositiveRevisionsSurviveLaterIdentityChanges() = runBlocking {
+        record(0)
         val initial = claim()!!
         assertEquals(SyncRequestKind.VEHICLE, initial.request.kind)
         assertEquals(1L, initial.request.revision)
@@ -99,7 +100,7 @@ class SyncPersistenceTest {
         assertTrue(withVin.request.payloadJson.contains("TESTCAR0000000001"))
         assertEquals(originalBody, initial.request.payloadJson)
         acknowledgeMetadata(withVin)
-        assertNull(claim())
+        assertEquals(SyncRequestKind.SESSION, claim()!!.request.kind)
     }
 
     @Test fun metadataMustBeAcknowledgedBeforeSamplesAndInvalidAckCannotUnlockDependencies() = runBlocking {
@@ -115,6 +116,9 @@ class SyncPersistenceTest {
         assertTrue(runCatching { store().applyResult(session, SyncResult.MetadataAck(1, trip.id, 2), NOW) }.exceptionOrNull() is InvalidSyncAckException)
         assertNull(claim())
         acknowledgeMetadata(session)
+        val terminal = claim()!!
+        assertEquals(2L, terminal.request.revision)
+        acknowledgeMetadata(terminal)
         val batch = claim()!!
         assertEquals(SyncRequestKind.TELEMETRY, batch.request.kind)
         assertEquals(2, batch.request.sampleIds.size)
@@ -122,7 +126,7 @@ class SyncPersistenceTest {
     }
 
     @Test fun appendAndPendingWorkRollbackTogetherAndTerminalRevisionCommitsAtomically() = runBlocking {
-        val trip = record(0)
+        val trip = record(0, terminal = false)
         sql("CREATE TRIGGER reject_outbox BEFORE INSERT ON sync_samples BEGIN SELECT RAISE(ABORT, 'Synthetic queue failure'); END")
         assertTrue(runCatching { trips().append(trip.id, listOf(sample(trip, 0))) }.isFailure)
         assertTrue(trips().samples(trip.id).isEmpty())
@@ -153,6 +157,9 @@ class SyncPersistenceTest {
         assertEquals(1, first.attempt)
         reopen()
         assertNull(claim(NOW + 999))
+        assertFalse(store().hasReadyWork(NOW + 999))
+        assertTrue(store().hasReadyWork(NOW + 1_000))
+        assertTrue(store().needsAnotherRun())
         val retry = claim(NOW + 1_000)!!
         assertEquals(first.request.resourceId, retry.request.resourceId)
         assertEquals(frozen, retry.request.payloadJson)
@@ -248,12 +255,12 @@ class SyncPersistenceTest {
     }
 
     @Test fun concurrentClaimsHaveOneOwnerAndTripDeletionInvalidatesInFlightResults() = runBlocking {
+        val trip = record(2, terminal = false)
+        assertTrue(runCatching { trips().delete(trip.id) }.isFailure)
+        trips().finish(trip.id, 12_000, 2_000, TripStatus.COMPLETED, "Stopped")
         val attempts = List(2) { async(Dispatchers.IO) { claim() } }.awaitAll()
         assertEquals(1, attempts.count { it != null })
         acknowledgeMetadata(attempts.filterNotNull().single())
-        val trip = record(2)
-        assertTrue(runCatching { trips().delete(trip.id) }.isFailure)
-        trips().finish(trip.id, 12_000, 2_000, TripStatus.COMPLETED, "Stopped")
         val batch = claimBatch()
         trips().delete(trip.id)
         assertEquals(SyncQueueSummary(), store().summary())
@@ -264,7 +271,7 @@ class SyncPersistenceTest {
     }
 
     @Test fun recoveryEnqueuesTerminalMetadataOnceAndPreservesTheSavedVersion() = runBlocking {
-        val trip = record(2)
+        val trip = record(2, terminal = false)
         trips().recoverInterrupted()
         trips().recoverInterrupted()
         assertEquals(2L, database.trips().find(trip.id)!!.revision)
@@ -285,6 +292,7 @@ class SyncPersistenceTest {
         val original = trips().samples(trip.id)
         acknowledgeMetadata(claim()!!)
         acknowledgeMetadata(claim()!!)
+        acknowledgeMetadata(claim()!!)
         val twoBody = ApiV1Json.batch(ApiV1Mapper.batch(UUID.randomUUID().toString(), vehicleId, trip.id, original.take(2)))
         val small = BatchLimits(3, twoBody.toByteArray(Charsets.UTF_8).size - 1)
         repeat(3) {
@@ -298,11 +306,13 @@ class SyncPersistenceTest {
     }
 
     @Test fun unsupportedSamplesAndUnsendableSingletonsAreBlockedWithoutFabricatingValues() = runBlocking {
-        val trip = record(0)
+        val trip = record(0, terminal = false)
         trips().append(trip.id, listOf(
             sample(trip, 0).copy(quality = ObdReadingStatus.STALE, value = null),
             sample(trip, 1),
         ))
+        trips().finish(trip.id, 12_000, 2_000, TripStatus.COMPLETED, "Stopped")
+        acknowledgeMetadata(claim()!!)
         acknowledgeMetadata(claim()!!)
         acknowledgeMetadata(claim()!!)
         assertNull(claim(custom = BatchLimits(100, 1)))
@@ -387,6 +397,64 @@ class SyncPersistenceTest {
         assertEquals(vehicleId, vehicles().load().activeVehicleId)
     }
 
+    @Test fun recordingTripHasNoEligibleMetadataOrBatchUntilTerminalCommitAndThenReplaysEveryRevision() = runBlocking {
+        val trip = record(2, terminal = false)
+        trips().updateProtocol(trip.id, "ISO 15765-CAN (11 bit, 500 kbaud)")
+        assertNull(claim())
+        assertFalse(store().hasReadyWork(NOW))
+        assertFalse(store().needsAnotherRun())
+        assertEquals(SyncQueueSummary(pending = 2), store().summary())
+        trips().finish(trip.id, 12_000, 2_000, TripStatus.COMPLETED, "Stopped")
+        acknowledgeMetadata(claim()!!)
+        for (revision in 1L..3L) {
+            val lease = claim()!!
+            assertEquals(SyncRequestKind.SESSION, lease.request.kind)
+            assertEquals(revision, lease.request.revision)
+            acknowledgeMetadata(lease)
+        }
+        val batch = claim()!!
+        assertTrue(store().applyResult(batch, allStored(batch), NOW))
+        assertEquals(2, trips().samples(trip.id).size)
+        assertEquals(TripStatus.COMPLETED, trips().find(trip.id)!!.status)
+        assertFalse(store().needsAnotherRun())
+    }
+
+    @Test fun emptyTerminalTripsUploadMetadataAndManualRetryOnlyResetsExhaustedImmutableRequests() = runBlocking {
+        val trip = record(0)
+        val vehicle = claim()!!
+        store().applyResult(vehicle, SyncResult.Block("retry_limit_reached"), NOW)
+        assertTrue(store().hasBlocked())
+        assertFalse(store().needsAnotherRun())
+        reopen()
+        store().retryExhausted()
+        val retry = claim()!!
+        assertEquals(1, retry.attempt)
+        assertEquals(vehicle.request.payloadJson, retry.request.payloadJson)
+        assertEquals(vehicle.request.resourceId, retry.request.resourceId)
+        acknowledgeMetadata(retry)
+        val session = claim()!!
+        store().applyResult(session, SyncResult.Block("revision_or_content_conflict"), NOW)
+        store().retryExhausted()
+        assertNull(claim())
+        assertTrue(store().hasBlocked())
+        assertEquals(TripStatus.COMPLETED, trips().find(trip.id)!!.status)
+        assertTrue(trips().samples(trip.id).isEmpty())
+    }
+
+    @Test fun terminalSchedulingCallbackObservesCommittedRowsAndNeverRunsForAppendOrRollback() = runBlocking {
+        val statuses = mutableListOf<TripStatus>()
+        val trip = record(0, terminal = false)
+        val repository = RoomTripRepository(database) { statuses += trips().find(trip.id)!!.status }
+        repository.append(trip.id, listOf(sample(trip, 0)))
+        assertTrue(statuses.isEmpty())
+        sql("CREATE TRIGGER reject_terminal BEFORE INSERT ON sync_work BEGIN SELECT RAISE(ABORT, 'Synthetic failure'); END")
+        assertTrue(runCatching { repository.finish(trip.id, 12_000, 2_000, TripStatus.COMPLETED, "Stopped") }.isFailure)
+        assertTrue(statuses.isEmpty())
+        sql("DROP TRIGGER reject_terminal")
+        repository.finish(trip.id, 12_000, 2_000, TripStatus.COMPLETED, "Stopped")
+        assertEquals(listOf(TripStatus.COMPLETED), statuses)
+    }
+
     private fun store() = RoomSyncStore(database, isIsolatedTestStore = true)
     private fun vehicles() = RoomVehicleRepository(database)
     private fun trips() = RoomTripRepository(database)
@@ -407,11 +475,15 @@ class SyncPersistenceTest {
     }
     private fun allStored(lease: SyncLease) = SyncResult.BatchAck(1, lease.request.resourceId,
         lease.request.sampleIds.map { SampleAck(it, AckStatus.STORED) })
-    private suspend fun record(count: Int): TripSession {
+    private suspend fun record(count: Int, terminal: Boolean = true): TripSession {
         val trip = TripSession(UUID.randomUUID().toString(), vehicleId, "Synthetic recorded vehicle", 10_000,
             appVersion = "synthetic-test-version")
         trips().create(trip)
         trips().append(trip.id, (0 until count).map { sample(trip, it.toLong()) })
+        if (terminal) {
+            val duration = (count - 1).coerceAtLeast(0) * 100L
+            trips().finish(trip.id, trip.startedAtEpochMillis + duration, duration, TripStatus.COMPLETED, "Stopped")
+        }
         return trip
     }
     private fun sample(trip: TripSession, sequence: Long) = TripSample(

@@ -78,7 +78,7 @@ fun validateAcknowledgment(request: PreparedRequest, result: SyncResult) {
 }
 
 interface SyncStore {
-    /** This preparation increment never runs a coordinator against the user's real database. */
+    /** Fake transports are permitted only for isolated stores; production requires HTTPS. */
     val isIsolatedTestStore: Boolean get() = false
     suspend fun claimNext(nowEpochMillis: Long, leaseMillis: Long, limits: BatchLimits): SyncLease?
     /** Validates the whole ACK and commits atomically. Stale/expired/deleted leases return false. */
@@ -91,10 +91,11 @@ sealed interface RemoteReply {
     data class BatchAck(val acknowledgment: SyncResult.BatchAck) : RemoteReply
     data class HttpError(val statusCode: Int, val retryAfterMillis: Long? = null) : RemoteReply
     data object Unavailable : RemoteReply
+    data object InvalidAcknowledgment : RemoteReply
     data object Disabled : RemoteReply
 }
 
-/** HTTP and authentication deliberately have no implementation in this increment. */
+/** Prepared bodies are immutable across network attempts. */
 interface SyncTransport {
     val enabled: Boolean
     suspend fun send(request: PreparedRequest): RemoteReply

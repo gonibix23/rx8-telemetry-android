@@ -14,8 +14,8 @@ android {
         applicationId = "com.gonibix.rx8"
         minSdk = 26
         targetSdk = 36
-        versionCode = 14
-        versionName = "0.12.1-dev"
+        versionCode = 15
+        versionName = "0.13.0-dev"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -47,6 +47,8 @@ room {
 }
 
 dependencies {
+    implementation(libs.androidx.work.runtime.ktx)
+    androidTestImplementation(libs.androidx.work.testing)
     implementation(project(":core:telemetry"))
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)

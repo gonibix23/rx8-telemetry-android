@@ -12,7 +12,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /** Commits session state and immutable samples together; opening history never performs recovery. */
-class RoomTripRepository(private val database: VehicleDatabase) : TripRepository {
+class RoomTripRepository(
+    private val database: VehicleDatabase,
+    private val onTerminalCommit: suspend () -> Unit = {},
+) : TripRepository {
     private val dao get() = database.trips()
 
     override suspend fun create(session: TripSession) = database.withTransaction {
@@ -71,7 +74,8 @@ class RoomTripRepository(private val database: VehicleDatabase) : TripRepository
         durationMillis: Long,
         status: TripStatus,
         reason: String,
-    ) = database.withTransaction {
+    ) {
+        database.withTransaction {
         require(status != TripStatus.RECORDING && endedAtEpochMillis >= 0L && reason.isNotBlank())
         val session = requireNotNull(dao.find(tripId)) { "Trip not found" }
         check(session.status == TripStatus.RECORDING.name) { "Trip is already finished" }
@@ -85,9 +89,12 @@ class RoomTripRepository(private val database: VehicleDatabase) : TripRepository
         )
         dao.updateSession(updated)
         database.sync().enqueueSession(updated)
+        }
+        onTerminalCommit()
     }
 
-    override suspend fun recoverInterrupted() = database.withTransaction {
+    override suspend fun recoverInterrupted() {
+        database.withTransaction {
         // The caller owns startup recovery and must never call it against its live recorder.
         dao.recording().forEach { session ->
             val last = dao.lastSample(session.id)
@@ -101,6 +108,8 @@ class RoomTripRepository(private val database: VehicleDatabase) : TripRepository
             dao.updateSession(updated)
             database.sync().enqueueSession(updated)
         }
+        }
+        onTerminalCommit()
     }
 
     override suspend fun list(limit: Int): List<TripSession> {

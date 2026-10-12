@@ -11,7 +11,7 @@ import kotlinx.coroutines.withTimeout
 
 enum class SyncStep { DISABLED, IDLE, APPLIED, STALE_LEASE }
 
-/** Preparation-only runner. Neither a worker nor an enabled transport is wired into the app. */
+/** Leased requests accept validated acknowledgments only from the real transport or isolated tests. */
 class SyncCoordinator(
     private val store: SyncStore,
     private val transport: SyncTransport = DisabledSyncTransport,
@@ -25,7 +25,8 @@ class SyncCoordinator(
 
     suspend fun runOnce(): SyncStep {
         // These guards precede leasing, queue mutation, and the remote call.
-        if (!transport.enabled || !store.isIsolatedTestStore) return SyncStep.DISABLED
+        if (!transport.enabled || (!store.isIsolatedTestStore &&
+                (transport !is HttpsSyncTransport || !transport.isProductionTransport))) return SyncStep.DISABLED
         currentCoroutineContext().ensureActive()
         val lease = store.claimNext(nowEpochMillis(), leaseMillis, limits) ?: return SyncStep.IDLE
         val request = lease.request
@@ -46,6 +47,7 @@ class SyncCoordinator(
             when (reply) {
                 RemoteReply.Disabled -> SyncResult.Disabled
                 RemoteReply.Unavailable -> retry(lease, "remote_unavailable")
+                RemoteReply.InvalidAcknowledgment -> retry(lease, "invalid_ack")
                 is RemoteReply.MetadataAck -> verifiedOrRetry(lease, reply.acknowledgment)
                 is RemoteReply.BatchAck -> verifiedOrRetry(lease, reply.acknowledgment)
                 is RemoteReply.HttpError -> when (reply.statusCode) {
