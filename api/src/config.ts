@@ -8,6 +8,7 @@ export function databaseConfig(env: NodeJS.ProcessEnv = process.env): { uri: str
 }
 export function createClient(uri: string): MongoClient {
   return new MongoClient(uri, { appName: 'rx8-telemetry-api', serverSelectionTimeoutMS: 5000,
-    connectTimeoutMS: 5000, timeoutMS: 8000, maxPoolSize: 20, minPoolSize: 0,
+    // No client-wide timeoutMS: TelemetryStore bounds each operation and transaction itself.
+    connectTimeoutMS: 5000, maxPoolSize: 20, minPoolSize: 0,
     retryWrites: true, writeConcern: { w: 'majority', journal: true, wtimeoutMS: 5000 }, readPreference: 'primary' });
 }

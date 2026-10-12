@@ -12,6 +12,10 @@ function canonical(value: unknown): string {
 }
 export function digest(value: unknown): string { return createHash('sha256').update(canonical(value)).digest('hex'); }
 function conflict(code: string): never { throw new ApiError(409, code); }
+// Per-operation, never client-wide: a client-level timeoutMS makes every cursor inside withTransaction
+// carry its own timeoutMS, which the driver rejects (MongoInvalidArgumentError -> 503 on batches).
+const OPERATION_TIMEOUT_MS = 8000;
+const bounded = { timeoutMS: OPERATION_TIMEOUT_MS };
 
 export class TelemetryStore {
   private readonly vehicles: Collection<RecordRow<Vehicle>>;
@@ -24,16 +28,16 @@ export class TelemetryStore {
     this.samples = db.collection('samples'); this.batches = db.collection('batches');
   }
   async initialize(): Promise<void> {
-    const topology = await this.client.db(this.database).command({ hello: 1 });
+    const topology = await this.client.db(this.database).command({ hello: 1 }, bounded);
     if (!topology.setName && topology.msg !== 'isdbgrid') throw new ApiError(503, 'replica_set_required');
     // Explicit indexes before serving requests; _id is the unique canonical resource UUID.
     // VIN is optional metadata, never global identity: reinstalling can legitimately create
     // another UUID for the same car. Existing UUIDs still cannot be reassigned to a different VIN.
-    await this.vehicles.createIndex({ 'payload.vin': 1 }, { partialFilterExpression: { 'payload.vin': { $type: 'string' } }, name: 'optional_vin_lookup' });
-    await this.sessions.createIndex({ 'payload.vehicleId': 1, _id: 1 }, { name: 'vehicle_sessions' });
-    await this.samples.createIndex({ sessionId: 1, sequence: 1 }, { unique: true, name: 'session_sequence' });
+    await this.vehicles.createIndex({ 'payload.vin': 1 }, { partialFilterExpression: { 'payload.vin': { $type: 'string' } }, name: 'optional_vin_lookup', ...bounded });
+    await this.sessions.createIndex({ 'payload.vehicleId': 1, _id: 1 }, { name: 'vehicle_sessions', ...bounded });
+    await this.samples.createIndex({ sessionId: 1, sequence: 1 }, { unique: true, name: 'session_sequence', ...bounded });
     // Ensure the batch collection exists before the first transaction.
-    await this.batches.createIndex({ sessionId: 1 }, { name: 'session_batches' });
+    await this.batches.createIndex({ sessionId: 1 }, { name: 'session_batches', ...bounded });
   }
   async ready(): Promise<void> { await this.client.db(this.database).command({ ping: 1 }, { timeoutMS: 3000 }); }
   private async transaction<T>(work: (session: ClientSession) => Promise<T>): Promise<T> {
@@ -43,7 +47,7 @@ export class TelemetryStore {
       try {
         return await this.client.withSession((session) => session.withTransaction(() => work(session), {
           readConcern: { level: 'snapshot' }, writeConcern: { w: 'majority', journal: true, wtimeoutMS: 5000 },
-          readPreference: 'primary', maxCommitTimeMS: 5000, timeoutMS: 8000,
+          readPreference: 'primary', maxCommitTimeMS: 5000, timeoutMS: OPERATION_TIMEOUT_MS,
         }));
       } catch (error) {
         if (error instanceof MongoServerError && error.code === 11000) {
@@ -131,24 +135,24 @@ export class TelemetryStore {
       return ack;
     });
   }
-  async getVehicle(id: string): Promise<Vehicle | null> { return (await this.vehicles.findOne({ _id: id.toLowerCase() }))?.payload ?? null; }
-  async getSession(id: string): Promise<TripSession | null> { return (await this.sessions.findOne({ _id: id.toLowerCase() }))?.payload ?? null; }
+  async getVehicle(id: string): Promise<Vehicle | null> { return (await this.vehicles.findOne({ _id: id.toLowerCase() }, bounded))?.payload ?? null; }
+  async getSession(id: string): Promise<TripSession | null> { return (await this.sessions.findOne({ _id: id.toLowerCase() }, bounded))?.payload ?? null; }
   async listVehicles(limit: number, after?: string): Promise<Page<Vehicle>> {
-    const rows = await this.vehicles.find(after ? { _id: { $gt: after.toLowerCase() } } : {}).sort({ _id: 1 }).limit(limit + 1).toArray();
+    const rows = await this.vehicles.find(after ? { _id: { $gt: after.toLowerCase() } } : {}, bounded).sort({ _id: 1 }).limit(limit + 1).toArray();
     return this.page(rows, limit);
   }
   async listSessions(limit: number, after?: string, vehicleId?: string): Promise<Page<TripSession>> {
     const filter: Filter<RecordRow<TripSession>> = {};
     if (after) filter._id = { $gt: after.toLowerCase() };
     if (vehicleId) filter['payload.vehicleId'] = vehicleId;
-    const rows = await this.sessions.find(filter).sort({ _id: 1 }).limit(limit + 1).toArray();
+    const rows = await this.sessions.find(filter, bounded).sort({ _id: 1 }).limit(limit + 1).toArray();
     return this.page(rows, limit);
   }
   private page<T>(rows: RecordRow<T>[], limit: number): Page<T> {
     return { schemaVersion: 1, items: rows.slice(0, limit).map((row) => row.payload), nextCursor: rows.length > limit ? rows[limit - 1]!._id : null };
   }
   async listSamples(sessionId: string, limit: number, after: number | null): Promise<Page<Sample>> {
-    const rows = await this.samples.find({ sessionId, ...(after === null ? {} : { sequence: { $gt: after } }) }).sort({ sequence: 1 }).limit(limit + 1).toArray();
+    const rows = await this.samples.find({ sessionId, ...(after === null ? {} : { sequence: { $gt: after } }) }, bounded).sort({ sequence: 1 }).limit(limit + 1).toArray();
     return { schemaVersion: 1, items: rows.slice(0, limit).map((row) => row.payload), nextCursor: rows.length > limit ? String(rows[limit - 1]!.sequence) : null };
   }
 }
