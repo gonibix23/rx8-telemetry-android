@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { MongoClient } from 'mongodb';
 import { createApp } from '../../src/app.js';
+import { createClient } from '../../src/config.js';
 import { TelemetryStore } from '../../src/store.js';
 import { fixtureVehicle, fixtureSession, fixtureSample, fixtureBatch } from '../fixtures.js';
 import type { Batch, TripSession, Vehicle } from '../../src/models.js';
@@ -13,7 +14,8 @@ let app: ReturnType<typeof createApp>;
 before(async () => {
   // No env URI or Atlas credentials are consulted. Only a disposable local replica set is used.
   replica = await MongoMemoryReplSet.create({ binary: { version: '8.0.17' }, replSet: { count: 1, storageEngine: 'wiredTiger' } });
-  client = new MongoClient(replica.getUri(), { serverSelectionTimeoutMS: 5000 });
+  // Production client options (timeouts, write concern) so driver option conflicts surface here.
+  client = createClient(replica.getUri());
   await client.connect();
   store = new TelemetryStore(client, 'rx8_isolated_tests'); await store.initialize(); app = createApp(store);
 }, { timeout: 300000 });
