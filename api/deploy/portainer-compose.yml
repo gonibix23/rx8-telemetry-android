@@ -1,5 +1,5 @@
 # Production stack "gonibix", deployed by Portainer from this file.
-# .github/workflows/deploy.yml pins the api image tag on every deploy; do not edit it by hand.
+# .github/workflows/api.yml pins the api image tag on every deploy; do not edit it by hand.
 services:
   api:
     image: ghcr.io/gonibix23/rx8-telemetry-android-api:latest

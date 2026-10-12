@@ -1,19 +1,24 @@
-name: API deploy
+name: API
 
 on:
+  pull_request:
+    paths:
+      - 'api/**'
+      - '.github/workflows/api.yml'
   push:
     branches: [main]
     paths:
       - 'api/**'
-      - '.github/workflows/deploy.yml'
+      - '.github/workflows/api.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# Never cancel a running deploy on main; superseded PR runs can be cancelled.
 concurrency:
-  group: api-deploy
-  cancel-in-progress: false
+  group: api-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -39,10 +44,14 @@ jobs:
       - run: npm run test:integration
         env:
           MONGOMS_DOWNLOAD_DIR: ${{ runner.temp }}/mongodb-binaries
+      - name: Build production API container
+        if: github.ref != 'refs/heads/main'
+        run: docker build -t rx8-telemetry-api:ci .
 
   build:
     name: Build and push API image
     needs: test
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -78,7 +87,6 @@ jobs:
   deploy:
     name: Deploy to Portainer
     needs: build
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
