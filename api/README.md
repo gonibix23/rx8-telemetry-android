@@ -62,7 +62,7 @@ Errors contain only a bounded machine-readable `{code}`: 400 validation/identity
 
 ## Later deployment
 
-Production deployment: `.github/workflows/api.yml` checks pull requests and pushes touching `api/`. On `main`, after the API checks pass, it pushes `ghcr.io/gonibix23/rx8-telemetry-android-api` (`latest` and `sha-<commit>`) and calls the `PORTAINER_WEBHOOK_URL` secret, which redeploys the Portainer stack `gonibix` from `deploy/portainer-compose.yml` and force-pulls `latest`. That stack runs the API on host port 7600 with a single-node MongoDB 8.0 replica set stored in `/mnt/rx8/mongo`.
+Production deployment: `.github/workflows/api.yml` checks pull requests and pushes touching `api/`. On `main`, after the API checks pass, it pushes `ghcr.io/gonibix23/rx8-telemetry-android-api` (`latest` and `sha-<commit>`) and calls the `PORTAINER_WEBHOOK_URL` secret, which redeploys the Portainer stack `gonibix` from `deploy/portainer-compose.yml`; the API service uses `pull_policy: always`, so each redeploy runs the newest `latest`. That stack runs the API on host port 7600 with a single-node MongoDB 8.0 replica set stored in `/mnt/rx8/mongo`.
 
 The production image includes the project's MIT license at `/app/LICENSE`. Third-party packages retain their own licenses.
 
