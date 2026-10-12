@@ -2,6 +2,7 @@ package com.gonibix.rx8.sync
 
 import android.content.Context
 import android.annotation.SuppressLint
+import android.app.Application
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
@@ -27,7 +28,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /** Application-owned settings and serialized, bounded upload runs. No socket/acquisition ownership. */
-class SyncRuntime private constructor(private val context: Context) {
+class SyncRuntime private constructor(private val context: Application) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val runMutex = Mutex()
     private val scheduleMutex = Mutex()
@@ -126,7 +127,7 @@ class SyncRuntime private constructor(private val context: Context) {
         internal const val MAX_REQUESTS_PER_RUN = 25
         @Volatile private var instance: SyncRuntime? = null
         fun get(context: Context): SyncRuntime = instance ?: synchronized(this) {
-            instance ?: SyncRuntime(context.applicationContext).also { instance = it }
+            instance ?: SyncRuntime(context.applicationContext as Application).also { instance = it }
         }
     }
 }
