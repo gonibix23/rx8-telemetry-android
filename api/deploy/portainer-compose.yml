@@ -1,9 +1,11 @@
 # Production stack "gonibix", deployed by Portainer from this file.
-# .github/workflows/api.yml pushes :latest and triggers the stack webhook, which force-pulls it.
-# To roll back, change the tag to a published sha-<commit> and redeploy the stack.
+# .github/workflows/api.yml pushes :latest and triggers the stack webhook; pull_policy makes
+# the redeploy fetch it. To roll back, set a published sha-<commit> tag and redeploy.
 services:
   api:
     image: ghcr.io/gonibix23/rx8-telemetry-android-api:latest
+    # Portainer's git-stack image pull does not refresh this tag; compose must pull on up.
+    pull_policy: always
     depends_on:
       mongo:
         condition: service_healthy
