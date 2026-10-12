@@ -64,6 +64,8 @@ The reported live-reading and 0.5.1-dev success allow dashboard development to p
 
 ## Pending decisions
 
+RX8-009 now has a [Mazda parameter evidence matrix](mazda-parameters.md). Knock retard and trailing ignition timing have published wire candidates; oil metering, intake valves and cluster readings still need accepted definitions. No proprietary query is enabled or car-verified. The owner has deferred vehicle tests; isolated decoder/transport design can proceed independently.
+
 - A53 real RPM dial layout, favorite persistence across app restarts/profile changes, unavailable favorites, multiple-ECU presentation, and four-tab navigation checks.
 - Detailed background/lock/recreation, notification denial/Stop, battery/resource cleanup, permission, and reconnection validation on the A53 running Android 16. The minimum SDK is 26; compile and target SDK are 36.
 - Remaining compatibility with the adapter's ELM command implementation, beyond the reported successful live readings over `ISO 15765-CAN (11 bit, 500 kbaud)`.
