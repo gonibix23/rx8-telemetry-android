@@ -1,5 +1,9 @@
 # Development
 
+## Testing 0.15.1-dev
+
+This cosmetic patch matches the Favorite adapter card to the surrounding Adapter panels with the same rounded corners, border and surface. Use the existing connection/favorite controls tests and Adapter screenshots to check appearance and preserve the current actions. The 0.15.0-dev behavior below remains unchanged.
+
 ## Testing 0.15.0-dev
 
 Install over existing app data. Normal Live shows configured cards and the Edit action. Enter Edit to search/add/remove sensors, change card appearance/size/order and choose One column or Two columns. Done returns to readings. Verify the layout survives relaunch and controls remain usable in a narrow window or larger font; full-width large cards and per-ECU separation remain intentional.
