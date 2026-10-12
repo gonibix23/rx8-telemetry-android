@@ -2,7 +2,9 @@
 
 Android app in development for viewing live vehicle data and recording trips without an Internet connection.
 
-**Current implementation (0.15.0-dev): clean Live viewing/editing modes, saved one- or two-column layouts, and a compact floating sensor overlay. Android records offline; the separate anonymous MongoDB API receives finished trips.**
+**Current implementation (0.15.1-dev): clean Live viewing/editing modes, saved one- or two-column layouts, and a compact floating sensor overlay. Android records offline; the separate anonymous MongoDB API receives finished trips.**
+
+Version 0.15.1-dev gives the Favorite adapter card the same rounded border and surface as the surrounding Adapter panels.
 
 Live opens in normal mode with the configured readings. Choose Edit for sensor search, one/two columns, card appearance/size/order and floating-panel settings; Done returns to the readings. Compact cards share rows in two-column mode, large cards span the width, and narrow windows or larger fonts use one column when needed. In Edit mode, long-press a card or choose its Edit action for digital, dial or bar presentation. All 120 implemented parameters are selectable, including RPM, speed and coolant; unavailable selections are labelled honestly. Up to six metrics can appear over a navigation app after explicit Android overlay permission. The compact overlay shows parameter, value/unit and age; drag it to move, or hold it still to close. In a scrolling overlay, drag a parameter label and scroll from the value area.
 
