@@ -4,6 +4,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -38,7 +40,6 @@ import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import kotlin.math.roundToInt
 
 /** Presents vehicle measurements only; simulator data uses its own screen and models. */
 @Composable
@@ -120,8 +121,9 @@ fun LiveObdReadings(snapshot: ObdSessionSnapshot, modifier: Modifier = Modifier)
                 }
             }
         }
-        val ecuIds = (snapshot.ecus.map { it.ecuId } + snapshot.readings.map { it.ecuId }).distinct()
-        ecuIds.forEach { ecuId ->
+        val capabilities = snapshot.ecus.groupBy { it.ecuId }.mapValues { (_, values) -> values.flatMap { it.supportedPids }.toSet() }
+        val readingsBySource = snapshot.readings.groupBy { it.ecuId to it.metric }
+        capabilities.forEach { (ecuId, pids) ->
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(
                     Modifier.fillMaxWidth(),
@@ -137,14 +139,12 @@ fun LiveObdReadings(snapshot: ObdSessionSnapshot, modifier: Modifier = Modifier)
                     Text("Source: OBD · Mode 01", color = MutedColor, fontSize = 10.sp)
                 }
                 BoxWithConstraints {
-                    val columns = if (maxWidth >= 600.dp) 3 else 2
+                    val columns = when { maxWidth >= 600.dp -> 3; maxWidth >= 340.dp -> 2; else -> 1 }
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        ObdMetric.entries.chunked(columns).forEach { metrics ->
+                        ObdMetric.entries.filter { it.pid in pids }.chunked(columns).forEach { metrics ->
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 metrics.forEach { metric ->
-                                    val reading = snapshot.readings.firstOrNull {
-                                        it.ecuId == ecuId && it.metric == metric
-                                    }
+                                    val reading = readingsBySource[ecuId to metric]?.singleOrNull()
                                     ReadingCard(
                                         metric = metric,
                                         ecuId = ecuId,
@@ -161,10 +161,10 @@ fun LiveObdReadings(snapshot: ObdSessionSnapshot, modifier: Modifier = Modifier)
                 }
             }
         }
-        if (ecuIds.isNotEmpty()) {
+        if (capabilities.isNotEmpty()) {
             Text(
                 if (stopped) {
-                    "Sample ages are shown at the time reading stopped. Reconnect and start reading for current values."
+                    "Sample ages are shown at the time reading stopped. Reconnect for current values."
                 } else {
                     "Sensors update one at a time. Each reading shows its own age and UTC timestamp."
                 },
@@ -175,6 +175,7 @@ fun LiveObdReadings(snapshot: ObdSessionSnapshot, modifier: Modifier = Modifier)
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ReadingCard(
     metric: ObdMetric,
@@ -184,15 +185,16 @@ private fun ReadingCard(
     stopped: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val status = if (stopped && reading?.status == ObdReadingStatus.VALID) {
-        ObdReadingStatus.STALE
-    } else {
-        reading?.status
+    val ageMillis = reading?.takeIf { it.elapsedMillis >= 0L && elapsedMillis >= it.elapsedMillis }
+        ?.let { elapsedMillis - it.elapsedMillis }
+    val status = when {
+        reading?.status == ObdReadingStatus.VALID && reading.value?.let(metric::isValueInRange) != true -> ObdReadingStatus.NO_DATA
+        reading?.status == ObdReadingStatus.VALID && (stopped || ageMillis == null || ageMillis >= metric.freshnessMillis) -> ObdReadingStatus.STALE
+        else -> reading?.status
     }
     val value = reading?.value?.takeIf {
-        it.isFinite() && (status == ObdReadingStatus.VALID || status == ObdReadingStatus.STALE)
+        metric.isValueInRange(it) && (status == ObdReadingStatus.VALID || status == ObdReadingStatus.STALE)
     }
-    val ageMillis = reading?.let { (elapsedMillis - it.elapsedMillis).coerceAtLeast(0L) }
     val suffix = "${ecuId}_${metric.name.lowercase(Locale.ROOT)}"
     Surface(
         modifier = modifier.heightIn(min = 172.dp),
@@ -201,8 +203,7 @@ private fun ReadingCard(
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Text(metric.label, color = MutedColor, style = MaterialTheme.typography.labelLarge)
-            Row(
-                verticalAlignment = Alignment.Bottom,
+            FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
             ) {
                 Text(
@@ -229,11 +230,11 @@ private fun ReadingCard(
             )
             if (reading != null && status != ObdReadingStatus.UNSUPPORTED) {
                 Text(
-                    String.format(
+                    ageMillis?.let { String.format(
                         Locale.ROOT,
                         if (stopped) "Age at stop: %.1f s" else "Age: %.1f s",
-                        (ageMillis ?: 0L) / 1_000.0,
-                    ),
+                        it / 1_000.0,
+                    ) } ?: "Age unknown",
                     color = MutedColor,
                     fontSize = 10.sp,
                     modifier = Modifier.testTag("obd_age_$suffix"),
@@ -258,10 +259,7 @@ private fun ReadingCard(
 private val SampleTime: DateTimeFormatter =
     DateTimeFormatter.ofPattern("HH:mm:ss 'UTC'", Locale.ROOT).withZone(ZoneOffset.UTC)
 
-private fun ObdMetric.formatValue(value: Double): String = when (this) {
-    ObdMetric.THROTTLE_POSITION, ObdMetric.ENGINE_LOAD -> String.format(Locale.ROOT, "%.1f", value)
-    else -> value.roundToInt().toString()
-}
+private fun ObdMetric.formatValue(value: Double): String = String.format(Locale.ROOT, "%.${displayDecimals}f", value)
 
 private fun ObdReadingStatus?.label(): String = when (this) {
     ObdReadingStatus.VALID -> "Current"

@@ -58,7 +58,7 @@ class CapabilityReportScreenTest {
         show(canCapture = false)
         compose.onNodeWithTag("capability_capture").assertIsNotEnabled()
         compose.onNodeWithTag("capability_export").assertIsNotEnabled()
-        compose.onNodeWithTag("capability_capture_unavailable").assertTextEquals("No completed vehicle discovery is available. Return to Adapter and choose Read live data.")
+        compose.onNodeWithTag("capability_capture_unavailable").assertTextEquals("No completed vehicle discovery is available. Connect in Adapter and wait for automatic discovery.")
         scrollToTag("capability_empty").assertTextEquals("No snapshot captured yet.")
         compose.onNodeWithTag("capability_summary").assertDoesNotExist()
     }
@@ -91,13 +91,31 @@ class CapabilityReportScreenTest {
         scrollToTag("capability_rate").assertTextEquals("Successful ECU responses: Not available")
     }
 
+    @Test fun expandedVoltageAndSignedTrimUseTheirCanonicalPrecision() {
+        val voltage = ObdMetric.OXYGEN_SENSOR_1_VOLTAGE
+        val trim = ObdMetric.SHORT_TERM_FUEL_TRIM_BANK_1
+        val ecu = ecu(pids = listOf(trim.pid, voltage.pid), overrides = mapOf(
+            voltage to CapabilityReading(0.125, ObdReadingStatus.VALID, 100),
+            trim to CapabilityReading(-12.5, ObdReadingStatus.VALID, 100),
+        ))
+        show(state = CapabilityReportUiState(report = report(ecus = listOf(ecu))))
+        scrollToTag("capability_value_7E8_oxygen_sensor_1_voltage").assertTextEquals("0.125 V")
+        scrollToTag("capability_value_7E8_short_term_fuel_trim_bank_1").assertTextEquals("-12.5 %")
+    }
+
     @Test fun separateEcusKeepTheirOwnValuesAndUndecodedAdvertisedPids() {
         show(state = CapabilityReportUiState(report = report(ecus = listOf(ecu("7E8"), ecu("7E9", rpm = 1_500.0)))))
-        scrollToTag("capability_pids_7E8").assertTextEquals("04  05  0C  0D  0F  10  11")
-        scrollToTag("capability_other_pids_7E8").assertTextEquals("Advertised but not decoded by this app: 10.")
+        scrollToTag("capability_pids_7E8").assertTextEquals("04  05  0C  0D  0F  11  1C")
+        scrollToTag("capability_other_pids_7E8").assertTextEquals("Advertised but not decoded by this app: 1C.")
         scrollToTag("capability_value_7E8_engine_rpm").assertTextEquals("900 rpm")
         scrollToTag("capability_ecu_7E9").assertTextEquals("ECU 7E9")
         scrollToTag("capability_value_7E9_engine_rpm").assertTextEquals("1500 rpm")
+    }
+
+    @Test fun scalingMetadataIsDistinguishedFromUndecodedSensors() {
+        show(state = CapabilityReportUiState(report = report(ecus = listOf(ecu(pids = listOf(0x10, 0x4F, 0x50, 0x51))))))
+        scrollToTag("capability_metadata_pids_7E8").assertTextEquals("Scaling metadata: 4F, 50.")
+        scrollToTag("capability_other_pids_7E8").assertTextEquals("Advertised but not decoded by this app: 51.")
     }
 
     @Test fun zeroErrorsAndStaleValuesRemainDistinct() {
@@ -183,7 +201,7 @@ class CapabilityReportScreenTest {
         val state = mutableStateOf(BluetoothConnectionUiState(availability = BluetoothAvailability.READY, phase = BluetoothConnectionPhase.CONNECTED, isForeground = true))
         compose.setContent {
             Fixture {
-                BluetoothConnectionScreen(state.value, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, onStartObd = { readRequests++ }, onOpenCapabilities = { opens++ })
+                BluetoothConnectionScreen(state.value, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, onOpenCapabilities = { opens++ })
             }
         }
         compose.onNodeWithTag("open_capabilities").assertDoesNotExist()
@@ -206,8 +224,8 @@ class CapabilityReportScreenTest {
         // Anchor the ECU section, rather than aligning a later metric above the preceding cards.
         compose.onNodeWithTag("capability_report_screen").performScrollToIndex(5)
         compose.onNodeWithTag("capability_ecu_7E8").assertTextEquals("ECU 7E8").assertIsDisplayed()
-        compose.onNodeWithTag("capability_pids_7E8").assertTextEquals("04  05  0C  0D  0F  10  11").assertIsDisplayed()
-        compose.onNodeWithTag("capability_other_pids_7E8").assertTextEquals("Advertised but not decoded by this app: 10.").assertIsDisplayed()
+        compose.onNodeWithTag("capability_pids_7E8").assertTextEquals("04  05  0C  0D  0F  11  1C").assertIsDisplayed()
+        compose.onNodeWithTag("capability_other_pids_7E8").assertTextEquals("Advertised but not decoded by this app: 1C.").assertIsDisplayed()
         compose.onNodeWithTag("capability_value_7E8_engine_rpm").assertTextEquals("900 rpm").assertIsDisplayed()
         compose.onNodeWithTag("capability_value_7E8_speed").assertTextEquals("0 km/h").assertIsDisplayed()
         compose.onNodeWithText("UI TEST FIXTURE · SYNTHETIC CAPABILITIES").assertIsDisplayed()
@@ -255,7 +273,7 @@ class CapabilityReportScreenTest {
     private fun ecu(
         address: String = "7E8",
         rpm: Double = 900.0,
-        pids: List<Int> = (ObdMetric.entries.map { it.pid } + 0x10).sorted(),
+        pids: List<Int> = listOf(0x04, 0x05, 0x0C, 0x0D, 0x0F, 0x11, 0x1C),
         overrides: Map<ObdMetric, CapabilityReading?> = emptyMap(),
         stale: Boolean = false,
     ): CapabilityEcu {
@@ -267,10 +285,15 @@ class CapabilityReportScreenTest {
                 ObdMetric.INTAKE_TEMPERATURE -> 27.0
                 ObdMetric.THROTTLE_POSITION -> 2.4
                 ObdMetric.ENGINE_LOAD -> 18.0
+                else -> null
             }
             val advertised = metric.pid in pids
             val reading = if (!advertised) null else if (metric in overrides) overrides[metric]
-                else CapabilityReading(value, if (stale) ObdReadingStatus.STALE else ObdReadingStatus.VALID, 200)
+                else CapabilityReading(value, when {
+                    value == null -> ObdReadingStatus.NO_DATA
+                    stale -> ObdReadingStatus.STALE
+                    else -> ObdReadingStatus.VALID
+                }, 200)
             CapabilityMetric(metric, advertised, reading)
         }
         return CapabilityEcu(address, pids.sorted(), metrics)

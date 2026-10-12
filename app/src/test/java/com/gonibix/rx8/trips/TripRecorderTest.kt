@@ -168,6 +168,77 @@ class TripRecorderTest {
         assertEquals(700L, repo.session!!.durationMillis)
     }
 
+    @Test fun connectedJourneyIncludesInitializationAndFirstActualReadingButNoPlaceholders() = runTest {
+        val repo = Repository()
+        val recorder = TripRecorder(repo, backgroundScope, clock)
+        clock.now = 1_400
+        assertTrue(recorder.startConnected(vehicle, 10_000, 1_000))
+        recorder.onSnapshot(ObdSessionSnapshot(phase = ObdPhase.INITIALIZING))
+        recorder.onSnapshot(snapshot(500, ObdReadingStatus.NO_DATA).let {
+            it.copy(readings = it.readings.map { reading -> reading.copy(isRequestResult = false) })
+        })
+        recorder.onSnapshot(snapshot(600).copy(protocolLabel = "ISO 15765-4 CAN (11 bit, 500 kbaud)"))
+        clock.now = 1_800
+        recorder.stop()
+        runCurrent()
+        assertEquals(10_000L, repo.session!!.startedAtEpochMillis)
+        assertEquals(800L, repo.session!!.durationMillis)
+        assertEquals(600L, repo.saved.single().elapsedMillis)
+        assertEquals(0L, repo.saved.single().sequence)
+        assertEquals("ISO 15765-4 CAN (11 bit, 500 kbaud)", repo.session!!.protocolLabel)
+        assertEquals(1, repo.protocolUpdates)
+    }
+
+    @Test fun connectedJourneyDoesNotDropFirstActualNoDataOrRequirePlaceholderCallback() = runTest {
+        val repo = Repository()
+        val recorder = TripRecorder(repo, backgroundScope, clock)
+        recorder.startConnected(vehicle, 10_000, 1_000)
+        recorder.onSnapshot(snapshot(200, ObdReadingStatus.NO_DATA))
+        recorder.onSnapshot(snapshot(300))
+        runCurrent()
+        assertEquals(listOf(null, 36.0), repo.saved.map { it.value })
+        assertEquals(listOf(0L, 1L), repo.saved.map { it.sequence })
+    }
+
+    @Test fun failureBeforeAnyReadingLeavesAnEmptyInterruptedConnectedJourney() = runTest {
+        val repo = Repository()
+        val recorder = TripRecorder(repo, backgroundScope, clock)
+        recorder.startConnected(vehicle, 10_000, 1_000)
+        clock.now = 2_000
+        recorder.onSnapshot(ObdSessionSnapshot(phase = ObdPhase.ERROR))
+        runCurrent()
+        assertTrue(repo.saved.isEmpty())
+        assertEquals(TripStatus.INTERRUPTED, repo.session!!.status)
+        assertEquals(1_000L, repo.session!!.durationMillis)
+    }
+
+    @Test fun connectionDuringPendingStopCannotReplaceTheFrozenVehicle() = runTest {
+        val repo = Repository().apply { creation = CompletableDeferred() }
+        val recorder = TripRecorder(repo, backgroundScope, clock)
+        assertTrue(recorder.startConnected(vehicle, 10_000, 1_000))
+        runCurrent()
+        recorder.stop()
+        assertFalse(recorder.startConnected(vehicle.copy(alias = "Other"), 20_000, 2_000))
+        repo.creation!!.complete(Unit)
+        runCurrent()
+        assertEquals(vehicle.alias, repo.session!!.vehicleAlias)
+        assertTrue(recorder.startConnected(vehicle.copy(alias = "Next journey"), 20_000, 2_000))
+        runCurrent()
+        assertEquals("Next journey", repo.session!!.vehicleAlias)
+    }
+
+    @Test fun discoveredProtocolIsDurableOnceAndFailureStopsRecordingVisibly() = runTest {
+        val repo = Repository().apply { failProtocol = true }
+        val recorder = TripRecorder(repo, backgroundScope, clock)
+        recorder.startConnected(vehicle, 10_000, 1_000)
+        recorder.onSnapshot(snapshot(100).copy(protocolLabel = "Synthetic protocol"))
+        runCurrent()
+        assertTrue(repo.saved.isEmpty())
+        assertEquals(TripStatus.INTERRUPTED, repo.session!!.status)
+        assertNotNull(recorder.state.value.error)
+        assertNull(recorder.state.value.session)
+    }
+
     private class Clock : ObdClock {
         var now = 1_000L
         var utc = 10_000L
@@ -179,9 +250,16 @@ class TripRecorderTest {
         val saved = mutableListOf<TripSample>()
         var recoveries = 0
         var failAppend = false
+        var failProtocol = false
+        var protocolUpdates = 0
         var creation: CompletableDeferred<Unit>? = null
         override suspend fun recoverInterrupted() { recoveries++ }
         override suspend fun create(session: TripSession) { creation?.await(); this.session = session }
+        override suspend fun updateProtocol(tripId: String, protocolLabel: String) {
+            if (failProtocol) throw IOException("Synthetic metadata failure")
+            protocolUpdates++
+            session = requireNotNull(session).copy(protocolLabel = protocolLabel)
+        }
         override suspend fun append(tripId: String, samples: List<TripSample>) {
             if (failAppend) throw IOException("Synthetic storage failure")
             saved.addAll(samples)

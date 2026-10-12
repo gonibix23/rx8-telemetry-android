@@ -75,7 +75,7 @@ class LiveObdReadingsTest {
         show(snapshot(reading(ObdMetric.ENGINE_RPM, 900.0, ObdReadingStatus.STALE)))
         compose.onNodeWithTag("obd_value_7E8_engine_rpm").assertTextEquals("900")
         compose.onNodeWithTag("obd_reading_status_7E8_engine_rpm").assertTextEquals("Stale · last value")
-        compose.onNodeWithTag("obd_age_7E8_engine_rpm").assertTextEquals("Age: 5.0 s")
+        compose.onNodeWithTag("obd_age_7E8_engine_rpm").assertTextEquals("Age: 4.0 s")
         compose.onNodeWithTag("obd_time_7E8_engine_rpm").assertTextEquals("10:30:00 UTC")
     }
 
@@ -85,7 +85,7 @@ class LiveObdReadingsTest {
         compose.onNodeWithText("Last vehicle readings").assertExists()
         compose.onNodeWithTag("obd_value_7E8_engine_rpm").assertTextEquals("900")
         compose.onNodeWithTag("obd_reading_status_7E8_engine_rpm").assertTextEquals("Stale · last value")
-        compose.onNodeWithTag("obd_age_7E8_engine_rpm").assertTextEquals("Age at stop: 5.0 s")
+        compose.onNodeWithTag("obd_age_7E8_engine_rpm").assertTextEquals("Age at stop: 4.0 s")
     }
 
     @Test
@@ -101,6 +101,22 @@ class LiveObdReadingsTest {
         compose.onNodeWithTag("obd_value_7E8_engine_rpm").assertTextEquals("850")
         compose.onNodeWithTag("obd_value_7E9_engine_rpm").assertTextEquals("910")
         compose.onNodeWithTag("obd_protocol").assertTextEquals("Protocol: ISO 15765-4 CAN (11 bit, 500 kbit/s)")
+    }
+
+    @Test fun expandedSensorsKeepFractionalValuesAndOnlyAdvertisedMetricsAppear() {
+        show(snapshot(reading(ObdMetric.MASS_AIR_FLOW, 0.25), reading(ObdMetric.CURRENT_OXYGEN_SENSOR_1_CURRENT, -0.125)))
+        compose.onNodeWithTag("obd_value_7E8_mass_air_flow").assertTextEquals("0.25")
+        compose.onNodeWithTag("obd_value_7E8_current_oxygen_sensor_1_current").assertTextEquals("-0.125")
+        compose.onNodeWithTag("obd_value_7E8_current_oxygen_sensor_1_ratio").assertTextEquals("—")
+        compose.onNodeWithTag("obd_value_7E8_engine_rpm").assertDoesNotExist()
+    }
+
+    @Test fun invalidAgeOrOutOfRangeValueCannotBePresentedAsCurrent() {
+        show(snapshot(reading(ObdMetric.SPEED, -1.0), reading(ObdMetric.ENGINE_RPM, 900.0)).copy(elapsedMillis = 500L))
+        compose.onNodeWithTag("obd_value_7E8_speed").assertTextEquals("—")
+        compose.onNodeWithTag("obd_reading_status_7E8_speed").assertTextEquals("No data")
+        compose.onNodeWithTag("obd_reading_status_7E8_engine_rpm").assertTextEquals("Stale · last value")
+        compose.onNodeWithTag("obd_age_7E8_engine_rpm").assertTextEquals("Age unknown")
     }
 
     @Test
@@ -169,13 +185,11 @@ class LiveObdReadingsTest {
         phase = ObdPhase.LIVE,
         statusMessage = "Reading the supported sensors.",
         protocolLabel = "ISO 15765-4 CAN (11 bit, 500 kbit/s)",
-        ecus = readings.map { it.ecuId }.distinct().map {
-            ObdEcuCapabilities(it, ObdMetric.entries.map { metric -> metric.pid }.toSet())
-        },
+        ecus = readings.groupBy { it.ecuId }.map { (ecu, values) -> ObdEcuCapabilities(ecu, values.map { it.metric.pid }.toSet()) },
         readings = readings.toList(),
         supportedPidCount = 6,
         effectiveResponsesPerSecond = 2.7,
-        elapsedMillis = 6_000L,
+        elapsedMillis = 5_000L,
     )
 
     private fun captureLiveScreen() {

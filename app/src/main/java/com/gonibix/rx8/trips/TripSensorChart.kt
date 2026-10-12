@@ -164,10 +164,9 @@ private fun SeriesContent(series: TripSeriesAnalysis, durationMillis: Long) {
 internal data class TripChartAxis(val minimum: Double, val maximum: Double)
 
 internal fun tripChartAxis(metric: ObdMetric, minimum: Double, maximum: Double): TripChartAxis {
-    val temperature = metric == ObdMetric.COOLANT_TEMPERATURE || metric == ObdMetric.INTAKE_TEMPERATURE
-    return if (temperature) {
+    return if (metric.minimumValue < 0) {
         if (minimum == maximum) TripChartAxis(minimum - 1.0, maximum + 1.0) else TripChartAxis(minimum, maximum)
-    } else TripChartAxis(0.0, maximum.coerceAtLeast(1.0))
+    } else TripChartAxis(0.0, maximum.takeIf { it > 0 } ?: 1.0)
 }
 
 /** Compaction already preserves gap barriers: elapsed distance between retained points is not a new gap. */
@@ -194,9 +193,10 @@ private fun ObdMetric.chartChoiceLabel(): String = when (this) {
     ObdMetric.INTAKE_TEMPERATURE -> "Intake"
     ObdMetric.THROTTLE_POSITION -> "Throttle"
     ObdMetric.ENGINE_LOAD -> "Load"
+    else -> label
 }
 private fun ObdMetric.chartValue(value: Double): String =
-    String.format(Locale.ROOT, if (this == ObdMetric.THROTTLE_POSITION || this == ObdMetric.ENGINE_LOAD) "%.1f" else "%.0f", value)
+    String.format(Locale.ROOT, "%.${displayDecimals}f", value)
 private fun chartDuration(millis: Long): String {
     val seconds = millis.coerceAtLeast(0L) / 1_000
     return if (seconds >= 3_600) String.format(Locale.ROOT, "%d:%02d:%02d", seconds / 3_600, seconds / 60 % 60, seconds % 60)

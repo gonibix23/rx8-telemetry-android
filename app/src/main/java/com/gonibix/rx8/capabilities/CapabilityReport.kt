@@ -49,14 +49,18 @@ class CapabilityEcu(address: String, advertisedPids: List<Int>, metrics: List<Ca
 }
 
 data class CapabilityMetric(val metric: ObdMetric, val advertised: Boolean, val reading: CapabilityReading?) {
-    init { require(advertised || reading == null) { INVALID_REPORT } }
+    init {
+        require(advertised || reading == null) { INVALID_REPORT }
+        require(reading?.status != ObdReadingStatus.VALID || requireNotNull(reading.ageMillis) < metric.freshnessMillis) { INVALID_REPORT }
+        require(reading?.value?.let(metric::isValueInRange) != false) { INVALID_REPORT }
+    }
 }
 
 data class CapabilityReading(val value: Double?, val status: ObdReadingStatus, val ageMillis: Long?) {
     init {
         require(ageMillis == null || ageMillis >= 0) { INVALID_REPORT }
         require(value == null || value.isFinite()) { INVALID_REPORT }
-        require(status != ObdReadingStatus.VALID || value != null && ageMillis != null && ageMillis < 5_000L) { INVALID_REPORT }
+        require(status != ObdReadingStatus.VALID || value != null && ageMillis != null) { INVALID_REPORT }
         require(status == ObdReadingStatus.VALID || status == ObdReadingStatus.STALE || value == null) { INVALID_REPORT }
     }
 }
@@ -104,10 +108,10 @@ object CapabilityReports {
     private fun captureReading(reading: ObdReading, snapshot: ObdSessionSnapshot): CapabilityReading? {
         val age = if (reading.elapsedMillis in 0..snapshot.elapsedMillis) snapshot.elapsedMillis - reading.elapsedMillis else null
         val status = if (reading.status == ObdReadingStatus.VALID &&
-            (snapshot.phase != ObdPhase.LIVE || age == null || age >= 5_000L)) ObdReadingStatus.STALE else reading.status
+            (snapshot.phase != ObdPhase.LIVE || age == null || age >= reading.metric.freshnessMillis)) ObdReadingStatus.STALE else reading.status
         val carriesValue = status == ObdReadingStatus.VALID || status == ObdReadingStatus.STALE
         // Invalid numeric input is unavailable, never a fabricated zero or a successful reading.
-        if (carriesValue && reading.value?.isFinite() != true) return null
+        if (carriesValue && (reading.value == null || !reading.metric.isValueInRange(reading.value))) return null
         return CapabilityReading(reading.value.takeIf { carriesValue }, status, age)
     }
 }

@@ -104,7 +104,7 @@ internal fun TripHistoryControls(
         }
         if (!state.isLoading && state.historyError == null && state.trips.isEmpty()) {
             Text(
-                if (state.historyVehicleId == null) "No saved trips yet. Start recording explicitly when you are ready."
+                if (state.historyVehicleId == null) "No saved trips yet. Select a vehicle and connect an adapter to begin a journey."
                 else "No saved trips for this vehicle. Choose All vehicles to browse other recordings.",
                 color = MutedColor,
                 modifier = Modifier.testTag("empty_trips"),

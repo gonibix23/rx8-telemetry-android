@@ -133,6 +133,8 @@ fun TripsScreen(
     onOpenVehicles: () -> Unit,
     modifier: Modifier = Modifier,
     historyVehicles: List<VehicleProfile> = emptyList(),
+    automaticMessage: String? = null,
+    canStop: Boolean = true,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     LifecycleStartEffect(viewModel) {
@@ -165,6 +167,8 @@ fun TripsScreen(
         onOlderTrips = viewModel::olderTrips,
         onNewestTrips = viewModel::newestTrips,
         onRetryHistory = viewModel::retryHistory,
+        automaticMessage = automaticMessage,
+        canStop = canStop,
     )
 }
 
@@ -196,6 +200,8 @@ internal fun TripsContent(
     onOlderTrips: () -> Unit = {},
     onNewestTrips: () -> Unit = {},
     onRetryHistory: () -> Unit = {},
+    automaticMessage: String? = null,
+    canStop: Boolean = true,
 ) {
     var deleteId by rememberSaveable(state.historyVehicleId, state.historyRevision, state.selectedTripId) { mutableStateOf<String?>(null) }
     val historyScroll = rememberLazyListState()
@@ -239,7 +245,7 @@ internal fun TripsContent(
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text("LOCAL · OFFLINE", color = MintColor, style = MaterialTheme.typography.labelMedium)
                 Text("Trips", style = MaterialTheme.typography.headlineMedium)
-                Text("Save a telemetry session for the selected vehicle. No GPS or uploads.", color = MutedColor, style = MaterialTheme.typography.bodySmall)
+                Text("Automatic telemetry journeys for the selected vehicle. No GPS or uploads.", color = MutedColor, style = MaterialTheme.typography.bodySmall)
             }
         }
         item {
@@ -250,18 +256,19 @@ internal fun TripsContent(
                         Text("Recording for ${active.vehicleAlias}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("recording_vehicle"))
                         Text("${recording.savedSamples} samples saved · vehicle fixed at start", color = MutedColor)
                         if (selectedVehicle?.id != active.vehicleId) Text("Changing the selected vehicle does not change this trip.", color = MutedColor, style = MaterialTheme.typography.bodySmall)
-                        Button(onClick = onStop, enabled = !recording.isStopping, modifier = Modifier.testTag("stop_recording")) {
+                        Button(onClick = onStop, enabled = canStop && !recording.isStopping, modifier = Modifier.testTag("stop_recording")) {
                             Text(if (recording.isStopping) "Finishing recording…" else "Stop recording")
                         }
                     } else {
                         Text(selectedVehicle?.let { "Ready for ${it.alias}" } ?: "Choose a vehicle first", style = MaterialTheme.typography.titleMedium)
-                        Text("Start only after real live readings are running in Adapter. The simulator cannot be recorded.", color = MutedColor, style = MaterialTheme.typography.bodySmall)
+                        Text("A journey starts automatically after connection when a vehicle is selected. After Stop recording, use Start recording to begin another in this connection.", color = MutedColor, style = MaterialTheme.typography.bodySmall)
                         Button(
                             onClick = { selectedVehicle?.let(onStart) },
                             enabled = selectedVehicle != null && canStart && !recording.isStarting && !recording.isStopping,
                             modifier = Modifier.testTag("start_recording"),
                         ) { Text(if (recording.isStarting) "Starting recording…" else "Start recording") }
                     }
+                    automaticMessage?.let { Text(it, color = MutedColor, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("trip_automatic_message")) }
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(onClick = onOpenAdapter) { Text("Adapter") }
                         TextButton(onClick = onOpenVehicles) { Text("Vehicles") }

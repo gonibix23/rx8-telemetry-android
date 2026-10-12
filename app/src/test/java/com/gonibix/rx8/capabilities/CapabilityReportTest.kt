@@ -46,7 +46,7 @@ class CapabilityReportTest {
         assertEquals(listOf("7E8", "7E9"), report.ecus.map { it.address })
         assertEquals(listOf(0x01, 0x0D, 0xFF), report.ecus[1].advertisedPids)
         assertEquals(listOf(ObdMetric.SPEED), report.ecus[1].metrics.filter { it.advertised }.map { it.metric })
-        assertEquals(6, report.ecus[1].metrics.size)
+        assertEquals(ObdMetric.entries.size, report.ecus[1].metrics.size)
     }
 
     @Test fun twoEcusKeepSeparateValuesWithoutSourceOrCapabilityMerging() {
@@ -161,7 +161,7 @@ class CapabilityReportTest {
         val suppliedPids = mutableListOf(0x0D)
         val suppliedEcu = CapabilityEcu("7E8", suppliedPids, suppliedMetrics)
         suppliedMetrics.clear(); suppliedPids.clear()
-        assertEquals(6, suppliedEcu.metrics.size)
+        assertEquals(ObdMetric.entries.size, suppliedEcu.metrics.size)
         assertEquals(listOf(0x0D), suppliedEcu.advertisedPids)
     }
 
@@ -170,7 +170,7 @@ class CapabilityReportTest {
             assertFalse(CapabilityReports.canCapture(reportTestSnapshot().copy(ecus = listOf(ObdEcuCapabilities("7E8", setOf(pid))))))
         }
         assertFalse(CapabilityReports.canCapture(reportTestSnapshot().copy(ecus = List(33) { ObdEcuCapabilities("%02X".format(it), setOf(0x0D)) })))
-        assertFalse(CapabilityReports.canCapture(reportTestSnapshot().copy(readings = List(193) { reportTestReading() })))
+        assertFalse(CapabilityReports.canCapture(reportTestSnapshot().copy(readings = List(32 * ObdMetric.entries.size + 1) { reportTestReading() })))
         for (version in listOf("TEST1234567890123", "0.9.0-private-person", "0.9.0-dev\n", "x".repeat(513_000))) {
             val failure = assertThrows(IllegalArgumentException::class.java) { CapabilityReports.capture(reportTestSnapshot(), version, 36, 0) }
             assertFalse(failure.message.orEmpty().contains(version))
@@ -178,6 +178,23 @@ class CapabilityReportTest {
         assertThrows(IllegalArgumentException::class.java) { CapabilityReports.capture(reportTestSnapshot(), "0.9.0-dev", -1, 0) }
         assertThrows(IllegalArgumentException::class.java) { CapabilityReports.capture(reportTestSnapshot(), "0.9.0-dev", 36, -1) }
         assertThrows(IllegalArgumentException::class.java) { CapabilityReports.capture(reportTestSnapshot(), "0.9.0-dev", 36, 0, "private-name") }
+    }
+
+    @Test fun expandedMetricsPreserveTheirOwnFreshnessSignedValuesAndRangeValidation() {
+        val metric = ObdMetric.CURRENT_OXYGEN_SENSOR_1_CURRENT
+        val snapshot = reportTestSnapshot().copy(
+            elapsedMillis = 30_000,
+            ecus = listOf(ObdEcuCapabilities("7E8", setOf(metric.pid))),
+            readings = listOf(reportTestReading(metric, -17.875).copy(elapsedMillis = 0)),
+        )
+        val reading = reportTestCapture(snapshot).ecus.single().metrics.single { it.metric == metric }.reading!!
+        assertEquals(ObdReadingStatus.VALID, reading.status)
+        assertEquals(-17.875, reading.value)
+        assertEquals(30_000L, reading.ageMillis)
+        val old = reportTestCapture(snapshot.copy(elapsedMillis = metric.freshnessMillis))
+        assertEquals(ObdReadingStatus.STALE, old.ecus.single().metrics.single { it.metric == metric }.reading!!.status)
+        val invalid = reportTestCapture(snapshot.copy(readings = listOf(reportTestReading(metric, -256.0))))
+        assertNull(invalid.ecus.single().metrics.single { it.metric == metric }.reading)
     }
 
     @Test fun everyCaptureHasANewReportUuidEvenWhenSnapshotIsUnchanged() {

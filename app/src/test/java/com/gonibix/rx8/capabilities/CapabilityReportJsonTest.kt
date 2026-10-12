@@ -33,7 +33,7 @@ class CapabilityReportJsonTest {
         assertEquals(setOf("address", "reportedPids", "implementedMetrics"), ecu.keys)
         assertEquals(listOf("0D"), ecu["reportedPids"])
         val metrics = ecu["implementedMetrics"] as List<*>
-        assertEquals(6, metrics.size)
+        assertEquals(ObdMetric.entries.size, metrics.size)
         for (entry in metrics) {
             val metric = entry as Map<*, *>
             assertEquals(setOf("metric", "pid", "unit", "advertised", "reading"), metric.keys)
@@ -107,6 +107,24 @@ class CapabilityReportJsonTest {
         assertEquals(32, ((CapabilityJsonFixture(json).read() as Map<*, *>)["ecus"] as List<*>).size)
         assertFalse(json.contains("Infinity"))
         assertFalse(json.contains("NaN"))
+    }
+
+    @Test fun fullCatalogIsExportableForOneEcuAndOversizedRichReportsFailWithoutTruncation() {
+        val pids = ObdMetric.entries.map { it.pid }.toSet()
+        fun snapshot(addresses: List<String>) = reportTestSnapshot().copy(
+            ecus = addresses.map { ObdEcuCapabilities(it, pids) },
+            readings = addresses.flatMap { ecu -> ObdMetric.entries.map { metric ->
+                reportTestReading(metric, metric.maximumValue, ecu = ecu).copy(elapsedMillis = 0)
+            } },
+            elapsedMillis = Long.MAX_VALUE,
+        )
+        val complete = reportTestCapture(snapshot(listOf("7E8")))
+        val json = CapabilityReportJson.encode(complete)
+        assertTrue(ObdMetric.entries.all { json.contains("\"metric\":\"" + it.name + "\"") })
+        val oversized = reportTestCapture(snapshot((0 until 32).map { it.toString(16).uppercase().padStart(2, '0') }))
+        assertThrows(IllegalArgumentException::class.java) { CapabilityReportJson.encode(oversized) }
+        assertEquals(32, oversized.ecus.size)
+        assertTrue(oversized.ecus.all { it.metrics.size == 120 })
     }
 
     @Test fun directConstructionCannotBypassPrivacyOrStoppedQualityValidation() {

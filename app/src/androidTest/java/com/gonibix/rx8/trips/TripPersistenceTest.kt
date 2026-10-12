@@ -116,6 +116,36 @@ class TripPersistenceTest {
     }
 
     @Test
+    fun discoveringProtocolCreatesOneImmutableRevisionAndSurvivesReopen() = runBlocking {
+        val trip = session().copy(protocolLabel = null)
+        repository().create(trip)
+        val originalBody = sessionWorkBodies(trip.id).single()
+        val protocol = "ISO 15765-4 CAN (11 bit, 500 kbaud)"
+        repository().updateProtocol(trip.id, protocol)
+        repository().updateProtocol(trip.id, protocol)
+        assertEquals(2L, database.trips().find(trip.id)!!.revision)
+        val bodies = sessionWorkBodies(trip.id)
+        assertEquals(2, bodies.size)
+        assertEquals(originalBody, bodies.first())
+        assertTrue(bodies.last().contains(protocol))
+        assertTrue(runCatching { repository().updateProtocol(trip.id, "Different protocol") }.isFailure)
+        assertEquals(bodies, sessionWorkBodies(trip.id))
+        repository().finish(trip.id, 10_100, 100, TripStatus.COMPLETED, "Disconnected")
+        assertEquals(3L, database.trips().find(trip.id)!!.revision)
+        assertTrue(runCatching { repository().updateProtocol(trip.id, protocol) }.isFailure)
+        reopen()
+        assertEquals(protocol, repository().find(trip.id)!!.protocolLabel)
+        assertEquals(3, sessionWorkBodies(trip.id).size)
+    }
+
+    private suspend fun sessionWorkBodies(tripId: String): List<String> = withContext(Dispatchers.IO) {
+        database.openHelper.readableDatabase.query(
+            "SELECT payloadJson FROM sync_work WHERE kind = 'SESSION' AND resourceId = ? ORDER BY revision",
+            arrayOf(tripId),
+        ).use { rows -> buildList { while (rows.moveToNext()) add(rows.getString(0)) } }
+    }
+
+    @Test
     fun creationRejectsMissingVehicleAndConcurrentActiveTripsAtomically() = runBlocking {
         assertTrue(runCatching { repository().create(session().copy(vehicleId = UUID.randomUUID().toString())) }.isFailure)
         assertTrue(repository().list().isEmpty())

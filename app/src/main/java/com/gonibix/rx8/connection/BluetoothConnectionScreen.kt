@@ -60,7 +60,7 @@ fun BluetoothConnectionScreen(
     onStopScan: () -> Unit,
     onOpenLocationSettings: () -> Unit,
     modifier: Modifier = Modifier,
-    onStartObd: () -> Unit = {},
+    onOpenVehicles: () -> Unit = {},
     onReadVin: () -> Unit = {},
     onReviewVin: (VinResponse) -> Unit = {},
     canReviewVin: Boolean = true,
@@ -100,6 +100,12 @@ fun BluetoothConnectionScreen(
                 }
             }
             ConnectionStatus(state)
+            state.automaticMessage?.let {
+                Text(it, color = MutedColor, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("automatic_session_message"))
+            }
+            if (state.isAwaitingVehicle) {
+                OutlinedButton(onClick = onOpenVehicles, modifier = Modifier.fillMaxWidth().testTag("automatic_choose_vehicle")) { Text("Choose recording vehicle") }
+            }
             if (state.obd.ecus.isNotEmpty() && state.obd.phase in setOf(ObdPhase.LIVE, ObdPhase.STOPPED, ObdPhase.ERROR)) {
                 OutlinedButton(
                     onClick = onOpenCapabilities,
@@ -117,19 +123,7 @@ fun BluetoothConnectionScreen(
             }
             if (state.phase == BluetoothConnectionPhase.CONNECTED) {
                 ConnectionAction(state, onConnect, onDisconnect)
-                if (state.obd.phase in setOf(ObdPhase.IDLE, ObdPhase.ERROR, ObdPhase.STOPPED)) {
-                    Button(
-                        onClick = onStartObd,
-                        enabled = state.isForeground,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp).testTag("start_obd"),
-                        shape = RoundedCornerShape(12.dp),
-                    ) { Text("Read live data", fontWeight = FontWeight.Bold) }
-                    Text(
-                        "Start a read-only ECU check, then view the sensors this vehicle supports.",
-                        color = MutedColor,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
+                Text("Read-only sensor discovery starts automatically after connecting.", color = MutedColor, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("automatic_obd_guidance"))
             }
             if (state.obd.phase != ObdPhase.IDLE || state.obd.readings.isNotEmpty()) {
                 LiveObdReadings(state.obd, Modifier.fillMaxWidth())
@@ -245,7 +239,7 @@ fun BluetoothConnectionScreen(
                         style = MaterialTheme.typography.titleSmall,
                     )
                     Text(
-                        "Choose Read live data to request supported sensor readings. The app does not clear faults or control vehicle systems.",
+                        "Supported sensor readings start automatically after connecting. The app does not clear faults or control vehicle systems.",
                         color = MutedColor,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -255,7 +249,7 @@ fun BluetoothConnectionScreen(
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Text(
-                        "To save readings, select a vehicle in Vehicles and choose Start recording in Trips. Data stays on this device unless you export it.",
+                        "Select a vehicle once in Vehicles to record journeys automatically. Manage recording in Trips, including resuming after Stop recording. Data stays on this device unless you export it.",
                         color = MutedColor,
                         style = MaterialTheme.typography.bodySmall,
                     )

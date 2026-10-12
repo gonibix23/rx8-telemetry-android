@@ -241,12 +241,12 @@ class Elm327SessionTest {
         val snapshots = mutableListOf<ObdSessionSnapshot>()
         val job = launch { Elm327Session(connection, SchedulerObdClock(testScheduler)).run(snapshots::add) }
         runCurrent()
-        advanceTimeBy(2_251L)
+        advanceTimeBy(2_751L)
         runCurrent()
 
         val polling = connection.commands.filter { it.startsWith("01") && it != "0100" }
-        assertEquals(listOf("010C", "010D", "0105", "010C", "010D", "010F", "010C", "010D", "0111", "0104"), polling.take(10))
-        assertTrue(snapshots.last().readings.all { it.status == ObdReadingStatus.VALID })
+        assertEquals(listOf("010C", "010D", "0105", "010C", "010D", "010F", "010C", "010D", "0111", "010C", "010D", "0104"), polling.take(12))
+        assertTrue(snapshots.last().readings.filter { it.metric.ordinal < 6 }.all { it.status == ObdReadingStatus.VALID })
         job.cancel()
         runCurrent()
     }

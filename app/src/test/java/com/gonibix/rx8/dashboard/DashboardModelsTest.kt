@@ -9,6 +9,7 @@ import com.gonibix.rx8.obd.ObdSessionSnapshot
 import com.gonibix.rx8.telemetry.ConnectionState
 import com.gonibix.rx8.telemetry.DemoTelemetrySource
 import com.gonibix.rx8.telemetry.SimulationScenario
+import com.gonibix.rx8.telemetry.TelemetryMetric
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -65,6 +66,7 @@ class DashboardModelsTest {
     @Test fun legitimateZeroRemainsDistinctFromMissingAndFailurePlaceholders() {
         val snapshot = ObdSessionSnapshot(
             phase = ObdPhase.LIVE,
+            elapsedMillis = 1_000L,
             ecus = listOf(capabilities("7E8", *ObdMetric.entries.toTypedArray())),
             readings = listOf(
                 reading(ObdMetric.SPEED, 0.0),
@@ -101,11 +103,13 @@ class DashboardModelsTest {
         assertEquals(ObdReadingStatus.VALID, current.status)
         assertEquals(ObdReadingStatus.STALE, stale.status)
         assertEquals(5_000L, stale.ageMillis)
-        assertEquals(0L, dashboardModel(snapshot.copy(elapsedMillis = 0L), emptySet()).ecus.single().readings.single().ageMillis)
+        val invalidAge = dashboardModel(snapshot.copy(elapsedMillis = 0L), emptySet()).ecus.single().readings.single()
+        assertNull(invalidAge.ageMillis)
+        assertEquals(ObdReadingStatus.STALE, invalidAge.status)
     }
 
     @Test fun invalidNumericValuesAreNeverShownAsCurrentNumbers() {
-        for (value in listOf(null, Double.NaN, Double.POSITIVE_INFINITY)) {
+        for (value in listOf(null, Double.NaN, Double.POSITIVE_INFINITY, -1.0, 256.0)) {
             val model = dashboardModel(singleReadingSnapshot(reading(ObdMetric.SPEED, value)), emptySet())
             assertNull(model.ecus.single().readings.single().value)
             assertEquals(ObdReadingStatus.NO_DATA, model.ecus.single().readings.single().status)
@@ -118,7 +122,7 @@ class DashboardModelsTest {
         val snapshot = simulatorDashboardSnapshot(source.advanceBy(1_000L))
         assertEquals(ObdPhase.LIVE, snapshot.phase)
         assertEquals("SIMULATOR", snapshot.ecus.single().ecuId)
-        assertEquals(ObdMetric.entries.map { it.pid }.toSet(), snapshot.ecus.single().supportedPids)
+        assertEquals(TelemetryMetric.entries.map { ObdMetric.valueOf(it.name).pid }.toSet(), snapshot.ecus.single().supportedPids)
         assertEquals(0.0, snapshot.readings.single { it.metric == ObdMetric.SPEED }.value)
         assertTrue(snapshot.readings.all { it.ecuId == "SIMULATOR" && it.observedAtEpochMillis == 0L })
         assertNull(snapshot.adapterIdentity)
@@ -146,6 +150,32 @@ class DashboardModelsTest {
         val retained = source.connect().copy(connection = ConnectionState.DISCONNECTED)
         val snapshot = simulatorDashboardSnapshot(retained)
         assertTrue(snapshot.readings.all { it.status == ObdReadingStatus.STALE })
+    }
+
+    @Test fun expandedFavoriteUsesItsOwnRangeAndFreshnessWithoutInventingSharedPidFields() {
+        val metric = ObdMetric.CURRENT_OXYGEN_SENSOR_1_CURRENT
+        val ratio = ObdMetric.CURRENT_OXYGEN_SENSOR_1_RATIO
+        assertEquals(metric.pid, ratio.pid)
+        val snapshot = singleReadingSnapshot(reading(metric, -3.25)).copy(elapsedMillis = 7_000L)
+        val model = dashboardModel(snapshot, setOf(metric, ratio))
+        assertTrue(model.availableExtras.containsAll(listOf(metric, ratio)))
+        val readings = model.ecus.single().readings.associateBy { it.metric }
+        assertEquals(-3.25, readings.getValue(metric).value)
+        assertEquals(ObdReadingStatus.VALID, readings.getValue(metric).status)
+        assertNull(readings.getValue(ratio).value)
+        assertNull(readings.getValue(ratio).status)
+        val stale = dashboardModel(snapshot.copy(elapsedMillis = 1_000L + metric.freshnessMillis), setOf(metric))
+        assertEquals(ObdReadingStatus.STALE, stale.ecus.single().readings.single().status)
+    }
+
+    @Test fun duplicateSameSourceReadingsAreNotArbitrarilyChosen() {
+        val snapshot = singleReadingSnapshot(reading(ObdMetric.SPEED, 10.0)).copy(
+            readings = listOf(reading(ObdMetric.SPEED, 10.0), reading(ObdMetric.SPEED, 20.0)),
+        )
+        val reading = dashboardModel(snapshot, emptySet()).ecus.single().readings.single()
+        assertNull(reading.value)
+        assertNull(reading.status)
+        assertNull(reading.ageMillis)
     }
 
     private fun capabilities(ecu: String, vararg metrics: ObdMetric) = ObdEcuCapabilities(ecu, metrics.map { it.pid }.toSet())

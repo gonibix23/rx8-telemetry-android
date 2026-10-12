@@ -174,6 +174,34 @@ class DashboardFavoritesStoreTest {
         assertEquals(setOf("intake_temperature", "throttle_position"), storage.saved)
     }
 
+    @Test
+    fun expandedFavoriteIdsReopenWithoutLosingLegacySelectionsOrCombiningOxygenChannels() = runTest {
+        val storage = MemoryStorage(setOf("intake_temperature", "throttle_position", "engine_load"))
+        val store = DashboardFavoritesStore(storage, backgroundScope)
+        runCurrent()
+        val additions = setOf(ObdMetric.MASS_AIR_FLOW, ObdMetric.WIDE_OXYGEN_SENSOR_1_RATIO, ObdMetric.WIDE_OXYGEN_SENSOR_1_VOLTAGE)
+        additions.forEach(store::toggleFavorite)
+        runCurrent()
+        assertEquals(setOf("intake_temperature", "throttle_position", "engine_load", "mass_air_flow",
+            "wide_oxygen_sensor_1_ratio", "wide_oxygen_sensor_1_voltage"), storage.saved)
+        val reopened = DashboardFavoritesStore(storage, backgroundScope)
+        runCurrent()
+        assertEquals(store.favorites.value, reopened.favorites.value)
+        reopened.toggleFavorite(ObdMetric.WIDE_OXYGEN_SENSOR_1_RATIO)
+        runCurrent()
+        assertFalse(ObdMetric.WIDE_OXYGEN_SENSOR_1_RATIO in reopened.favorites.value)
+        assertTrue(ObdMetric.WIDE_OXYGEN_SENSOR_1_VOLTAGE in reopened.favorites.value)
+    }
+
+    @Test
+    fun allNewScalarChannelsHaveUniqueStableFavoriteIds() {
+        val selectable = ObdMetric.entries.filterNot { it in setOf(ObdMetric.ENGINE_RPM, ObdMetric.SPEED, ObdMetric.COOLANT_TEMPERATURE) }.toSet()
+        val encoded = FavoriteMetricIds.encode(selectable)
+        assertEquals(117, encoded.size)
+        assertEquals(selectable, FavoriteMetricIds.decode(encoded + "unknown_future_metric"))
+        assertEquals(emptySet<ObdMetric>(), FavoriteMetricIds.decode(emptySet()))
+    }
+
     private class MemoryStorage(initial: Set<String> = emptySet()) : DashboardFavoritesStorage {
         var saved = initial
         val writes = mutableListOf<Set<String>>()

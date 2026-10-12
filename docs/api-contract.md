@@ -12,7 +12,7 @@ The app records trips locally and exports files. Those files retain the separate
 
 RX8-007 exports completed or interrupted trips through Android's document picker. Stop an active recording first. Export is an explicit local action that does not attempt synchronization or change outbox state.
 Exports preserve the vehicle UUID and alias captured when recording began, the trip/sample UUIDs, sample order, UTC timestamps, monotonic elapsed time, units, ECU sources, and quality. They contain no VIN or Bluetooth address. Selecting another vehicle does not relabel a saved trip.
-The current origin is `REAL_OBD`; simulator preview data is not recorded as a trip. Units are the stored canonical app units: `rpm`, `km/h`, `°C`, and `%`. The API mapper separately converts `°C` to `Cel` and enum names to the wire values below. Local export version 1 is unchanged by RX8-008.
+The current origin is `REAL_OBD`; simulator preview data is not recorded as a trip. Units are the stored canonical app units for each metric: `rpm`, `km/h`, `°C`, `%`, `kPa`, `Pa`, `deg`, `g/s`, `s`, `km`, `count`, `V`, `lambda`, `min`, `L/h`, `N·m`, and `mA`. The API mapper converts Celsius to `Cel`, torque to `N.m`, and dimensionless ratio/count to `1`; other canonical units remain unchanged. Local export version 1 retains its fields; consumers must accept the expanded metric catalog.
 
 ### JSON version 1
 
@@ -24,7 +24,7 @@ The root has `schemaVersion: 1`, a `trip` object, and a sequence-ordered `sample
 | sample | id, tripId, sequence, observedAtUtc, observedAtEpochMillis, elapsedMillis, metric, value, unit, ecuId, quality |
 
 The UTC strings use ISO 8601 and end in `Z`. Epoch fields are milliseconds since the Unix epoch; elapsed/duration fields are monotonic milliseconds. Nullable end timestamps, end reason, protocol, and sample values remain JSON nulls. Missing values are never replaced by zero.
-`metric` uses stable enum names: `ENGINE_RPM`, `SPEED`, `COOLANT_TEMPERATURE`, `INTAKE_TEMPERATURE`, `THROTTLE_POSITION`, and `ENGINE_LOAD`.
+`metric` uses stable `ObdMetric` enum names. The original six IDs remain unchanged; version 0.12.0-dev adds scalar fields through PID64, including distinct components when a PID returns multiple values. See the [sensor catalog](architecture.md#current-read-only-obd-engine). A shared PID does not make its component metric IDs interchangeable.
 `status` is `COMPLETED` or `INTERRUPTED` for exported trips. `quality` preserves the recorded enum name; normal recording stores `VALID`, `NO_DATA`, `TIMEOUT`, `PARSE_ERROR`, or `ADAPTER_ERROR`, while STALE/UNSUPPORTED display states are not appended as fresh samples.
 JSON escapes quotes, backslashes, and control characters without modifying normal field values. A non-finite numeric value aborts export rather than producing invalid JSON or a fabricated number.
 
@@ -52,7 +52,7 @@ Future transport: HTTPS/JSON and /v1 routes. Implemented payloads use schemaVers
 Client-generated UUIDs are retained for vehicles, sessions, samples, and batches.
 Explicit canonical units do not depend on the phone's language.
 VIN is optional; neither a VIN nor a UUID is a credential. Authorization must verify ownership of each resource.
-Payloads preserve ECU source addresses but omit Bluetooth MAC addresses. All six current metrics use `obd_standard` and service `01`; this is not evidence of additional sensor support.
+Payloads preserve ECU source addresses but omit Bluetooth MAC addresses. All implemented scalar metrics use `obd_standard` and service `01`; actual availability is determined by discovery and responses, not by the contract.
 
 ## Planned resources
 
@@ -74,7 +74,7 @@ Adding a VIN preserves vehicleId and creates a new metadata revision. VIN and pr
 Session: schemaVersion, sessionId, vehicleId, revision, startedAt, nullable endedAt, nullable durationMs, status, nullable appVersion, nullable obdProtocol, and dataOrigin (real/simulated).
 States: recording, completed, interrupted.
 Duration uses a monotonic clock; wall-clock changes must not produce negative durations.
-Recording-session metadata has null endedAt and durationMs. Appending samples does not change that metadata revision; completion or interruption creates the next revision with the saved duration. New recordings capture their actual app version at start. Existing recordings migrated from version 2 have appVersion null, never the version installed during migration.
+Recording-session metadata has null endedAt and durationMs. Appending samples does not change that metadata revision; first protocol discovery creates an immutable metadata revision when an automatic journey started before initialization; completion or interruption creates the next revision with the saved duration. Earlier queued JSON bodies remain unchanged. New recordings capture their actual app version at start. Existing recordings migrated from version 2 have appVersion null, never the version installed during migration.
 
 revision is a positive integer that increases with every metadata change. The future server must implement these rules:
 
@@ -133,7 +133,7 @@ Voltage measured by the adapter uses a different metric from voltage reported by
 | Temperature | Cel |
 | Percentage | % |
 
-Current metric IDs are `engine_rpm`, `speed`, `coolant_temperature`, `intake_temperature`, `throttle_position`, and `engine_load`. Other metrics require a future contract extension.
+Wire metric IDs are the lower-case stable `ObdMetric` names, with a one-to-one `ApiMetric` mapping. The original six IDs and payload shape remain unchanged; 0.12.0-dev extends the enum with the 120-field scalar catalog. Future server implementations must accept each implemented metric/unit/PID combination and retain unknown extension IDs if forwarding records. No live server currently consumes this contract.
 Default limits are 100 samples and 256 KiB of UTF-8 JSON, including the envelope. Configurable hard bounds are 1-500 samples and 1 byte-1 MiB. A singleton exceeding the configured byte ceiling is blocked visibly in queue state. Batch preparation reads at most 500 sample rows at once and does not copy the full trip history into a payload.
 JSON field ordering and numeric formatting are deterministic. Quotes, backslashes, controls, and UTF-16 surrogate code units are escaped; non-finite values, inconsistent units, foreign-trip samples, duplicate IDs, and non-increasing sequences are rejected.
 Do not upload simulated data as real sessions.

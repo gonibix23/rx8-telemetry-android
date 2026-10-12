@@ -93,7 +93,7 @@ internal class ElmCommandExchange(private val connection: AdapterConnection) {
     private companion object {
         const val MAX_RESPONSE_BYTES = 8_192
         val ALLOWED_COMMANDS = setOf("ATZ", "ATE0", "ATL0", "ATS1", "ATH1", "ATD0", "ATCAF1", "ATSP0", "ATDPN", "ATCFC1", "0902") +
-            ObdMetric.entries.map { it.parameter.command } +
+            com.gonibix.rx8.telemetry.obd.ObdPid.entries.map { it.command } +
             (0..0xe0 step 0x20).map { "01%02X".format(java.util.Locale.ROOT, it) }
     }
 }

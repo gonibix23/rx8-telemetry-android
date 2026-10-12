@@ -18,15 +18,37 @@ import org.junit.Test
 
 class ApiV1ModelsTest {
     @Test fun mapsEveryCurrentMetricWithExplicitWireUnitsAndPid() {
-        val expected = listOf("rpm", "km/h", "Cel", "Cel", "%", "%")
-        ObdMetric.entries.forEachIndexed { index, metric ->
-            val dto = ApiV1Mapper.sample(wireSample().copy(metric = metric, unit = metric.unit))
+        ObdMetric.entries.forEach { metric ->
+            val dto = ApiV1Mapper.sample(wireSample().copy(metric = metric, unit = metric.unit, value = metric.minimumValue))
             assertEquals(ApiMetric.valueOf(metric.name), dto.metric)
-            assertEquals(expected[index], dto.unit)
+            val expectedUnit = when (metric.unit) {
+                "°C" -> "Cel"
+                "N·m" -> "N.m"
+                "lambda", "count" -> "1"
+                else -> metric.unit
+            }
+            assertEquals(expectedUnit, dto.unit)
             assertEquals(String.format(Locale.ROOT, "%02X", metric.pid), dto.pid)
             assertEquals("01", dto.service)
             assertEquals("7E8", dto.ecuAddress)
         }
+    }
+
+    @Test fun expandedComponentsKeepStableDistinctWireIdsUnitsSignsAndRanges() {
+        val samples = listOf(
+            wireSample().copy(metric = ObdMetric.CURRENT_OXYGEN_SENSOR_1_RATIO, value = 1.0, unit = "lambda"),
+            wireSample(1).copy(metric = ObdMetric.CURRENT_OXYGEN_SENSOR_1_CURRENT, value = -17.875, unit = "mA"),
+            wireSample(2).copy(metric = ObdMetric.ENGINE_REFERENCE_TORQUE, value = 400.0, unit = "N·m"),
+        )
+        val mapped = samples.map(ApiV1Mapper::sample)
+        assertEquals(listOf("current_oxygen_sensor_1_ratio", "current_oxygen_sensor_1_current", "engine_reference_torque"), mapped.map { it.metric.wire })
+        assertEquals(listOf("1", "mA", "N.m"), mapped.map { it.unit })
+        assertEquals(listOf("34", "34", "63"), mapped.map { it.pid })
+        assertEquals(-17.875, mapped[1].value)
+        val json = ApiV1Json.batch(ApiV1Mapper.batch(WIRE_BATCH, WIRE_VEHICLE, WIRE_SESSION, samples))
+        assertTrue(json.contains("\"value\":-17.875,\"unit\":\"mA\""))
+        assertThrows(IllegalArgumentException::class.java) { ApiV1Mapper.sample(samples[1].copy(value = -256.0)) }
+        assertThrows(IllegalArgumentException::class.java) { ApiV1Mapper.sample(samples[2].copy(unit = "Nm")) }
     }
 
     @Test fun errorsRemainDistinctNullValuesAndValidZeroRemainsZero() {

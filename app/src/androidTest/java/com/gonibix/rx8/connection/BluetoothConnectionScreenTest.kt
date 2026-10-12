@@ -318,7 +318,7 @@ class BluetoothConnectionScreenTest {
 
 
     @Test
-    fun bluetoothConnectionRequiresAnExplicitStartForObdReadings() {
+    fun automaticReadingsKeepEcuProgressDistinctAndOfferVehicleSelection() {
         val state = mutableStateOf(
             BluetoothConnectionUiState(
                 availability = BluetoothAvailability.READY,
@@ -326,7 +326,7 @@ class BluetoothConnectionScreenTest {
                 isForeground = true,
             ),
         )
-        var starts = 0
+        var vehicleSelections = 0
         compose.setContent {
             Rx8Theme {
                 Surface(
@@ -345,15 +345,7 @@ class BluetoothConnectionScreenTest {
                         onScan = {},
                         onStopScan = {},
                         onOpenLocationSettings = {},
-                        onStartObd = {
-                            starts++
-                            state.value = state.value.copy(
-                                obd = ObdSessionSnapshot(
-                                    phase = ObdPhase.INITIALIZING,
-                                    statusMessage = "Preparing the adapter.",
-                                ),
-                            )
-                        },
+                        onOpenVehicles = { vehicleSelections++ },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -361,14 +353,15 @@ class BluetoothConnectionScreenTest {
         }
         compose.onNodeWithTag("ecu_status").assertTextEquals("ECU not checked")
         compose.onNodeWithTag("obd_session_status").assertDoesNotExist()
-        compose.onNodeWithTag("start_obd").assertIsEnabled()
-        compose.runOnIdle { assertEquals(0, starts) }
-        compose.onNodeWithTag("start_obd").performScrollTo().performClick()
+        compose.onNodeWithTag("start_obd").assertDoesNotExist()
+        compose.onNodeWithTag("automatic_obd_guidance").assertIsDisplayed()
+        compose.runOnIdle {
+            state.value = state.value.copy(obd = ObdSessionSnapshot(phase = ObdPhase.INITIALIZING, statusMessage = "Preparing the adapter."))
+        }
         compose.onNodeWithTag("obd_session_status").assertTextEquals("Preparing the adapter")
         compose.onNodeWithTag("start_obd").assertDoesNotExist()
         compose.onNodeWithTag("disconnect_adapter").assertIsEnabled()
         compose.runOnIdle {
-            assertEquals(1, starts)
             state.value = state.value.copy(
                 obd = ObdSessionSnapshot(phase = ObdPhase.DISCOVERING, statusMessage = "Checking the ECU."),
             )
@@ -382,11 +375,42 @@ class BluetoothConnectionScreenTest {
         }
         compose.onNodeWithTag("obd_session_status").assertTextEquals("Unable to continue reading")
         compose.onNodeWithTag("obd_session_message").assertTextEquals("The ECU did not respond.")
-        compose.onNodeWithTag("start_obd").assertIsEnabled()
+        compose.onNodeWithTag("start_obd").assertDoesNotExist()
+        compose.runOnIdle { state.value = state.value.copy(isAwaitingVehicle = true, automaticMessage = "Choose a vehicle to begin recording.") }
+        compose.onNodeWithTag("automatic_choose_vehicle").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(1, vehicleSelections) }
     }
 
+    @Test fun syntheticConnectionScreenshotHasNoManualReadAction() {
+        compose.setContent {
+            Rx8Theme {
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onBackground) {
+                    Column(Modifier.safeDrawingPadding()) {
+                        Text("UI TEST FIXTURE · SYNTHETIC CONNECTION", style = MaterialTheme.typography.labelMedium)
+                        BluetoothConnectionScreen(
+                            state = BluetoothConnectionUiState(
+                                availability = BluetoothAvailability.READY, phase = BluetoothConnectionPhase.CONNECTED,
+                                isForeground = true, isAwaitingVehicle = true,
+                                automaticMessage = "Choose a saved vehicle to begin the automatic journey.",
+                                obd = ObdSessionSnapshot(phase = ObdPhase.INITIALIZING, statusMessage = "Preparing synthetic fixture."),
+                            ),
+                            onRefresh = {}, onRequestPermission = {}, onOpenBluetoothSettings = {}, onOpenAppSettings = {},
+                            onSelectDevice = {}, onConnect = {}, onDisconnect = {}, onScan = {}, onStopScan = {}, onOpenLocationSettings = {},
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+            }
+        }
+        compose.onNodeWithTag("bluetooth_connection_status").assertTextEquals("Bluetooth connected")
+        compose.onNodeWithTag("ecu_status").assertTextEquals("ECU check in progress")
+        compose.onNodeWithTag("start_obd").assertDoesNotExist()
+        compose.onNodeWithText("UI TEST FIXTURE · SYNTHETIC CONNECTION").assertIsDisplayed()
+        captureDiscoveryScreen("connection")
+    }
 
-    private fun captureDiscoveryScreen() {
+    private fun captureDiscoveryScreen(name: String = "discovery") {
+        require(name == "discovery" || name == "connection")
         compose.waitForIdle()
         // Capture Compose content, not the emulator window before its frame is presented.
         var rendered: Bitmap? = null
@@ -405,18 +429,18 @@ class BluetoothConnectionScreenTest {
         val directory = File(instrumentation.targetContext.getExternalFilesDir(null), "screenshots")
         try {
             assertTrue(directory.isDirectory || directory.mkdirs())
-            val source = File(directory, "discovery.png")
+            val source = File(directory, "$name.png")
             source.outputStream().use { output ->
                 assertTrue(captured.compress(Bitmap.CompressFormat.PNG, 100, output))
             }
             ParcelFileDescriptor.AutoCloseInputStream(
                 instrumentation.uiAutomation.executeShellCommand(
-                    "cp /sdcard/Android/data/com.gonibix.rx8/files/screenshots/discovery.png " +
-                        "/data/local/tmp/rx8-discovery.png",
+                    "cp /sdcard/Android/data/com.gonibix.rx8/files/screenshots/$name.png " +
+                        "/data/local/tmp/rx8-$name.png",
                 ),
             ).use { it.readBytes() }
             val copied = ParcelFileDescriptor.AutoCloseInputStream(
-                instrumentation.uiAutomation.executeShellCommand("cat /data/local/tmp/rx8-discovery.png"),
+                instrumentation.uiAutomation.executeShellCommand("cat /data/local/tmp/rx8-$name.png"),
             ).use { it.readBytes() }
             assertArrayEquals("The discovery screenshot must survive test teardown", source.readBytes(), copied)
         } finally {

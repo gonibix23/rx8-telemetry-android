@@ -27,6 +27,7 @@ import androidx.core.net.toUri
 import com.gonibix.rx8.MainActivity
 import com.gonibix.rx8.R
 import com.gonibix.rx8.bluetooth.AndroidBluetoothGateway
+import com.gonibix.rx8.bluetooth.AdapterDevice
 import com.gonibix.rx8.bluetooth.BluetoothAvailability
 import com.gonibix.rx8.bluetooth.BluetoothGateway
 import com.gonibix.rx8.obd.Elm327Session
@@ -37,6 +38,7 @@ import com.gonibix.rx8.trips.TripRuntime
 import com.gonibix.rx8.vehicle.VehicleProfile
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Job
@@ -54,6 +56,12 @@ class BluetoothSessionService : Service() {
     private lateinit var gateway: BluetoothGateway
     private lateinit var controller: BluetoothSessionController
     private lateinit var recorder: TripRecorder
+    private lateinit var automaticTrips: AutomaticTripCoordinator
+    private lateinit var lastAdapterStore: LastAdapterStore
+    private lateinit var automaticPolicy: AutomaticConnectionPolicy
+    private var lastAdapterAddress: String? = null
+    private var lastAdapterLoaded = false
+    private var appForeground = false
     private var finishingJob: Job? = null
     private lateinit var powerLock: PowerManager.WakeLock
     private lateinit var acquisitionLock: AcquisitionWakeLock
@@ -67,20 +75,48 @@ class BluetoothSessionService : Service() {
     inner class LocalBinder : Binder() {
         val controller: BluetoothSessionController get() = this@BluetoothSessionService.controller
 
-        /** Invoke only from the visible Connect action, after Nearby devices permission is granted. */
-        fun connect() = startConnection()
+        /** The Activity's STARTED visibility, independently of which tab is being displayed. */
+        fun setAppForeground(visible: Boolean) {
+            appForeground = visible
+            if (visible) controller.refresh()
+            updateAutomaticReadiness()
+        }
+
+        /** Invoke after the visible permission/notification flow; the process gate prevents retries. */
+        fun tryAutomaticConnection() {
+            updateAutomaticReadiness()
+            if (!controller.uiState.value.automaticConnectionReady || !automaticPolicy.consume()) return
+            controller.setAutomaticConnectionReady(false)
+            val address = lastAdapterAddress ?: return
+            if (!controller.selectRememberedDevice(address)) return
+            startConnection()
+        }
+
+        fun connect() {
+            automaticPolicy.consume()
+            controller.setAutomaticConnectionReady(false)
+            startConnection()
+        }
+
+        fun disconnect() {
+            automaticPolicy.consume()
+            controller.setAutomaticConnectionReady(false)
+            controller.disconnect()
+        }
+
+        fun refreshSelectedVehicle() = automaticTrips.refreshSelectedVehicle()
 
         val tripRecorder: TripRecorder get() = recorder
 
         /** Called only by the visible Trips action; connecting/starting OBD stays in Adapter. */
         fun startTrip(vehicle: VehicleProfile) {
             val state = controller.uiState.value
-            if (!destroyed && foregroundRunning && state.phase == BluetoothConnectionPhase.CONNECTED && state.obd.phase == ObdPhase.LIVE) {
-                recorder.start(vehicle, state.obd)
+            if (!destroyed && appForeground && foregroundRunning && state.phase == BluetoothConnectionPhase.CONNECTED && state.obd.phase == ObdPhase.LIVE) {
+                automaticTrips.startManually(vehicle, state.obd)
             }
         }
 
-        fun stopTrip() = recorder.stop()
+        fun stopTrip() = automaticTrips.stopRecording()
 
         internal val hasForegroundSession: Boolean get() = foregroundRunning
         internal val sessionNotification: Notification? get() = foregroundNotification
@@ -109,10 +145,22 @@ class BluetoothSessionService : Service() {
         val dependencies = dependenciesFactory(applicationContext)
         gateway = dependencies.gateway
         recorder = dependencies.recorder ?: TripRuntime.get(applicationContext).recorder
+        lastAdapterStore = dependencies.lastAdapterStore ?: AutomaticConnectionRuntime.lastAdapter(applicationContext)
+        automaticPolicy = dependencies.automaticPolicy ?: AutomaticConnectionRuntime.policy
         controller = BluetoothSessionController(
             gateway, ownerScope, obdSessionFactory = dependencies.obdSessionFactory,
             onObdSnapshot = recorder::onSnapshot,
-            onSessionEnded = { completed -> recorder.stop(completed) },
+            onSessionEnded = { completed ->
+                if (::automaticTrips.isInitialized) automaticTrips.ended(completed) else recorder.stop(completed)
+            },
+            autoStartObd = true,
+            onConnected = ::prepareConnectedSession,
+        )
+        automaticTrips = AutomaticTripCoordinator(
+            recorder, ownerScope,
+            selectedVehicle = dependencies.selectedVehicleLoader ?: { TripRuntime.get(applicationContext).selectedVehicle() },
+            snapshot = { controller.uiState.value.obd },
+            guidance = controller::setAutomaticGuidance,
         )
         powerLock = getSystemService(PowerManager::class.java).newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK, "$packageName:ObdAcquisition",
@@ -137,8 +185,23 @@ class BluetoothSessionService : Service() {
         ContextCompat.registerReceiver(this, bluetoothEvents, filter, ContextCompat.RECEIVER_EXPORTED)
         receiverRegistered = true
         ownerScope.launch {
-            controller.uiState.map { it.phase to it.obd.phase }.distinctUntilChanged().collect {
+            controller.uiState.map { Triple(it.phase, it.obd.phase, it.availability to it.devices) }.distinctUntilChanged().collect {
                 synchronizeResources(controller.uiState.value)
+                updateAutomaticReadiness()
+            }
+        }
+        ownerScope.launch {
+            try {
+                lastAdapterAddress = normalizedAdapterAddress(lastAdapterStore.loadAddress())
+                lastAdapterLoaded = true
+                if (lastAdapterAddress == null) automaticPolicy.consume()
+                updateAutomaticReadiness()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (automaticPolicy.consume()) {
+                    controller.setAutomaticGuidance(false, "The remembered adapter could not be loaded. Select an adapter to connect.")
+                }
             }
         }
         ownerScope.launch {
@@ -161,6 +224,8 @@ class BluetoothSessionService : Service() {
     override fun onBind(intent: Intent): IBinder = binder
 
     override fun onUnbind(intent: Intent): Boolean {
+        appForeground = false
+        updateAutomaticReadiness()
         controller.setForeground(false)
         return false
     }
@@ -174,6 +239,7 @@ class BluetoothSessionService : Service() {
             ACTION_STOP_SESSION -> {
                 val token = intent.getStringExtra(EXTRA_SESSION_TOKEN)
                 if (token != null && token == sessionToken) {
+                    automaticPolicy.consume()
                     controller.disconnect()
                     finishSession()
                 } else if (sessionToken == null && finishingJob?.isActive != true) {
@@ -188,7 +254,7 @@ class BluetoothSessionService : Service() {
     private fun startConnection() {
         if (destroyed) return
         val before = controller.uiState.value
-        if (!before.isForeground || before.phase != BluetoothConnectionPhase.DISCONNECTED || before.selectedDevice == null) return
+        if (!appForeground || before.phase != BluetoothConnectionPhase.DISCONNECTED || before.selectedDevice == null) return
         controller.refresh()
         val ready = controller.uiState.value
         if (ready.availability != BluetoothAvailability.READY || ready.selectedDevice == null) return
@@ -203,12 +269,37 @@ class BluetoothSessionService : Service() {
         try {
             ContextCompat.startForegroundService(this, Intent(this, BluetoothSessionService::class.java).setAction(ACTION_START_SESSION))
             showForegroundNotification(ready.copy(phase = BluetoothConnectionPhase.CONNECTING))
-            controller.connect()
+            controller.connectFromVisibleApp()
             synchronizeResources(controller.uiState.value)
         } catch (_: Exception) {
             controller.reportServiceFailure(getString(R.string.session_start_failure))
             finishSession()
         }
+    }
+
+    private suspend fun prepareConnectedSession(device: AdapterDevice) {
+        val expectedToken = sessionToken
+        AutomaticConnectionRuntime.preferenceScope.launch {
+            try {
+                lastAdapterStore.saveAddress(device.address)
+                if (!destroyed && expectedToken == sessionToken) lastAdapterAddress = device.address
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (expectedToken == sessionToken) {
+                    controller.setConnectionMessage("Connected, but the adapter could not be remembered. Select it manually next time.")
+                }
+            }
+        }
+        automaticTrips.connected()
+    }
+
+    private fun updateAutomaticReadiness() {
+        if (destroyed || !::controller.isInitialized) return
+        val state = controller.uiState.value
+        val eligible = appForeground && lastAdapterLoaded && lastAdapterAddress != null && automaticPolicy.isAvailable() &&
+            state.phase == BluetoothConnectionPhase.DISCONNECTED && state.availability == BluetoothAvailability.READY
+        controller.setAutomaticConnectionReady(eligible)
     }
 
     private fun synchronizeResources(state: BluetoothConnectionUiState) {
@@ -249,7 +340,11 @@ class BluetoothSessionService : Service() {
             .setContentText(when {
                 recorder.state.value.isStopping -> "Saving trip…"
                 recorder.state.value.isStarting -> "Starting trip recording…"
-                recorder.state.value.session != null -> "Recording trip · reading vehicle data"
+                recorder.state.value.session != null -> if (state.obd.phase == ObdPhase.LIVE) {
+                    "Recording trip · reading vehicle data"
+                } else {
+                    "Recording trip · preparing vehicle readings"
+                }
                 recorder.state.value.error != null -> "Trip recording stopped · check Trips"
                 else -> getString(text)
             })
@@ -327,7 +422,7 @@ internal data class BluetoothServiceDependencies(
     val gateway: BluetoothGateway,
     val obdSessionFactory: ObdSessionFactory = ObdSessionFactory { Elm327Session(it) },
     val recorder: TripRecorder? = null,
+    val selectedVehicleLoader: (suspend () -> VehicleProfile?)? = null,
+    val lastAdapterStore: LastAdapterStore? = null,
+    val automaticPolicy: AutomaticConnectionPolicy? = null,
 )
-
-
-

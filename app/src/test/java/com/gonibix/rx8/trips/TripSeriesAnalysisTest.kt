@@ -207,6 +207,55 @@ class TripSeriesAnalysisTest {
         assertEquals(1, repository.requests.size)
     }
 
+    @Test fun expandedSignedAndMultiComponentChannelsRetainIndependentStatistics() = runTest {
+        for ((metric, values) in listOf(
+            ObdMetric.SHORT_TERM_FUEL_TRIM_BANK_1 to listOf(-25.0, 0.0, 25.0),
+            ObdMetric.EVAP_VAPOR_PRESSURE_WIDE to listOf(-32768.0, 0.0, 32767.0),
+            ObdMetric.CURRENT_OXYGEN_SENSOR_1_CURRENT to listOf(-128.0, 0.0, 127.0),
+            ObdMetric.ABSOLUTE_ENGINE_LOAD to listOf(0.0, 150.0, 25700.0),
+        )) {
+            val samples = values.mapIndexed { index, value -> analysisSample(index.toLong(), index * 1_000L, value, metric = metric) } +
+                analysisSample(3, 3_000, 200.0, metric = ObdMetric.WIDE_OXYGEN_SENSOR_1_VOLTAGE)
+            val result = analyzeTripSeries(AnalyticsExportRepository(samples), analysisTrip(), TripSeriesKey(metric, "7E8"))
+            assertEquals(3L, result.validSampleCount)
+            assertEquals(values.first(), result.minValue)
+            assertEquals(values.last(), result.maxValue)
+            assertEquals(2_000L, result.coveredMillis)
+            assertEquals(values, result.points.map { it.value })
+        }
+    }
+
+    @Test fun extendedSlowSeriesUsesItsOwnGapLimitWhileOriginalSpeedRemainsFiveSeconds() = runTest {
+        val metric = ObdMetric.ENGINE_OIL_TEMPERATURE
+        val samples = listOf(
+            analysisSample(0, 0, -10.0, metric = metric),
+            analysisSample(1, 120_000, 0.0, metric = metric),
+            analysisSample(2, 240_001, 10.0, metric = metric),
+        )
+        val result = analyzeTripSeries(AnalyticsExportRepository(samples), analysisTrip(250_000), TripSeriesKey(metric, "7E8"))
+        assertEquals(120_000L, result.coveredMillis)
+        assertEquals(listOf(-10.0, 0.0, null, 10.0), result.points.map { it.value })
+        val speedResult = analyzeTripSeries(AnalyticsExportRepository(samples.map { it.copy(metric = ObdMetric.SPEED, unit = "km/h", value = 20.0) }),
+            analysisTrip(250_000), speed)
+        assertEquals(0L, speedResult.coveredMillis)
+    }
+
+    @Test fun extendedDecoderDomainsRejectCorruptUnitsAndOutOfRangeValues() = runTest {
+        val metric = ObdMetric.FUEL_INJECTION_TIMING
+        val samples = listOf(
+            analysisSample(0, 0, -210.0, metric = metric),
+            analysisSample(1, 1_000, 301.9921875, metric = metric),
+            analysisSample(2, 2_000, -211.0, metric = metric),
+            analysisSample(3, 3_000, 302.0, metric = metric),
+            analysisSample(4, 4_000, 20.0, metric = metric).copy(unit = "%"),
+        )
+        val result = analyzeTripSeries(AnalyticsExportRepository(samples), analysisTrip(), TripSeriesKey(metric, "7E8"))
+        assertEquals(2L, result.validSampleCount)
+        assertEquals(3, result.points.count { it.value == null })
+        assertEquals(-210.0, result.minValue)
+        assertEquals(301.9921875, result.maxValue)
+    }
+
     private val speed = TripSeriesKey(ObdMetric.SPEED, "7E8")
     private val temperature = TripSeriesKey(ObdMetric.INTAKE_TEMPERATURE, "7E8")
 }

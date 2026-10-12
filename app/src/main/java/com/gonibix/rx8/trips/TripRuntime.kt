@@ -5,6 +5,8 @@ import android.os.StatFs
 import com.gonibix.rx8.BuildConfig
 import com.gonibix.rx8.sync.RoomSyncStore
 import com.gonibix.rx8.vehicle.VehicleDatabase
+import com.gonibix.rx8.vehicle.RoomVehicleRepository
+import com.gonibix.rx8.vehicle.VehicleProfile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -14,6 +16,10 @@ class TripRuntime private constructor(context: Context) {
     private val database = VehicleDatabase.open(context)
     val repository: TripRepository = RoomTripRepository(database)
     val syncStore = RoomSyncStore(database)
+    suspend fun selectedVehicle(): VehicleProfile? {
+        val vehicles = RoomVehicleRepository(database).load()
+        return vehicles.profiles.firstOrNull { it.id == vehicles.activeVehicleId }
+    }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     val recorder = TripRecorder(
         repository, scope,

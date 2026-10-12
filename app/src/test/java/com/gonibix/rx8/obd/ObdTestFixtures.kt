@@ -48,7 +48,7 @@ internal class SchedulerObdClock(private val scheduler: TestCoroutineScheduler) 
 
 internal fun reply(body: String, delayMillis: Long = 0L): List<TestFragment> = listOf(TestFragment("$body\r>", delayMillis))
 
-internal fun defaultReply(command: String, pids: Set<Int> = ObdMetric.entries.map { it.pid }.toSet()): List<TestFragment> = when (command) {
+internal fun defaultReply(command: String, pids: Set<Int> = setOf(0x0C, 0x0D, 0x05, 0x0F, 0x11, 0x04)): List<TestFragment> = when (command) {
     "ATZ" -> reply("ATZ\rELM327 v1.5")
     "ATE0", "ATL0", "ATS1", "ATH1", "ATD0", "ATCAF1", "ATSP0" -> reply("$command\rOK")
     "ATDPN" -> reply("A6")

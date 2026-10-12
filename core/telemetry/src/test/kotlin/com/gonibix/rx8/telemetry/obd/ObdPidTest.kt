@@ -7,15 +7,14 @@ import org.junit.Test
 
 class ObdPidTest {
     @Test
-    fun `six decoder candidates retain existing metric metadata`() {
-        assertEquals(TelemetryMetric.entries.toSet(), ObdPid.entries.map { it.metric }.toSet())
+    fun `original six channels retain their identifiers and units within the expanded catalog`() {
+        assertEquals(TelemetryMetric.entries.map { it.name }, ObdField.entries.take(6).map { it.name })
         assertEquals(
             setOf("010C", "010D", "0105", "010F", "0111", "0104"),
-            ObdPid.entries.map { it.command }.toSet(),
+            ObdPid.entries.take(6).map { it.command }.toSet(),
         )
-        ObdPid.entries.forEach {
-            assertEquals(it.metric.label, it.label)
-            assertEquals(it.metric.unit, it.unit)
+        ObdField.entries.take(6).forEach {
+            assertEquals(TelemetryMetric.valueOf(it.name).unit, it.unit)
         }
     }
 

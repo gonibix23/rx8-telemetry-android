@@ -55,10 +55,12 @@ class TripSensorChartTest {
     @Test fun sixRecordedMetricsAreSelectableAndPreferTheCurrentRecordedEcu() {
         val calls = mutableListOf<TripSeriesKey>()
         val selected = TripSeriesKey(ObdMetric.SPEED, "7E9")
-        val options = ObdMetric.entries.map { TripSeriesKey(it, "7E8") } + selected + TripSeriesKey(ObdMetric.COOLANT_TEMPERATURE, "7E9")
+        val originalMetrics = listOf(ObdMetric.ENGINE_RPM, ObdMetric.SPEED, ObdMetric.COOLANT_TEMPERATURE,
+            ObdMetric.INTAKE_TEMPERATURE, ObdMetric.THROTTLE_POSITION, ObdMetric.ENGINE_LOAD)
+        val options = originalMetrics.map { TripSeriesKey(it, "7E8") } + selected + TripSeriesKey(ObdMetric.COOLANT_TEMPERATURE, "7E9")
         show(options = options, selected = selected, series = null, onSelect = { calls += it })
         assertTrue(calls.isEmpty())
-        ObdMetric.entries.forEach { metric -> compose.onNodeWithTag("trip_metric_${metric.name.lowercase(Locale.ROOT)}").assertIsEnabled() }
+        originalMetrics.forEach { metric -> compose.onNodeWithTag("trip_metric_${metric.name.lowercase(Locale.ROOT)}").assertIsEnabled() }
         compose.onNodeWithTag("trip_metric_speed").assertIsSelected().performClick()
         assertTrue(calls.isEmpty())
         compose.onNodeWithTag("trip_metric_coolant_temperature").performClick()
@@ -163,6 +165,24 @@ class TripSensorChartTest {
         compose.onNodeWithTag("trip_source_7E8").assertIsSelected().assertIsDisplayed()
         compose.onNodeWithText("UI TEST FIXTURE · SYNTHETIC TRIP SENSORS").assertIsDisplayed()
         captureFixture()
+    }
+
+    @Test fun signedFuelTrimPreservesNegativeRangeAndFractionalPrecision() {
+        val key = TripSeriesKey(ObdMetric.SHORT_TERM_FUEL_TRIM_BANK_1, "7E8")
+        show(options = listOf(key), selected = key,
+            series = TripSeriesAnalysis(key, 2, 2, -12.5, 3.1, 1_000, listOf(point(0, -12.5), point(1_000, 3.1))))
+        compose.onNodeWithTag("trip_metric_short_term_fuel_trim_bank_1").assertIsSelected()
+        compose.onNodeWithTag("trip_series_range").assertTextEquals("Observed range: -12.5 to 3.1 %")
+        compose.onNodeWithTag("trip_series_axis").assertTextEquals("Scale: -12.5 to 3.1 %")
+        compose.onNodeWithTag("trip_sensor_chart").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun fractionalOxygenVoltageDoesNotBecomeZeroOrClipBelowOne() {
+        val key = TripSeriesKey(ObdMetric.OXYGEN_SENSOR_1_VOLTAGE, "7E8")
+        show(options = listOf(key), selected = key,
+            series = TripSeriesAnalysis(key, 2, 2, 0.125, 0.875, 1_000, listOf(point(0, 0.125), point(1_000, 0.875))))
+        compose.onNodeWithTag("trip_series_range").assertTextEquals("Observed range: 0.125 to 0.875 V")
+        assertEquals(TripChartAxis(0.0, 0.875), tripChartAxis(key.metric, 0.125, 0.875))
     }
 
     private fun show(

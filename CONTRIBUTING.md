@@ -76,14 +76,14 @@ For Android or telemetry changes, use the Gradle wrapper from the repository roo
 ```
 
 On macOS or Linux, use `./gradlew` with the same tasks.
-See [Development](docs/development.md) for the JDK, SDK, installation, and simulator setup.
+See [Development](docs/development.md) for the JDK, SDK, installation, and automatic-session setup.
 Report the commands actually run and their results; compilation is not evidence of installation on the A53.
 
-The current simulator checks deterministic data, timeout, and missing-data behavior, including the shared dashboard cards. Dashboard changes need capability, per-ECU, zero/error/stale, unavailable-favorite, preference persistence/failure, and navigation coverage.
+Internal synthetic fixtures check deterministic data, timeout, and missing-data behavior, including the real dashboard cards. There is no Simulator destination in production navigation. Dashboard changes need capability, per-ECU, zero/error/stale, unavailable-favorite, preference persistence/failure, and navigation coverage.
 Maintain parser, framing, vehicle-identity, and Room persistence coverage, including fragmented Mode 01/VIN responses and database reopen checks. Add migration tests before changing the schema and synchronization tests when implementing that feature.
 Keep exported Room schema files under version control. Never use destructive migration fallback to bypass an upgrade, or use real VINs in fixtures and screenshots.
 For the lifecycle service, verify continued samples across backgrounding, screen lock, tab changes, and Activity recreation, plus explicit Stop/disconnect, notification denial, permission loss, and cleanup while still bound.
-Check that terminal errors release the socket, acquisition jobs, notification, and wake lock without automatic restart. Keep simulator foreground behavior separate. Instrumented fixtures do not establish A53 battery or sustained-session behavior.
+Check that terminal errors release the socket, acquisition jobs, notification, and wake lock without automatic restart. Keep synthetic fixture behavior separate from real foreground-service acquisition. Instrumented fixtures do not establish A53 battery or sustained-session behavior.
 Do not add tests that merely repeat the implementation.
 
 A task is done when it meets its criteria, preserves existing history, documents its behavior, has sufficient verification, and its changes are merged.

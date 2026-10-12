@@ -90,7 +90,8 @@ suspend fun analyzeTrip(repository: TripRepository, session: TripSession): TripA
 private fun earlierEcu(existing: String?, candidate: String): String =
     if (existing == null || candidate < existing) candidate else existing
 
-private fun TripSample.isValidNumber(): Boolean = quality == ObdReadingStatus.VALID && value?.isFinite() == true
+private fun TripSample.isValidNumber(): Boolean =
+    quality == ObdReadingStatus.VALID && unit == metric.unit && value?.let(metric::isValueInRange) == true
 
 private fun TripSample.isCanonicalNonnegative(): Boolean =
     isValidNumber() && value!! >= 0.0 && unit == metric.unit

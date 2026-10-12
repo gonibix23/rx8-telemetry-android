@@ -124,6 +124,7 @@ class TripExportActionsTest {
 
     private class ExportRepository : TripRepository {
         val findRequests = CopyOnWriteArrayList<String>()
+        override suspend fun updateProtocol(tripId: String, protocolLabel: String) = Unit
         override suspend fun recoverInterrupted() = error("History must not recover recordings")
         override suspend fun create(session: TripSession) = error("Not recording")
         override suspend fun append(tripId: String, samples: List<TripSample>) = error("Not recording")

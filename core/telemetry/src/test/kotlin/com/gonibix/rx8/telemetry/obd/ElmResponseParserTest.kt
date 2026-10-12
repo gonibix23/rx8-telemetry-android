@@ -202,7 +202,9 @@ class ElmResponseParserTest {
         for (body in listOf("7E8 03 41 05 40", "7E8 03 42 0D 40", "7E8 04 41 0D 40 41")) {
             assertFailure(ObdFailure.MALFORMED) { ElmResponseParser.parseMode01(body, can, 0x0D) }
         }
-        assertFailure(ObdFailure.MALFORMED) { ElmResponseParser.parseMode01("7E8 03 41 06 40", can, 0x06) }
+        // Fuel trim is now implemented; enumerated fuel type remains outside the scalar catalog.
+        assertEquals(listOf(0x40), ElmResponseParser.parseMode01("7E8 03 41 06 40", can, 0x06).single().data)
+        assertFailure(ObdFailure.MALFORMED) { ElmResponseParser.parseMode01("7E8 03 41 51 01", can, 0x51) }
     }
 
     @Test
