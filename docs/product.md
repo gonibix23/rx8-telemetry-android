@@ -148,6 +148,7 @@ ABS/SRS are not part of this adapter's promised compatibility.
 
 User login, actual server deployment, GPS maps, advanced diagnostics, fault clearing, ECU reprogramming, and actuator control.
 Additional Mazda sensors require specific investigation and testing before inclusion.
+See [RX8-009 research](mazda-parameters.md) for the maintained PCM/cluster candidate matrix, published read-only wire leads, conflicting definitions and work that can proceed before deferred car validation. No proprietary sensor is enabled by that research.
 
 ## References
 

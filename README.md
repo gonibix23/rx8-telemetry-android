@@ -80,6 +80,7 @@ Build and test results belong in the relevant PR; setup instructions alone are n
 | [Architecture](docs/architecture.md) | Transport, OBD, local records and completed-trip synchronization |
 | [API contract](docs/api-contract.md) | Implemented anonymous v1 API, wire acknowledgments and local export formats |
 | [Capability reports](docs/capability-report.md) | Snapshot semantics, privacy exclusions, and explicit JSON export |
+| [Mazda parameter research](docs/mazda-parameters.md) | Candidate signals, original wire definitions, evidence gaps and validation plan |
 | [Roadmap](docs/roadmap.md) | Phases, current status, priorities, and dependencies |
 | [Hardware validation](docs/hardware-validation.md) | Evidence needed to confirm compatibility |
 | [Contributing](CONTRIBUTING.md) | Issues, branches, PRs, reviews, and releases |
