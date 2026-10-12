@@ -2,11 +2,17 @@
 
 Android app in development for viewing live vehicle data and recording trips without an Internet connection.
 
-**Current implementation (0.13.0-dev): offline Android telemetry and an independently developed MongoDB Atlas API in the same repository. Configure an HTTPS server URL to upload finished trips automatically, without a login. Deployment is deferred.**
+**Current implementation (0.14.0-dev): customisable live cards, favourite-adapter reconnect, a floating sensor overlay, and visible upload confirmations. Android records offline; the separate anonymous MongoDB API receives finished trips.**
+
+Long-press a Live card or choose Edit to set digital, dial or bar presentation, compact/large size, order and overlay selection. Choose sensors searches all 120 implemented parameters, including RPM, speed and coolant; unavailable selections are labelled honestly. Up to six selected metrics can appear over a navigation app after explicit Android overlay permission. Enable the overlay for the connected session, drag its header to move it, and close it when finished.
+
+Save a favourite in Adapter to retry every 30 seconds while the app is visible. Disconnect/Stop pauses retries until Resume. Without a favourite, the original one-time last-adapter startup attempt remains. Adapter now contains Bluetooth controls only; vehicle diagnostics, VIN actions and capability reports are in Live. Trips uses a Chart parameter dropdown with separate ECU selection.
+
+An upload banner on every tab shows waiting, sending, failure and confirmed delivery. Confirmation includes terminal-trip metadata, current vehicle metadata and every sample acknowledgment; empty trips need metadata acknowledgment too. Recording and retained local history remain independent of network access. The API emits structured request/error logs without request bodies, VINs, credentials or raw resource paths.
 
 The four tabs are **Adapter**, **Live**, **Trips**, and **Vehicles**, with single-line labels. The Simulator tab has been removed; its RPM dial now displays real per-ECU readings in Live. Synthetic data remains confined to development fixtures.
 
-On a new app process, the visible app attempts the last successfully connected Bluetooth Classic adapter once when Bluetooth permission and the radio are available. Adapter still offers nearby discovery, manual selection, Connect and Disconnect. Android may request pairing. An explicit Stop, failed attempt or disconnect does not start a reconnect loop. Opening a new app process can make a new attempt; the background service does not restore a killed session.
+Without an explicit favourite, a new visible app process attempts the last successful Bluetooth Classic adapter once when permission and the radio are available. A favourite opts into periodic visible-app retries. Adapter retains nearby discovery, manual selection, Connect, Disconnect and pause/resume. Android may request pairing. No new attempt starts in the background; the service does not restore a killed session.
 
 Once the socket connects, initialization, automatic protocol detection and supported-PID discovery start directly. Bluetooth connected remains distinct from successful ECU communication. Only advertised, implemented read-only parameters are queried. The expanded catalog includes fuel trims, airflow, ignition timing, pressures, oxygen-sensor values, temperatures, counters and other standard scalar readings. Actual RX-8 coverage depends on its responses; proprietary and unimplemented parameters remain clearly identified. Missing, malformed and stale readings are never fabricated zeros.
 
@@ -16,7 +22,7 @@ Select the intended vehicle in **Vehicles** once. Its permanent UUID works witho
 
 Acquisition and recording continue across tabs, backgrounding, screen lock and Activity recreation through the foreground service. The visible Adapter and Live screens stay awake during real acquisition. Notification permission denial does not prevent connecting; the app provides recovery guidance. Active acquisition consumes battery, and no battery-optimization exemption is requested.
 
-**Live** keeps each ECU separate, with the real RPM dial, speed, coolant and selectable supported extra sensors. Cards preserve units, age, quality, valid zero and unavailable favorites. Favorite choices persist for the app. In Live > Choose sensors, Search sensors filters names or hexadecimal PIDs immediately. Clear restores the choices, and searching keeps hidden selections. **Vehicle capabilities** inside Adapter captures the existing discovery and displayed readings into an explicit JSON report without extra vehicle queries; see [Capability reports](docs/capability-report.md).
+**Live** keeps each ECU separate in configurable cards. Cards preserve units, age, quality, valid zero and unavailable choices. Layout choices persist for the app. In Live > Choose sensors, Search sensors filters names or hexadecimal PIDs immediately. Clear restores the choices, and searching keeps hidden selections. **Vehicle capabilities** inside Live captures the existing discovery and displayed readings into an explicit JSON report without extra vehicle queries; see [Capability reports](docs/capability-report.md).
 
 **Trips** records every fresh supported reading, independently of visible cards or favorite choices. History shows up to 50 trips per page, with Newer/Older/Newest controls and a vehicle filter independent of recording selection. Refresh, details, tabs and Activity recreation preserve browsing context. Finished trips provide metric/ECU charts, full-stream statistics, estimated distance, JSON/CSV export to a chosen document destination, and confirmed deletion. Distance is an estimate, not an odometer reading.
 
@@ -27,7 +33,7 @@ The user reports that Car Scanner finds it through an in-app search with plain B
 The user subsequently confirmed Bluetooth works. On October 11, 2026, the user reported that live readings worked, and PR #14 is merged.
 The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed that 0.5.0-dev reads data correctly. These reports do not confirm each of the original six sensors, ECU identifiers, measured rates, or sustained lifecycle behavior. RX8-001, RX8-004, and the remaining hardware checks stay open; VIN retrieval and profile persistence still need device validation.
 The user also reported the screen sleeping when idle and readings disconnecting after backgrounding in 0.5.0-dev. That matched the previous foreground-only connection policy; actual Bluetooth bond removal was not confirmed.
-The user subsequently confirmed that 0.5.1-dev worked, providing broad confirmation of the background/screen fix in merged [PR #17](https://github.com/gonibix23/rx8-telemetry-android/pull/17). The separate [hardware checklist](docs/hardware-validation.md) tracks broader evidence; measured durations, battery use, notification scenarios, and actual bond removal are not established by that report. There are no published APK releases or deployed APIs.
+The user subsequently confirmed that 0.5.1-dev worked, providing broad confirmation of the background/screen fix in merged [PR #17](https://github.com/gonibix23/rx8-telemetry-android/pull/17). The separate [hardware checklist](docs/hardware-validation.md) tracks broader evidence; measured durations, battery use, notification scenarios, and actual bond removal are not established by that report. There are no published APK releases. The owner subsequently added the API deployment workflow in PRs #39-41.
 The user also confirmed that 0.6.0-dev works perfectly; [PR #18](https://github.com/gonibix23/rx8-telemetry-android/pull/18) is merged. This is broad dashboard-build confirmation, not a report of each favorite/ECU scenario. The user subsequently confirmed that 0.7.0-dev works perfectly, and [PR #19](https://github.com/gonibix23/rx8-telemetry-android/pull/19) is merged. The user also confirmed that 0.8.0-dev worked correctly, and [PR #20](https://github.com/gonibix23/rx8-telemetry-android/pull/20) is merged. [Issue #16](https://github.com/gonibix23/rx8-telemetry-android/issues/16) is closed at the user's request with all checks complete. Measured durations, individual upgrade/export/storage scenarios, and battery use remain unreported. [PR #22](https://github.com/gonibix23/rx8-telemetry-android/pull/22) is merged for 0.9.0-dev; the user explicitly deferred its phone validation and requested continued development. Capability reports and the new 0.10.0-dev trip charts retain their pending phone checklists.
 
 ## Reference vehicle and equipment
@@ -42,9 +48,9 @@ A working simulator does not prove that the adapter or car supports any particul
 
 ## MVP scope
 
-- Attempt the last successful adapter once per visible app process, with manual connection and retry available.
+- Automatically retry an explicit favourite while visible, or attempt the last successful adapter once per process; retain manual controls.
 - Automatically discover the protocol and supported parameters, then read the implemented sensors.
-- Real per-ECU dashboard with an RPM dial, supported favorites, units, age, and reading quality.
+- Modular per-ECU dashboard with selectable sensors, three display styles, sizes, ordering and an optional floating overlay.
 - Vehicle profile with a permanent ID and an optional vehicle identification number (VIN).
 - Automatic journeys for the selected vehicle, with Stop recording, manual resume, local history, charts, and export.
 - Service-owned acquisition and recording through screen lock, with explicit Disconnect and notification Stop controls.
@@ -52,7 +58,7 @@ A working simulator does not prove that the adapter or car supports any particul
 - Separate TypeScript API in `api/`, storing vehicles, sessions and readings in MongoDB Atlas without a login.
 
 These features describe the implemented MVP scope; detailed phone checks remain pending.
-Fault diagnostics, Mazda-specific sensors, GPS/maps, and actual server deployment are deferred.
+Fault diagnostics, Mazda-specific sensors and GPS/maps are deferred. The owner configured API image publication and Portainer redeployment in PRs #39-41.
 The first version does not include actuator control, ECU reprogramming, or clearing fault codes.
 
 ## Getting started
@@ -117,3 +123,5 @@ These commands check Markdown. Android build, unit-test, and lint commands are l
 
 Original project code and documentation are licensed under the [MIT License](LICENSE). This public repository includes both the Android app and API.
 Third-party dependencies and the Gradle wrapper retain their own licenses and copyright notices. Externally linked manuals and reference documents are not covered by this grant.
+
+[RX8-020](https://github.com/gonibix23/rx8-telemetry-android/issues/42) tracks 0.14.0-dev and the owner-supplied private trip validation. New overlay, customisation and reconnect scenarios still need A53 validation.

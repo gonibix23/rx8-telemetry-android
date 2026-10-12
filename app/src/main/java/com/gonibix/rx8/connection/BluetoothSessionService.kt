@@ -30,6 +30,9 @@ import com.gonibix.rx8.bluetooth.AndroidBluetoothGateway
 import com.gonibix.rx8.bluetooth.AdapterDevice
 import com.gonibix.rx8.bluetooth.BluetoothAvailability
 import com.gonibix.rx8.bluetooth.BluetoothGateway
+import com.gonibix.rx8.dashboard.DashboardPreferences
+import com.gonibix.rx8.overlay.LiveOverlayManager
+import com.gonibix.rx8.overlay.OverlayUiState
 import com.gonibix.rx8.obd.Elm327Session
 import com.gonibix.rx8.obd.ObdPhase
 import com.gonibix.rx8.obd.ObdSessionFactory
@@ -47,6 +50,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -59,6 +65,16 @@ class BluetoothSessionService : Service() {
     private lateinit var automaticTrips: AutomaticTripCoordinator
     private lateinit var lastAdapterStore: LastAdapterStore
     private lateinit var automaticPolicy: AutomaticConnectionPolicy
+    private lateinit var favoriteStore: FavoriteAdapterStore
+    private lateinit var favoriteRetry: VisibleFavoriteRetry
+    private lateinit var overlay: LiveOverlayManager
+    private var favorite = FavoriteAdapterPreference()
+    private var desiredFavorite = FavoriteAdapterPreference()
+    private var favoriteLoaded = false
+    private var favoriteSaving = false
+    private var favoriteWriteGeneration = 0L
+    private var favoriteReady = false
+    private var stoppedBeforeFavoriteLoaded = false
     private var lastAdapterAddress: String? = null
     private var lastAdapterLoaded = false
     private var appForeground = false
@@ -78,31 +94,82 @@ class BluetoothSessionService : Service() {
         /** The Activity's STARTED visibility, independently of which tab is being displayed. */
         fun setAppForeground(visible: Boolean) {
             appForeground = visible
+            overlay.setAppVisible(visible)
             if (visible) controller.refresh()
             updateAutomaticReadiness()
         }
 
-        /** Invoke after the visible permission/notification flow; the process gate prevents retries. */
+        /** Every attempt rechecks visibility/readiness after the notification permission flow. */
         fun tryAutomaticConnection() {
             updateAutomaticReadiness()
-            if (!controller.uiState.value.automaticConnectionReady || !automaticPolicy.consume()) return
+            if (!controller.uiState.value.automaticConnectionReady) return
+            val selectedFavorite = favorite.adapter
+            val address = if (selectedFavorite != null) {
+                if (!favoriteRetry.consume()) return
+                selectedFavorite.address
+            } else {
+                if (!automaticPolicy.consume()) return
+                lastAdapterAddress ?: return
+            }
             controller.setAutomaticConnectionReady(false)
-            val address = lastAdapterAddress ?: return
-            if (!controller.selectRememberedDevice(address)) return
+            if (!controller.selectRememberedDevice(address, selectedFavorite?.name?.ifBlank { "Favorite adapter" } ?: "Last connected adapter")) {
+                updateAutomaticReadiness()
+                return
+            }
             startConnection()
+            updateAutomaticReadiness()
         }
 
         fun connect() {
             automaticPolicy.consume()
+            favoriteRetry.manualAttempt()
             controller.setAutomaticConnectionReady(false)
             startConnection()
+            updateAutomaticReadiness()
         }
 
         fun disconnect() {
-            automaticPolicy.consume()
-            controller.setAutomaticConnectionReady(false)
+            pauseAutomaticConnection()
             controller.disconnect()
         }
+
+        fun setFavoriteAdapter() {
+            if (!appForeground || !favoriteLoaded || favoriteSaving) return
+            val device = controller.uiState.value.selectedDevice ?: return
+            val address = normalizedAdapterAddress(device.address) ?: return
+            automaticPolicy.consume()
+            saveFavorite(FavoriteAdapterPreference(device.copy(address = address), paused = favorite.adapter != null && favorite.paused))
+        }
+
+        fun clearFavoriteAdapter() {
+            if (!appForeground || !favoriteLoaded || favoriteSaving) return
+            automaticPolicy.consume()
+            saveFavorite(FavoriteAdapterPreference())
+        }
+
+        fun pauseAutomaticConnection() {
+            automaticPolicy.consume()
+            AutomaticConnectionRuntime.pauseFavoriteUntilSaved(favoriteStore)
+            if (!favoriteLoaded) stoppedBeforeFavoriteLoaded = true
+            // Stop immediately, including while a preference write is still in flight.
+            favorite = favorite.copy(paused = true)
+            favoriteRetry.update(null, false)
+            controller.setAutomaticConnectionReady(false)
+            if (desiredFavorite.adapter != null) saveFavorite(desiredFavorite.copy(paused = true))
+            else controller.setFavoriteState(favorite, loading = !favoriteLoaded, saving = favoriteSaving)
+        }
+
+        fun resumeAutomaticConnection() {
+            if (!appForeground || !favoriteLoaded || favoriteSaving || favorite.adapter == null) return
+            saveFavorite(favorite.copy(paused = false))
+        }
+
+        fun readVin() { if (!destroyed && appForeground) controller.readVinFromVisibleApp() }
+
+        val overlayState: StateFlow<OverlayUiState> get() = overlay.state
+        fun setOverlayEnabled(enabled: Boolean): Boolean =
+            if (enabled && (!appForeground || destroyed)) false else overlay.setEnabled(enabled)
+        fun refreshOverlayPermission() = overlay.refreshPermission()
 
         fun refreshSelectedVehicle() = automaticTrips.refreshSelectedVehicle()
 
@@ -147,6 +214,7 @@ class BluetoothSessionService : Service() {
         recorder = dependencies.recorder ?: TripRuntime.get(applicationContext).recorder
         lastAdapterStore = dependencies.lastAdapterStore ?: AutomaticConnectionRuntime.lastAdapter(applicationContext)
         automaticPolicy = dependencies.automaticPolicy ?: AutomaticConnectionRuntime.policy
+        favoriteStore = dependencies.favoriteAdapterStore ?: AutomaticConnectionRuntime.favoriteAdapter(applicationContext)
         controller = BluetoothSessionController(
             gateway, ownerScope, obdSessionFactory = dependencies.obdSessionFactory,
             onObdSnapshot = recorder::onSnapshot,
@@ -156,6 +224,11 @@ class BluetoothSessionService : Service() {
             autoStartObd = true,
             onConnected = ::prepareConnectedSession,
         )
+        favoriteRetry = VisibleFavoriteRetry(ownerScope, { ready ->
+            favoriteReady = ready
+            publishAutomaticReadiness()
+        }, dependencies.favoriteRetryMillis)
+        overlay = LiveOverlayManager(applicationContext, ownerScope)
         automaticTrips = AutomaticTripCoordinator(
             recorder, ownerScope,
             selectedVehicle = dependencies.selectedVehicleLoader ?: { TripRuntime.get(applicationContext).selectedVehicle() },
@@ -185,9 +258,38 @@ class BluetoothSessionService : Service() {
         ContextCompat.registerReceiver(this, bluetoothEvents, filter, ContextCompat.RECEIVER_EXPORTED)
         receiverRegistered = true
         ownerScope.launch {
-            controller.uiState.map { Triple(it.phase, it.obd.phase, it.availability to it.devices) }.distinctUntilChanged().collect {
+            controller.uiState.map { listOf(it.phase, it.obd.phase, it.availability, it.devices, it.isScanning) }.distinctUntilChanged().collect {
                 synchronizeResources(controller.uiState.value)
                 updateAutomaticReadiness()
+            }
+        }
+        ownerScope.launch {
+            combine(controller.uiState, DashboardPreferences.openCards(applicationContext)) { state, cards -> state to cards }
+                .collect { (state, cards) -> overlay.update(state.obd, state.phase == BluetoothConnectionPhase.CONNECTED, cards) }
+        }
+        ownerScope.launch {
+            try {
+                val loaded = AutomaticConnectionRuntime.favoriteOperations.withLock {
+                    favoriteStore.load().let {
+                        if (AutomaticConnectionRuntime.isFavoritePausePending(favoriteStore)) it.copy(paused = true) else it
+                    }
+                }
+                if (favoriteWriteGeneration == 0L) {
+                    favorite = loaded
+                    desiredFavorite = loaded
+                }
+                favoriteLoaded = true
+                if (stoppedBeforeFavoriteLoaded && favorite.adapter != null) {
+                    favorite = favorite.copy(paused = true)
+                    saveFavorite(favorite)
+                }
+                controller.setFavoriteState(favorite, loading = false, saving = favoriteSaving)
+                updateAutomaticReadiness()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                controller.setFavoriteState(favorite, loading = false, saving = false,
+                    message = "Favorite adapter could not be loaded. Automatic connections are disabled for this session.")
             }
         }
         ownerScope.launch {
@@ -207,15 +309,16 @@ class BluetoothSessionService : Service() {
         ownerScope.launch {
             recorder.state.map { Triple(it.session != null, it.isStarting, it.isStopping) }.distinctUntilChanged().collect {
                 if (sessionToken != null) synchronizeResources(controller.uiState.value)
+                updateAutomaticReadiness()
             }
         }
         ownerScope.launch {
             // Permission checks remain with the connection owner while no Activity is observing it.
             while (isActive) {
                 delay(1_000L)
-                if (controller.uiState.value.phase != BluetoothConnectionPhase.DISCONNECTED) {
+                if (appForeground || controller.uiState.value.phase != BluetoothConnectionPhase.DISCONNECTED) {
                     val available = runCatching { gateway.availability() }.getOrNull()
-                    if (available != BluetoothAvailability.READY) controller.refresh()
+                    if (available != controller.uiState.value.availability) controller.refresh()
                 }
             }
         }
@@ -225,6 +328,7 @@ class BluetoothSessionService : Service() {
 
     override fun onUnbind(intent: Intent): Boolean {
         appForeground = false
+        overlay.setAppVisible(false)
         updateAutomaticReadiness()
         controller.setForeground(false)
         return false
@@ -239,7 +343,7 @@ class BluetoothSessionService : Service() {
             ACTION_STOP_SESSION -> {
                 val token = intent.getStringExtra(EXTRA_SESSION_TOKEN)
                 if (token != null && token == sessionToken) {
-                    automaticPolicy.consume()
+                    binder.pauseAutomaticConnection()
                     controller.disconnect()
                     finishSession()
                 } else if (sessionToken == null && finishingJob?.isActive != true) {
@@ -294,13 +398,67 @@ class BluetoothSessionService : Service() {
         automaticTrips.connected()
     }
 
+    private fun saveFavorite(next: FavoriteAdapterPreference) {
+        desiredFavorite = next
+        favoriteSaving = true
+        val generation = ++favoriteWriteGeneration
+        controller.setFavoriteState(favorite, loading = !favoriteLoaded, saving = true)
+        updateAutomaticReadiness()
+        // A notification Stop must survive the service losing its last binding.
+        AutomaticConnectionRuntime.preferenceScope.launch {
+            try {
+                AutomaticConnectionRuntime.favoriteOperations.withLock {
+                    try {
+                        favoriteStore.save(next)
+                    } catch (cancelled: CancellationException) { throw cancelled }
+                    catch (failure: Exception) {
+                        // Mark the fail-closed override before another service's load can acquire the gate.
+                        AutomaticConnectionRuntime.pauseFavoriteUntilSaved(favoriteStore)
+                        throw failure
+                    }
+                    if (generation == favoriteWriteGeneration) AutomaticConnectionRuntime.favoritePreferenceSaved(favoriteStore)
+                }
+                if (!destroyed && generation == favoriteWriteGeneration) {
+                    favorite = next
+                    favoriteLoaded = true
+                    favoriteSaving = false
+                    controller.setFavoriteState(favorite, loading = false, saving = false)
+                    updateAutomaticReadiness()
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                if (!destroyed && generation == favoriteWriteGeneration) {
+                    favoriteSaving = false
+                    // Remain stopped after a failed pause save; never convert a storage error into a retry.
+                    favorite = favorite.copy(paused = true)
+                    controller.setFavoriteState(favorite, loading = !favoriteLoaded, saving = false,
+                        message = "Favorite adapter could not be saved. Automatic connections are paused; try saving or resuming again.")
+                    updateAutomaticReadiness()
+                }
+            }
+        }
+    }
+
     private fun updateAutomaticReadiness() {
+        if (destroyed || !::favoriteRetry.isInitialized) return
+        val state = controller.uiState.value
+        val eligible = appForeground && favoriteLoaded && !favoriteSaving && !favorite.paused &&
+            state.phase == BluetoothConnectionPhase.DISCONNECTED && state.availability == BluetoothAvailability.READY && !state.isScanning && recorderIsIdle()
+        favoriteRetry.update(favorite.adapter?.address, eligible)
+        publishAutomaticReadiness()
+    }
+
+    private fun publishAutomaticReadiness() {
         if (destroyed || !::controller.isInitialized) return
         val state = controller.uiState.value
-        val eligible = appForeground && lastAdapterLoaded && lastAdapterAddress != null && automaticPolicy.isAvailable() &&
-            state.phase == BluetoothConnectionPhase.DISCONNECTED && state.availability == BluetoothAvailability.READY
-        controller.setAutomaticConnectionReady(eligible)
+        val visibleAndReady = appForeground && favoriteLoaded && !favoriteSaving && !favorite.paused &&
+            state.phase == BluetoothConnectionPhase.DISCONNECTED && state.availability == BluetoothAvailability.READY && !state.isScanning && recorderIsIdle()
+        val ready = visibleAndReady && if (favorite.adapter != null) favoriteReady else
+            lastAdapterLoaded && lastAdapterAddress != null && automaticPolicy.isAvailable()
+        controller.setAutomaticConnectionReady(ready)
     }
+
+    private fun recorderIsIdle(): Boolean = recorder.state.value.let { it.session == null && !it.isStarting && !it.isStopping }
 
     private fun synchronizeResources(state: BluetoothConnectionUiState) {
         if (destroyed) return
@@ -385,6 +543,8 @@ class BluetoothSessionService : Service() {
     override fun onDestroy() {
         destroyed = true
         foregroundNotification = null
+        favoriteRetry.close()
+        overlay.close()
         controller.close()
         acquisitionLock.close()
         ownerScope.cancel()
@@ -425,4 +585,6 @@ internal data class BluetoothServiceDependencies(
     val selectedVehicleLoader: (suspend () -> VehicleProfile?)? = null,
     val lastAdapterStore: LastAdapterStore? = null,
     val automaticPolicy: AutomaticConnectionPolicy? = null,
+    val favoriteAdapterStore: FavoriteAdapterStore? = null,
+    val favoriteRetryMillis: Long = 30_000L,
 )

@@ -12,10 +12,13 @@ class DashboardPreferencesViewModel internal constructor(
 ) : AndroidViewModel(application) {
     constructor(application: Application) : this(application, DashboardFavoritesProvider.open(application))
 
+    val cards: StateFlow<List<DashboardCardConfig>> = store.cards
     val favorites: StateFlow<Set<ObdMetric>> = store.favorites
     val isLoading: StateFlow<Boolean> = store.isLoading
     val isSaving: StateFlow<Boolean> = store.isSaving
     val error: StateFlow<String?> = store.error
 
     fun toggleFavorite(metric: ObdMetric) = store.toggleFavorite(metric)
+    fun updateCard(card: DashboardCardConfig) = store.updateCard(card)
+    fun moveCard(metric: ObdMetric, delta: Int) = store.moveCard(metric, delta)
 }

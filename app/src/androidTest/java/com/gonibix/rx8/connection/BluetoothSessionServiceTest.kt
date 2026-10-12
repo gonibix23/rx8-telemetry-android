@@ -79,12 +79,14 @@ class BluetoothSessionServiceTest {
     private var scenario: ActivityScenario<MainActivity>? = null
     private val originalFactory = BluetoothSessionService.dependenciesFactory
     private var failAcquisition = false
+    private var vinRequests = 0
     private val failSignal = CompletableDeferred<Unit>()
     @Volatile private var acquisitionCancelled = false
     private val tripRepository = LifecycleTripRepository()
     private val tripScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val tripRecorder = TripRecorder(tripRepository, tripScope)
     private val rememberedAdapter = MemoryLastAdapterStore()
+    private val favoriteAdapter = MemoryFavoriteAdapterStore()
     private var openingPolicy = AutomaticConnectionPolicy()
     private var persistedVehicle: VehicleProfile? = null
     private var notificationRequestedBefore = false
@@ -103,6 +105,7 @@ class BluetoothSessionServiceTest {
         BluetoothSessionService.dependenciesFactory = {
             BluetoothServiceDependencies(gateway, ObdSessionFactory {
                 object : ObdSession {
+                    override fun requestVin(): Boolean { vinRequests++; return true }
                     override suspend fun run(onSnapshot: (ObdSessionSnapshot) -> Unit) {
                         try {
                             onSnapshot(ObdSessionSnapshot(phase = ObdPhase.LIVE))
@@ -125,7 +128,7 @@ class BluetoothSessionServiceTest {
                     }
                 }
             }, recorder = tripRecorder, selectedVehicleLoader = { persistedVehicle },
-                lastAdapterStore = rememberedAdapter, automaticPolicy = openingPolicy)
+                lastAdapterStore = rememberedAdapter, automaticPolicy = openingPolicy, favoriteAdapterStore = favoriteAdapter, favoriteRetryMillis = 250L)
         }
         scenario = ActivityScenario.launch(MainActivity::class.java)
     }
@@ -581,6 +584,161 @@ class BluetoothSessionServiceTest {
         assertEquals(PackageManager.PERMISSION_DENIED, context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS))
     }
 
+    @Test fun liveVinActionUsesActivityVisibilityWithoutEnablingAdapterDiscovery() {
+        val binding = bind()
+        connect(binding)
+        awaitMain { binding.binder.controller.uiState.value.obd.phase == ObdPhase.LIVE }
+        main {
+            binding.binder.controller.setForeground(false)
+            binding.binder.readVin()
+            assertEquals(1, vinRequests)
+            assertFalse(binding.binder.controller.uiState.value.isForeground)
+            binding.binder.setAppForeground(false)
+            binding.binder.readVin()
+            assertEquals(1, vinRequests)
+            binding.binder.disconnect()
+        }
+    }
+
+    @Test fun failedStopSaveRemainsPausedAfterServiceRecreationUntilExplicitResume() {
+        val binding = bind()
+        awaitMain { !binding.binder.controller.uiState.value.favoritePreferenceLoading }
+        main {
+            binding.binder.controller.selectDevice(device)
+            binding.binder.setFavoriteAdapter()
+        }
+        awaitUi("Favorite should connect") { binding.binder.controller.uiState.value.obd.phase == ObdPhase.LIVE }
+        favoriteAdapter.failSave = true
+        main { binding.binder.disconnect() }
+        awaitMain { binding.binder.controller.uiState.value.favoriteMessage != null && !binding.binder.hasForegroundSession }
+        assertFalse("The injected failed write must leave the old disk preference unchanged", favoriteAdapter.preference.paused)
+        val attempts = gateway.attempts
+        scenario!!.close()
+        scenario = null
+        binding.unbind()
+        context.stopService(serviceIntent)
+        instrumentation.waitForIdleSync()
+        scenario = ActivityScenario.launch(MainActivity::class.java)
+        val recreated = bind()
+        assertNotSame(binding.binder, recreated.binder)
+        awaitMain { !recreated.binder.controller.uiState.value.favoritePreferenceLoading }
+        assertTrue(recreated.binder.controller.uiState.value.favoriteAutoConnectPaused)
+        Thread.sleep(650)
+        assertEquals(attempts, gateway.attempts)
+        favoriteAdapter.failSave = false
+        main { recreated.binder.resumeAutomaticConnection() }
+        awaitUi("Explicit successful Resume may reconnect") { gateway.attempts > attempts }
+        main { recreated.binder.disconnect() }
+    }
+
+    @Test fun queuedStopSaveIsLoadedBeforeRecreatedServiceCanRetryFavorite() {
+        val gate = CompletableDeferred<Unit>()
+        val binding = bind()
+        awaitMain { !binding.binder.controller.uiState.value.favoritePreferenceLoading }
+        favoriteAdapter.saveGate = gate
+        try {
+            main {
+                binding.binder.controller.selectDevice(device)
+                binding.binder.setFavoriteAdapter()
+            }
+            awaitMain { favoriteAdapter.saveEntered.isCompleted }
+            main { binding.binder.disconnect() }
+            scenario!!.close()
+            scenario = null
+            binding.unbind()
+            context.stopService(serviceIntent)
+            instrumentation.waitForIdleSync()
+            scenario = ActivityScenario.launch(MainActivity::class.java)
+            val recreated = bind()
+            assertNotSame(binding.binder, recreated.binder)
+            assertTrue(recreated.binder.controller.uiState.value.favoritePreferenceLoading)
+            gate.complete(Unit)
+            awaitMain { !recreated.binder.controller.uiState.value.favoritePreferenceLoading }
+            assertTrue(recreated.binder.controller.uiState.value.favoriteAutoConnectPaused)
+            assertEquals(device.address, recreated.binder.controller.uiState.value.favoriteAdapter!!.address)
+            Thread.sleep(350)
+            assertEquals(0, gateway.attempts)
+        } finally { gate.complete(Unit) }
+    }
+
+    @Test fun favoriteFailuresRetryOnlyWhileVisibleAndExplicitPauseSurvivesRecreation() {
+        gateway.failConnection = true
+        val binding = bind()
+        awaitMain { !binding.binder.controller.uiState.value.favoritePreferenceLoading }
+        main {
+            binding.binder.controller.selectDevice(device)
+            binding.binder.setFavoriteAdapter()
+        }
+        awaitUi("Favorite should make repeated visible attempts") { gateway.attempts >= 2 }
+        scenario!!.moveToState(Lifecycle.State.CREATED)
+        val hiddenAttempts = gateway.attempts
+        Thread.sleep(650)
+        assertEquals(hiddenAttempts, gateway.attempts)
+        scenario!!.moveToState(Lifecycle.State.RESUMED)
+        awaitUi("Visible retries should resume") { gateway.attempts > hiddenAttempts }
+        main { binding.binder.pauseAutomaticConnection() }
+        awaitMain { !binding.binder.controller.uiState.value.favoritePreferenceSaving }
+        val pausedAttempts = gateway.attempts
+        scenario!!.recreate()
+        Thread.sleep(650)
+        assertEquals(pausedAttempts, gateway.attempts)
+        assertTrue(favoriteAdapter.preference.paused)
+        main { binding.binder.resumeAutomaticConnection() }
+        awaitUi("Explicit Resume should permit another attempt") { gateway.attempts > pausedAttempts }
+        main { binding.binder.pauseAutomaticConnection() }
+    }
+
+    @Test fun disconnectAndNotificationStopPersistPauseWithoutChangingFavoriteOrVehicle() {
+        val binding = bind()
+        awaitMain { !binding.binder.controller.uiState.value.favoritePreferenceLoading }
+        main {
+            binding.binder.controller.selectDevice(device)
+            binding.binder.setFavoriteAdapter()
+        }
+        awaitUi("Favorite should connect") { binding.binder.controller.uiState.value.obd.phase == ObdPhase.LIVE }
+        stopAction(binding).send()
+        awaitMain { favoriteAdapter.preference.paused && !binding.binder.hasForegroundSession }
+        assertEquals(device.address, favoriteAdapter.preference.adapter!!.address)
+        assertEquals(tripVehicle, persistedVehicle)
+        main { binding.binder.resumeAutomaticConnection() }
+        awaitUi("Resume should reconnect") { binding.binder.controller.uiState.value.obd.phase == ObdPhase.LIVE }
+        main { binding.binder.disconnect() }
+        awaitMain { favoriteAdapter.preference.paused && !binding.binder.hasForegroundSession }
+        val attempts = gateway.attempts
+        val replacement = AdapterDevice("02:00:00:00:00:43", "Synthetic replacement favorite")
+        main {
+            gateway.listed = listOf(device, replacement)
+            binding.binder.controller.refresh()
+            binding.binder.controller.selectDevice(replacement)
+            binding.binder.setFavoriteAdapter()
+        }
+        awaitMain { !binding.binder.controller.uiState.value.favoritePreferenceSaving }
+        assertEquals(replacement.address, favoriteAdapter.preference.adapter!!.address)
+        assertTrue(favoriteAdapter.preference.paused)
+        Thread.sleep(650)
+        assertEquals(attempts, gateway.attempts)
+    }
+
+    @Test fun favoriteWaitsForPermissionAndRadioWithoutConsumingItsRetryOpportunity() {
+        val binding = bind()
+        awaitMain { !binding.binder.controller.uiState.value.favoritePreferenceLoading }
+        main {
+            binding.binder.controller.selectDevice(device)
+            gateway.ready = BluetoothAvailability.OFF
+            binding.binder.setFavoriteAdapter()
+            binding.binder.controller.refresh()
+        }
+        awaitMain { !binding.binder.controller.uiState.value.favoritePreferenceSaving }
+        Thread.sleep(350)
+        assertEquals(0, gateway.attempts)
+        main { gateway.ready = BluetoothAvailability.PERMISSION_REQUIRED; binding.binder.controller.refresh() }
+        Thread.sleep(350)
+        assertEquals(0, gateway.attempts)
+        main { gateway.ready = BluetoothAvailability.READY; binding.binder.controller.refresh() }
+        awaitUi("Ready favorite should connect") { binding.binder.controller.uiState.value.obd.phase == ObdPhase.LIVE }
+        main { binding.binder.disconnect() }
+    }
+
     private fun connect(binding: Binding) {
         main {
             binding.binder.setAppForeground(true)
@@ -702,6 +860,22 @@ class BluetoothSessionServiceTest {
             connectionGate?.await()
             if (failConnection) throw IOException("Synthetic connection failure")
             return LifecycleConnection().also { connections += it }
+        }
+    }
+
+    private class MemoryFavoriteAdapterStore : FavoriteAdapterStore {
+        @Volatile var preference = FavoriteAdapterPreference()
+        @Volatile var writes = 0
+        var saveGate: CompletableDeferred<Unit>? = null
+        @Volatile var failSave = false
+        val saveEntered = CompletableDeferred<Unit>()
+        override suspend fun load() = preference
+        override suspend fun save(preference: FavoriteAdapterPreference) {
+            saveEntered.complete(Unit)
+            saveGate?.await()
+            if (failSave) throw IOException("Synthetic favorite save failure")
+            this.preference = preference
+            writes++
         }
     }
 

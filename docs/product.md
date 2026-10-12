@@ -1,5 +1,15 @@
 # Product and scope
 
+## Customisation and connection workflow (0.14.0-dev)
+
+RX8-020 supersedes the earlier fixed-primary-card description. Every implemented parameter can be selected or removed, including RPM, speed and coolant. Search includes unavailable sensors; selecting one never invents support or changes polling. Existing installations start with their original basic sensors and extra favourites. Long-press or Edit opens a card editor for digital/dial/bar style, compact/large size, earlier/later position and overlay inclusion. Changes persist only after a successful preference write. Every ECU stays separate and readings retain quality, units and age. Gauge ranges describe display domains, not engine safety limits.
+
+Adapter contains Bluetooth discovery, selection, permissions and connection/favourite controls. Live contains readings, optional VIN review and capability reports. Save an explicit favourite to retry at 30-second intervals only while the app is visible, disconnected, permitted and not scanning/connecting. Disconnect or notification Stop pauses retries until Resume; without a favourite the original single startup attempt applies.
+
+The floating overlay is enabled explicitly for a connected session. Android's display-over-other-apps permission is requested only from that action. Up to six selected metrics retain separate ECU sources, quality and age above another app; its header can be dragged and its close button disables it. It shares the foreground session's readings and starts no OBD requests. It is hidden inside the app and on the lock screen, and removed on disconnect, permission loss or service cleanup. Enablement is not restored after process death. No GPS is collected from the navigation app.
+
+Trip details use a Chart parameter dropdown rather than one chip per sensor; ECU selection remains separate. An upload banner on every tab refreshes from local durable acknowledgments, showing waiting, sending, failure or confirmed trip counts. Confirmation requires every sample and current vehicle/session metadata, including empty trips. Local copies remain available offline.
+
 ## Confirmed context
 
 The user has a European-market 2004 Mazda RX-8 with 231 PS and a Samsung Galaxy A53 running Android 16.
@@ -14,7 +24,7 @@ The user subsequently reported that 0.10.0-dev works well, and PR #25 is merged.
 
 ## Current capability reports
 
-After successful discovery, Adapter offers Vehicle capabilities. It captures the current real acquisition snapshot, including retained stopped/error data, without requiring a saved profile or recording a trip. Each ECU lists its advertised Mode 01 PIDs and the latest displayed states of the implemented scalar metrics. Scaling metadata PIDs 4F/50 are identified separately; they are used only when advertised. Other unimplemented PIDs remain visible without invented names/values and are not queried.
+After successful discovery, Live offers Vehicle capabilities. It captures the current real acquisition snapshot, including retained stopped/error data, without requiring a saved profile or recording a trip. Each ECU lists its advertised Mode 01 PIDs and the latest displayed states of the implemented scalar metrics. Scaling metadata PIDs 4F/50 are identified separately; they are used only when advertised. Other unimplemented PIDs remain visible without invented names/values and are not queried.
 
 A report is frozen at capture time. Capture latest snapshot explicitly replaces the preview, while exporting retains the exact selected report across the document picker and Activity recreation. The view is temporary until exported; process death clears it. Export errors and cancellation do not become success messages.
 
@@ -24,7 +34,7 @@ Reports contain capture time, acquisition state, recognized protocol, duration/r
 
 The four tabs are Adapter, Live, Trips and Vehicles. Labels stay on one line; navigation adapts to available width. Old saved Simulator navigation resolves to Live. Production navigation no longer creates or activates a simulator.
 
-Live uses the real per-ECU snapshot. RPM appears in the segmented dial previously used by the simulator, accompanied by supported speed/coolant cards and selectable extra sensor favorites. The scale is a display scale, not an inferred rev limit. Missing or failed readings do not move the dial to a fabricated zero. Stopped/stale values remain clearly historical. Each ECU retains its independent values, units, quality and age.
+Live uses the real per-ECU snapshot. Every selected parameter has a configurable digital, dial or bar card; RPM, speed and coolant are editable selections too. The scale is a display domain, not an inferred rev limit. Missing or failed readings do not move the dial to a fabricated zero. Stopped/stale values remain clearly historical. Each ECU retains its independent values, units, quality and age.
 
 Choose sensors includes a search bar for case-insensitive names and hexadecimal PIDs (for example, intake temperature, 0F or PID 0x0F). Each word must match. Clear search restores the eligible list; a no-match message and result count explain the filter. Searching never removes hidden favorites. The query survives closing/reopening the picker and saved Activity state restoration. Keyboard completion returns to the results.
 
@@ -34,7 +44,7 @@ Favorites persist app-wide using stable metric IDs; unavailable saved choices re
 
 The Vehicles tab lets the user explicitly create a named profile, select it, rename it, and add a VIN later. Room retains the UUID and selected profile across app restarts.
 Names contain 1-60 characters after trimming. The optional VIN contains 17 letters/numbers excluding I, O, and Q; this validates its structure, not ownership or the car's identity.
-Read VIN is available only after live acquisition starts. The user chooses a candidate in Adapter, then reviews it in Vehicles before attaching it to a VIN-less profile or creating a separate profile.
+Read VIN is available only after live acquisition starts. The user chooses a candidate in Live, then reviews it in Vehicles before attaching it to a VIN-less profile or creating a separate profile.
 A matching VIN offers explicit selection of its existing profile. A different VIN cannot overwrite the selected profile. Adding a VIN or changing the name never changes the UUID.
 VINs are masked by default and record manual entry or OBD/ECU provenance. A car can be used without a VIN; its Bluetooth adapter does not identify it.
 Switching to Vehicles leaves an active Bluetooth/acquisition session running. Profiles, selected vehicle, dashboard favorites, recorded trips/samples, and pending work are saved locally. Completed-trip uploads are optional and require an explicitly configured HTTPS API URL.
@@ -42,7 +52,7 @@ Backups/device transfer are disabled. Finished trips can be exported, but import
 
 ## Current session behavior
 
-The visible app attempts the last successful Classic adapter once per app process after Bluetooth and connection permission are available. Manual selection/retry remain in Adapter. Explicit Stop/Disconnect and failed attempts suppress repeated automatic attempts for that process; returning from another tab or document picker does not reconnect. No background service or killed journey is restored after process death.
+An explicit favourite opts into 30-second retries while visible and eligible; Stop/Disconnect pauses them until Resume. Without a favourite, the visible app attempts the last successful Classic adapter once per process after Bluetooth and permission are available. Manual selection/retry remain in Adapter. No new attempt starts in the background and no killed journey is restored.
 
 A successful socket connection automatically continues into read-only ELM initialization, protocol detection and capability discovery. The continuation belongs to that connection even if the user changes tabs or locks the screen while it opens. Bluetooth success is still distinct from ECU success. Discovery remains limited to the visible Adapter screen.
 
@@ -88,11 +98,11 @@ The server is prepared for later deployment on the owner's machine behind HTTPS.
 
 | Screen | Contents |
 | --- | --- |
-| Adapter (implemented) | Discovery, permissions, Bluetooth/ECU status, live readings, optional VIN request |
-| Vehicle capabilities (inside Adapter) | Explicitly captured per-ECU capabilities, latest display states, and JSON report export |
+| Adapter (implemented) | Discovery, Bluetooth permissions/status, favourite selection, reconnect pause/resume and connection controls |
+| Vehicle capabilities (inside Live) | Explicitly captured per-ECU capabilities, latest display states, and JSON report export |
 | Vehicles (implemented) | Saved profiles, selection, permanent UUID, alias, optional VIN and source |
 | Internal test fixtures | Synthetic values and failure scenarios, outside production navigation |
-| Live (implemented) | Supported RPM, speed, coolant, extra favorites, per-ECU status and reading age |
+| Live (implemented) | Customisable sensor cards, overlay controls, per-ECU status, reading age, VIN actions and capabilities |
 | Trips (implemented) | Automatic journeys and recording controls, history pages with an independent vehicle filter, storage usage, server settings and upload queue state |
 | Trip details (inside Trips) | Sample counts, valid peaks, estimated distance, sensor/ECU charts with gaps, JSON/CSV export, and confirmed deletion |
 | Settings (planned) | Units, sampling rate/priorities and storage policy; API settings are inside Trips |

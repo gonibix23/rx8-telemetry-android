@@ -33,10 +33,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gonibix.rx8.bluetooth.AdapterDevice
 import com.gonibix.rx8.bluetooth.BluetoothAvailability
-import com.gonibix.rx8.obd.ObdPhase
-import com.gonibix.rx8.telemetry.obd.VinResponse
-import com.gonibix.rx8.vehicle.VinDetectionPanel
-import com.gonibix.rx8.ui.LiveObdReadings
 import com.gonibix.rx8.ui.theme.AccentColor
 import com.gonibix.rx8.ui.theme.BorderColor
 import com.gonibix.rx8.ui.theme.CanvasColor
@@ -60,12 +56,11 @@ fun BluetoothConnectionScreen(
     onStopScan: () -> Unit,
     onOpenLocationSettings: () -> Unit,
     modifier: Modifier = Modifier,
-    onOpenVehicles: () -> Unit = {},
-    onReadVin: () -> Unit = {},
-    onReviewVin: (VinResponse) -> Unit = {},
-    canReviewVin: Boolean = true,
     notificationsAllowed: Boolean = true,
-    onOpenCapabilities: () -> Unit = {},
+    onSetFavorite: () -> Unit = {},
+    onClearFavorite: () -> Unit = {},
+    onPauseAutomatic: () -> Unit = {},
+    onResumeAutomatic: () -> Unit = {},
 ) {
     Column(
         modifier = modifier
@@ -90,7 +85,7 @@ fun BluetoothConnectionScreen(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        "RX-8 · 231 PS · 2004 EU",
+                        "Bluetooth Classic connection",
                         color = MutedColor,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -100,18 +95,7 @@ fun BluetoothConnectionScreen(
                 }
             }
             ConnectionStatus(state)
-            state.automaticMessage?.let {
-                Text(it, color = MutedColor, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("automatic_session_message"))
-            }
-            if (state.isAwaitingVehicle) {
-                OutlinedButton(onClick = onOpenVehicles, modifier = Modifier.fillMaxWidth().testTag("automatic_choose_vehicle")) { Text("Choose recording vehicle") }
-            }
-            if (state.obd.ecus.isNotEmpty() && state.obd.phase in setOf(ObdPhase.LIVE, ObdPhase.STOPPED, ObdPhase.ERROR)) {
-                OutlinedButton(
-                    onClick = onOpenCapabilities,
-                    modifier = Modifier.fillMaxWidth().testTag("open_capabilities"),
-                ) { Text("Vehicle capabilities") }
-            }
+            FavoriteAdapterControls(state, onSetFavorite, onClearFavorite, onPauseAutomatic, onResumeAutomatic)
             if (!notificationsAllowed && state.phase != BluetoothConnectionPhase.DISCONNECTED) {
                 Text(
                     "Session notifications are disabled. You can still read data and disconnect here. Enable notifications to see the Stop action outside the app.",
@@ -123,13 +107,6 @@ fun BluetoothConnectionScreen(
             }
             if (state.phase == BluetoothConnectionPhase.CONNECTED) {
                 ConnectionAction(state, onConnect, onDisconnect)
-                Text("Read-only sensor discovery starts automatically after connecting.", color = MutedColor, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("automatic_obd_guidance"))
-            }
-            if (state.obd.phase != ObdPhase.IDLE || state.obd.readings.isNotEmpty()) {
-                LiveObdReadings(state.obd, Modifier.fillMaxWidth())
-            }
-            if (state.obd.phase == ObdPhase.LIVE) {
-                VinDetectionPanel(state.obd.vin, onReadVin, onReviewVin, canReview = canReviewVin)
             }
             when (state.availability) {
                 BluetoothAvailability.PERMISSION_REQUIRED -> {
@@ -224,37 +201,10 @@ fun BluetoothConnectionScreen(
                     modifier = Modifier.testTag("connection_message"),
                 )
             }
-            Surface(
-                shape = RoundedCornerShape(18.dp),
-                color = CardColor,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(
-                    Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(
-                        "Read-only vehicle data",
-                        fontWeight = FontWeight.SemiBold,
-                        style = MaterialTheme.typography.titleSmall,
-                    )
-                    Text(
-                        "Supported sensor readings start automatically after connecting. The app does not clear faults or control vehicle systems.",
-                        color = MutedColor,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    Text(
-                        "The connection and active readings continue when you change tabs, lock the phone, or use another app. Choose Disconnect here or Stop in the session notification to end them. The live-data screen stays awake while visible.",
-                        color = MutedColor,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    Text(
-                        "Select a vehicle once in Vehicles to record journeys automatically. Manage recording in Trips, including resuming after Stop recording. Data stays on this device unless you export it.",
-                        color = MutedColor,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-            }
+            Text(
+                "An active connection continues when you use another app or lock the phone. Disconnect here or use Stop in the notification to end it. View vehicle data in Live.",
+                color = MutedColor, style = MaterialTheme.typography.bodySmall,
+            )
         }
     }
 }
@@ -387,18 +337,7 @@ private fun ConnectionStatus(state: BluetoothConnectionUiState) {
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            Text(
-                when (state.obd.phase) {
-                    ObdPhase.IDLE -> "ECU not checked"
-                    ObdPhase.INITIALIZING, ObdPhase.DISCOVERING -> "ECU check in progress"
-                    ObdPhase.LIVE -> "ECU readings active"
-                    ObdPhase.ERROR -> "ECU reading error"
-                    ObdPhase.STOPPED -> "ECU readings stopped"
-                },
-                color = MutedColor,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.testTag("ecu_status"),
-            )
+
         }
     }
 }

@@ -41,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.gonibix.rx8.overlay.OverlayUiState
 import com.gonibix.rx8.obd.ObdMetric
 import com.gonibix.rx8.obd.ObdPhase
 import com.gonibix.rx8.obd.ObdReadingStatus
@@ -63,8 +64,18 @@ fun LiveDashboard(
     modifier: Modifier = Modifier,
     isSimulated: Boolean = false,
     connectionStatus: String? = null,
+    cards: List<DashboardCardConfig>? = null,
+    onUpdateCard: (DashboardCardConfig) -> Unit = {},
+    onMoveCard: (ObdMetric, Int) -> Unit = { _, _ -> },
+    overlayState: OverlayUiState? = null,
+    onToggleOverlay: () -> Unit = {},
+    additionalContent: @Composable () -> Unit = {},
 ) {
-    val model = dashboardModel(snapshot, favorites)
+    val model = if (cards == null) dashboardModel(snapshot, favorites) else modularDashboardModel(snapshot, cards)
+    var editingMetric by rememberSaveable { mutableStateOf<String?>(null) }
+    val editing = cards?.firstOrNull { it.metric.name == editingMetric }
+    if (editing != null) CardEditor(editing, cards.indexOf(editing), cards.size, cards.count { it.showInOverlay },
+        onUpdateCard, { onMoveCard(editing.metric, it) }, { onToggleFavorite(editing.metric) }, { editingMetric = null })
     var showPicker by rememberSaveable { mutableStateOf(false) }
     var sensorQuery by rememberSaveable { mutableStateOf("") }
     var showDetails by rememberSaveable { mutableStateOf(false) }
@@ -145,6 +156,43 @@ fun LiveDashboard(
                 )
             }
         }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(if (cards == null) "Favorite sensors" else "Dashboard sensors", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    TextButton(onClick = {
+                        if (showPicker) finishSearch()
+                        showPicker = !showPicker
+                    }, modifier = Modifier.testTag("dashboard_choose_sensors")) {
+                        Text(if (showPicker) "Done" else "Choose sensors")
+                    }
+                }
+                if (model.unavailableFavorites.isNotEmpty()) Text(
+                    if (model.unavailableFavorites.size == 1)
+                        "A saved favorite is unavailable in this session. Choose sensors to review or remove it." else
+                        "${model.unavailableFavorites.size} saved favorites are unavailable in this session. Choose sensors to review or remove them.",
+                    color = AccentColor,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.testTag("dashboard_unavailable_favorites"),
+                )
+                if (cards != null && cards.isEmpty()) Text("Your dashboard is empty. Choose sensors to add cards.", color = MutedColor)
+                if (cards != null && !model.hasCapabilities && cards.isNotEmpty()) Text("Saved layout: ${cards.joinToString { it.metric.label }}. Values will appear after capability discovery.", color = MutedColor)
+                if (showPicker) SensorPicker(model, favorites, sensorQuery, { sensorQuery = it }, finishSearch, onToggleFavorite, cards != null)
+                if (overlayState != null) {
+                    TextButton(onClick = onToggleOverlay, modifier = Modifier.testTag("dashboard_toggle_overlay")) {
+                        Text(if (overlayState.enabled) "Close floating panel" else "Enable floating panel")
+                    }
+                    Text(if (overlayState.enabled) "Floating readings appear when you leave this app. Return here to customize them." else
+                        "Edit a card to choose floating sensors, then enable the panel to view them over other apps.", color = MutedColor, style = MaterialTheme.typography.bodySmall)
+                    overlayState.error?.let { Text(it, color = AccentColor, modifier = Modifier.testTag("dashboard_overlay_error")) }
+                }
+                if (model.hasCapabilities && model.unavailablePrimary.isNotEmpty()) Text(
+                    "Not reported as supported: ${model.unavailablePrimary.joinToString { it.label }}.",
+                    color = MutedColor,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
         model.ecus.forEach { ecu ->
             item(key = "ecu_${ecu.ecuId}") {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -159,6 +207,30 @@ fun LiveDashboard(
                         color = MutedColor,
                         style = MaterialTheme.typography.bodySmall,
                     )
+                    if (cards != null) {
+                        val configurations = cards.associateBy { it.metric }
+                        BoxWithConstraints {
+                            val twoColumns = maxWidth >= 360.dp
+                            val rows = mutableListOf<List<DashboardReading>>()
+                            val compact = mutableListOf<DashboardReading>()
+                            ecu.readings.forEach { reading ->
+                                if (!twoColumns || configurations.getValue(reading.metric).size == DashboardCardSize.LARGE) {
+                                    if (compact.isNotEmpty()) { rows += compact.toList(); compact.clear() }
+                                    rows += listOf(reading)
+                                } else {
+                                    compact += reading
+                                    if (compact.size == 2) { rows += compact.toList(); compact.clear() }
+                                }
+                            }
+                            if (compact.isNotEmpty()) rows += compact.toList()
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                rows.forEach { readings -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    readings.forEach { reading -> CustomSensorCard(reading, configurations.getValue(reading.metric), model.stopped,
+                                        { editingMetric = reading.metric.name }, Modifier.weight(1f)) }
+                                } }
+                            }
+                        }
+                    } else {
                     ecu.readings.firstOrNull { it.metric == ObdMetric.ENGINE_RPM }?.let { rpm ->
                         RealRpmGauge(rpm, model.stopped, Modifier.fillMaxWidth())
                     }
@@ -180,36 +252,11 @@ fun LiveDashboard(
                             }
                         }
                     }
-                }
-            }
-        }
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Favorite sensors", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    TextButton(onClick = {
-                        if (showPicker) finishSearch()
-                        showPicker = !showPicker
-                    }, modifier = Modifier.testTag("dashboard_choose_sensors")) {
-                        Text(if (showPicker) "Done" else "Choose sensors")
                     }
                 }
-                if (model.unavailableFavorites.isNotEmpty()) Text(
-                    if (model.unavailableFavorites.size == 1)
-                        "A saved favorite is unavailable in this session. Choose sensors to review or remove it." else
-                        "${model.unavailableFavorites.size} saved favorites are unavailable in this session. Choose sensors to review or remove them.",
-                    color = AccentColor,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.testTag("dashboard_unavailable_favorites"),
-                )
-                if (showPicker) SensorPicker(model, favorites, sensorQuery, { sensorQuery = it }, finishSearch, onToggleFavorite)
-                if (model.hasCapabilities && model.unavailablePrimary.isNotEmpty()) Text(
-                    "Not reported as supported: ${model.unavailablePrimary.joinToString { it.label }}.",
-                    color = MutedColor,
-                    style = MaterialTheme.typography.bodySmall,
-                )
             }
         }
+        item { additionalContent() }
         if (model.ecus.any { it.readings.isNotEmpty() }) item {
             Text(
                 if (isSimulated) "Ages use the simulator clock. Simulation pauses when it is not visible." else
@@ -229,8 +276,9 @@ private fun SensorPicker(
     onQueryChange: (String) -> Unit,
     onFinishSearch: () -> Unit,
     onToggle: (ObdMetric) -> Unit,
+    modular: Boolean = false,
 ) {
-    val choices = extraDashboardMetrics.filter { it in model.availableExtras || it in model.unavailableFavorites }
+    val choices = if (modular) ObdMetric.entries else extraDashboardMetrics.filter { it in model.availableExtras || it in model.unavailableFavorites }
     val terms = query.trim().lowercase(Locale.ROOT).split(Regex("\\s+"))
         .filter { it.isNotEmpty() }.map { if (it.matches(HEX_PID_QUERY)) it.drop(2) else it }
     val matches = choices.filter { metric ->
@@ -239,7 +287,7 @@ private fun SensorPicker(
     }
     Surface(color = CardColor, shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, BorderColor)) {
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Essentials stay visible when supported. Favorites apply to every supporting ECU.", color = MutedColor, style = MaterialTheme.typography.bodySmall)
+            Text(if (modular) "Every sensor can be added or removed, including RPM, speed and coolant. Unsupported selections stay unavailable; selecting them does not add vehicle commands." else "Essentials stay visible when supported. Favorites apply to every supporting ECU.", color = MutedColor, style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(
                 value = query,
                 onValueChange = onQueryChange,
@@ -269,7 +317,10 @@ private fun SensorPicker(
                     )
                     Column(Modifier.weight(1f)) {
                         Text(metric.label, style = MaterialTheme.typography.bodyMedium)
-                        if (metric in model.unavailableFavorites) Text(
+                        if (modular && metric !in model.availableExtras) Text(
+                            if (model.hasCapabilities) "Not reported as supported in this session." else "Support unknown until discovery.",
+                            color = AccentColor, style = MaterialTheme.typography.bodySmall)
+                        else if (metric in model.unavailableFavorites) Text(
                             if (model.hasCapabilities) "Not supported in this session. Uncheck to remove." else
                                 "Support is unknown until live data starts. Uncheck to remove.",
                             color = AccentColor,

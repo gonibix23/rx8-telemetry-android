@@ -2,6 +2,8 @@
 
 ## Context and scope
 
+RX8-020 / issue #42 supersedes the older fixed-card and one-attempt-only UX rules below: every implemented metric is selectable, Live cards support persistent visual/size/order choices, and an explicitly saved favourite adapter may retry every 30 seconds while the app is visible. Manual Disconnect/Stop pauses retries until Resume. Adapter contains Bluetooth controls only; vehicle diagnostics and capability reports belong to Live. A session-only, opt-in overlay may show selected readings over other apps after Android grants overlay access; it uses the existing acquisition owner and must disappear on disconnect, lock, revoked permission, or cleanup. Upload success requires durable acknowledgments for current metadata and every saved sample of terminal trips. API request/error logging uses allowlisted fields and must exclude credentials and telemetry payloads. The owner added a Portainer deployment workflow in PRs #39-41; preserve it and distinguish its configured MongoDB from the local Atlas configuration.
+
 Read README.md, docs/product.md, docs/architecture.md, and the issue before changing code.
 Initial project: European 2004 Mazda RX-8, 231 metric horsepower (CV); Samsung A53 running Android 16; iLC B0BDRHRR22.
 Priority: live data, offline trip recording, and completed-trip synchronization. The user now authorizes an anonymous API backed by MongoDB Atlas in this repository; actual deployment on the user's server is deferred.

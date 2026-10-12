@@ -12,6 +12,7 @@ import androidx.room.Update
 import com.gonibix.rx8.trips.TripSampleEntity
 import com.gonibix.rx8.trips.TripSessionEntity
 import com.gonibix.rx8.vehicle.VehicleEntity
+import kotlinx.coroutines.flow.Flow
 
 /** Only metadata and claimed batches have bodies; unclaimed telemetry remains a sample reference. */
 @Entity(
@@ -57,6 +58,33 @@ data class SyncStateCount(val state: String, val count: Long)
 
 @Dao
 interface SyncDao {
+    /** Count terminal trips only; a trip needs both current metadata revisions and every sample ACK. */
+    @Query("""
+        SELECT COUNT(*) AS total,
+            COALESCE(SUM(CASE WHEN delivery = 'CONFIRMED' THEN 1 ELSE 0 END), 0) AS confirmed,
+            COALESCE(SUM(CASE WHEN delivery = 'WAITING' THEN 1 ELSE 0 END), 0) AS waiting,
+            COALESCE(SUM(CASE WHEN delivery = 'BLOCKED' THEN 1 ELSE 0 END), 0) AS blocked
+        FROM (
+            SELECT CASE
+                WHEN EXISTS (SELECT 1 FROM sync_work w WHERE w.state = 'BLOCKED' AND
+                    ((w.kind = 'VEHICLE' AND w.vehicleId = t.vehicleId) OR (w.kind = 'SESSION' AND w.sessionId = t.id)))
+                  OR EXISTS (SELECT 1 FROM trip_samples s JOIN sync_samples q ON q.sampleId = s.id
+                    WHERE s.tripId = t.id AND q.state = 'BLOCKED') THEN 'BLOCKED'
+                WHEN NOT EXISTS (SELECT 1 FROM sync_work w WHERE w.kind = 'VEHICLE' AND w.vehicleId = t.vehicleId
+                    AND w.revision = v.revision AND w.state = 'ACKNOWLEDGED')
+                  OR NOT EXISTS (SELECT 1 FROM sync_work w WHERE w.kind = 'SESSION' AND w.sessionId = t.id
+                    AND w.revision = t.revision AND w.state = 'ACKNOWLEDGED')
+                  OR EXISTS (SELECT 1 FROM sync_work w WHERE w.state != 'ACKNOWLEDGED' AND
+                    ((w.kind = 'VEHICLE' AND w.vehicleId = t.vehicleId) OR (w.kind = 'SESSION' AND w.sessionId = t.id)))
+                  OR EXISTS (SELECT 1 FROM trip_samples s LEFT JOIN sync_samples q ON q.sampleId = s.id
+                    WHERE s.tripId = t.id AND (q.sampleId IS NULL OR q.state != 'ACKNOWLEDGED')) THEN 'WAITING'
+                ELSE 'CONFIRMED' END AS delivery
+            FROM trip_sessions t JOIN vehicle_profiles v ON v.id = t.vehicleId
+            WHERE t.status IN ('COMPLETED', 'INTERRUPTED')
+        )
+    """)
+    fun observeDelivery(): Flow<UploadDeliveryCounts>
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertWork(work: SyncWorkEntity)
     @Update(onConflict = OnConflictStrategy.ABORT)

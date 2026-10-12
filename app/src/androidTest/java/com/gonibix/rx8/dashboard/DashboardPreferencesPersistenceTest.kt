@@ -50,7 +50,8 @@ class DashboardPreferencesPersistenceTest {
         val name = uniqueName()
         val store = open(name)
         awaitSettled(store)
-        assertTrue(store.favorites.value.isEmpty())
+        assertEquals(primaryDashboardMetrics.toSet(), store.favorites.value)
+        primaryDashboardMetrics.forEach(store::toggleFavorite)
         store.toggleFavorite(ObdMetric.INTAKE_TEMPERATURE)
         store.toggleFavorite(ObdMetric.ENGINE_LOAD)
         awaitSettled(store)
@@ -65,13 +66,13 @@ class DashboardPreferencesPersistenceTest {
         awaitSettled(cleared)
         assertTrue(cleared.favorites.value.isEmpty())
         assertEquals(
-            mapOf(SharedPreferencesFavoritesStorage.FAVORITES_KEY to emptySet<String>()),
+            mapOf(SharedPreferencesFavoritesStorage.FAVORITES_KEY to emptySet<String>(), SharedPreferencesFavoritesStorage.LAYOUT_KEY to ""),
             application.getSharedPreferences(name, Context.MODE_PRIVATE).all,
         )
     }
 
     @Test
-    fun unknownSavedIdsAndFixedMetricsCannotAppearAsSelectableFavorites() = runBlocking {
+    fun legacyFavoritesMigrateWithBasicCardsAndBasicsCanThenBeRemoved() = runBlocking {
         val name = uniqueName()
         withContext(Dispatchers.IO) {
             assertTrue(application.getSharedPreferences(name, Context.MODE_PRIVATE).edit().putStringSet(
@@ -81,15 +82,15 @@ class DashboardPreferencesPersistenceTest {
         }
         val store = open(name)
         awaitSettled(store)
-        assertEquals(setOf(ObdMetric.ENGINE_LOAD), store.favorites.value)
+        assertEquals(primaryDashboardMetrics.toSet() + ObdMetric.ENGINE_LOAD, store.favorites.value)
         store.toggleFavorite(ObdMetric.SPEED)
         store.toggleFavorite(ObdMetric.THROTTLE_POSITION)
         awaitSettled(store)
         val reopened = open(copyCommittedFile(name))
         awaitSettled(reopened)
-        assertEquals(setOf(ObdMetric.ENGINE_LOAD, ObdMetric.THROTTLE_POSITION), reopened.favorites.value)
+        assertEquals(setOf(ObdMetric.ENGINE_RPM, ObdMetric.COOLANT_TEMPERATURE, ObdMetric.ENGINE_LOAD, ObdMetric.THROTTLE_POSITION), reopened.favorites.value)
         assertEquals(
-            setOf("engine_load", "throttle_position"),
+            setOf("engine_rpm", "coolant_temperature", "engine_load", "throttle_position"),
             application.getSharedPreferences(name, Context.MODE_PRIVATE)
                 .getStringSet(SharedPreferencesFavoritesStorage.FAVORITES_KEY, null),
         )
@@ -124,6 +125,12 @@ class DashboardPreferencesPersistenceTest {
         val release = CompletableDeferred<Unit>()
         val delayed = object : DashboardFavoritesStorage {
             override suspend fun read() = disk.read()
+            override suspend fun readCards() = disk.readCards()
+            override suspend fun writeCards(cards: List<DashboardCardConfig>): Boolean {
+                entered.complete(Unit)
+                release.await()
+                return disk.writeCards(cards)
+            }
             override suspend fun write(ids: Set<String>): Boolean {
                 entered.complete(Unit)
                 release.await()
@@ -142,17 +149,32 @@ class DashboardPreferencesPersistenceTest {
         }
         withTimeout(5_000L) { entered.await() }
         assertTrue(first.isSaving.value)
-        assertTrue(first.favorites.value.isEmpty())
+        assertEquals(primaryDashboardMetrics.toSet(), first.favorites.value)
         instrumentation.runOnMainSync { firstOwner.clear() }
         val replacement = DashboardPreferencesViewModel(application, store)
         assertTrue(replacement.isSaving.value)
         release.complete(Unit)
         awaitSettled(store)
-        assertEquals(setOf(ObdMetric.ENGINE_LOAD), replacement.favorites.value)
+        assertEquals(primaryDashboardMetrics.toSet() + ObdMetric.ENGINE_LOAD, replacement.favorites.value)
         assertFalse(replacement.isSaving.value)
         val coldRead = open(copyCommittedFile(name))
         awaitSettled(coldRead)
         assertEquals(replacement.favorites.value, coldRead.favorites.value)
+    }
+
+    @Test fun cardOrderAppearanceAndOverlaySelectionSurviveCommittedFileReopen() = runBlocking {
+        val name = uniqueName()
+        val store = open(name)
+        awaitSettled(store)
+        store.updateCard(DashboardCardConfig(ObdMetric.SPEED, DashboardCardStyle.BAR, DashboardCardSize.LARGE, true))
+        store.moveCard(ObdMetric.SPEED, -1)
+        awaitSettled(store)
+        val reopened = open(copyCommittedFile(name))
+        awaitSettled(reopened)
+        assertEquals(store.cards.value, reopened.cards.value)
+        assertEquals(ObdMetric.SPEED, reopened.cards.value.first().metric)
+        assertTrue(reopened.cards.value.first().showInOverlay)
+        assertEquals(DashboardCardStyle.BAR, reopened.cards.value.first().style)
     }
 
     private fun uniqueName(): String = "dashboard-test-${UUID.randomUUID()}".also { names += it }

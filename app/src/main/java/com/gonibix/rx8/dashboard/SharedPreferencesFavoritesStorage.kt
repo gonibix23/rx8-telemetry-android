@@ -25,8 +25,21 @@ internal class SharedPreferencesFavoritesStorage(
         preferences.edit().putStringSet(FAVORITES_KEY, ids.toSet()).commit()
     }
 
+    override suspend fun readCards(): List<DashboardCardConfig> = withContext(Dispatchers.IO) {
+        if (preferences.contains(LAYOUT_KEY)) DashboardLayoutCodec.decode(preferences.getString(LAYOUT_KEY, "").orEmpty())
+        else (primaryDashboardMetrics + FavoriteMetricIds.decode(preferences.getStringSet(FAVORITES_KEY, emptySet()).orEmpty()).toList())
+            .distinct().map(::defaultCard)
+    }
+
+    @SuppressLint("ApplySharedPref", "UseKtx")
+    override suspend fun writeCards(cards: List<DashboardCardConfig>): Boolean = withContext(Dispatchers.IO) {
+        preferences.edit().putString(LAYOUT_KEY, DashboardLayoutCodec.encode(cards))
+            .putStringSet(FAVORITES_KEY, FavoriteMetricIds.encode(cards.map { it.metric }.toSet())).commit()
+    }
+
     internal companion object {
         const val PREFERENCES_NAME = "dashboard_preferences"
+        const val LAYOUT_KEY = "dashboard_layout_v2"
         const val FAVORITES_KEY = "favorite_metric_ids_v1"
     }
 }
@@ -41,4 +54,9 @@ internal object DashboardFavoritesProvider {
             CoroutineScope(SupervisorJob() + Dispatchers.IO),
         ).also { instance = it }
     }
+}
+
+/** Shared read-only layout for the existing session service; observing it never starts acquisition. */
+object DashboardPreferences {
+    fun openCards(context: Context): kotlinx.coroutines.flow.StateFlow<List<DashboardCardConfig>> = DashboardFavoritesProvider.open(context).cards
 }

@@ -6,7 +6,7 @@ VINs, trips, and complete logs can identify a vehicle or its usage patterns.
 Use synthetic data in examples, simulators, issues, and tests. Remove VINs, Bluetooth MAC addresses, and locations from shared logs.
 The app does not collect GPS location. On Android 8-11, Bluetooth discovery requires foreground location permission; Android 12+ uses Nearby devices permissions instead.
 Live OBD values are recorded automatically for the persisted selected vehicle after connection, or after an explicit manual resume; without a selected profile they remain in memory. Capability snapshot export is explicit. Read VIN explicitly requests Mode 09 PID 02 after live acquisition starts; candidates remain temporary until the user reviews and saves one.
-Vehicle profiles persist a UUID, alias, optional VIN, manual/OBD provenance, optional ECU source, and creation timestamp in the app's private Room database. The active profile selection is also saved. Dashboard favorites store only stable metric IDs in private app-wide SharedPreferences, without vehicle, ECU, VIN, adapter, or reading values.
+Vehicle profiles persist a UUID, alias, optional VIN, manual/OBD provenance, optional ECU source, and creation timestamp in the app's private Room database. The active profile selection is also saved. Dashboard preferences store stable metric IDs, order, display style/size and overlay selections in private app-wide SharedPreferences, without vehicle, ECU, VIN, adapter, or reading values.
 VINs are masked by default, with an explicit show/hide action. Masking is a display control, not database encryption. Optional synchronization uses a configured HTTPS API. Without a server configured, records wait locally. No MongoDB credential is included in the app.
 
 Automatic or explicitly resumed recording stores trip/vehicle/sample UUIDs, a snapshot of the vehicle name, UTC timestamps, monotonic duration, sequences, protocol, ECU sources, units, values, and quality in the private Room database. New recordings also preserve their app version; older recordings retain an unknown version. Retain trips until the user confirms deletion; no automatic retention cleanup exists. The UI reports database disk usage, including profiles, local pending work, and SQLite sidecars; deleting rows can leave reusable space rather than shrink the file.
@@ -53,3 +53,9 @@ No reporting email address has been configured.
 
 Review dependencies and permissions. Signing files, keystores, tokens, and local SDK configuration files must not be committed.
 The initial version collects information through read requests. It does not modify the ECU.
+
+## Request logging and floating readings
+
+API diagnostics use generated request IDs and fixed route templates, method, status, elapsed time and safe error classifications. Telemetry bodies, headers, URL query strings, resource IDs, VINs, raw driver errors and database configuration are excluded. The operator manages container log retention.
+
+The optional floating overlay displays selected readings over other apps after explicit Android permission and enablement for the current session. It does not read those apps or collect GPS. It is hidden in the app and on the lock screen and removed on disconnect, permission loss or cleanup. Favourite adapters are stored privately for visible-app retries; manual Stop/Disconnect pauses them. Neither adapter settings nor card preferences identify a vehicle.

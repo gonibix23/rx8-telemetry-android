@@ -60,9 +60,11 @@ class TripSensorChartTest {
         val options = originalMetrics.map { TripSeriesKey(it, "7E8") } + selected + TripSeriesKey(ObdMetric.COOLANT_TEMPERATURE, "7E9")
         show(options = options, selected = selected, series = null, onSelect = { calls += it })
         assertTrue(calls.isEmpty())
+        compose.onNodeWithTag("trip_parameter_select").performClick()
         originalMetrics.forEach { metric -> compose.onNodeWithTag("trip_metric_${metric.name.lowercase(Locale.ROOT)}").assertIsEnabled() }
         compose.onNodeWithTag("trip_metric_speed").assertIsSelected().performClick()
         assertTrue(calls.isEmpty())
+        compose.onNodeWithTag("trip_parameter_select").performClick()
         compose.onNodeWithTag("trip_metric_coolant_temperature").performClick()
         compose.onNodeWithTag("trip_source_7E8").performClick()
         assertEquals(listOf(TripSeriesKey(ObdMetric.COOLANT_TEMPERATURE, "7E9"), TripSeriesKey(ObdMetric.SPEED, "7E8")), calls)
@@ -73,6 +75,7 @@ class TripSensorChartTest {
         val calls = mutableListOf<TripSeriesKey>()
         val rpm = TripSeriesKey(ObdMetric.ENGINE_RPM, "7E9")
         show(options = listOf(coolant, rpm), selected = rpm, series = null, onSelect = { calls += it })
+        compose.onNodeWithTag("trip_parameter_select").performClick()
         compose.onNodeWithTag("trip_metric_coolant_temperature").performClick()
         assertEquals(listOf(coolant), calls)
         compose.onNodeWithTag("trip_metric_intake_temperature").assertDoesNotExist()
@@ -120,6 +123,7 @@ class TripSensorChartTest {
         compose.onNodeWithTag("trip_series_loading").assertIsDisplayed()
         compose.onNodeWithTag("trip_series_range").assertDoesNotExist()
         compose.onNodeWithTag("trip_sensor_chart").assertDoesNotExist()
+        compose.onNodeWithTag("trip_parameter_select").performClick()
         compose.onNodeWithTag("trip_metric_engine_rpm").assertIsEnabled().performClick()
         assertEquals(listOf(rpm), calls)
     }
@@ -171,7 +175,7 @@ class TripSensorChartTest {
         val key = TripSeriesKey(ObdMetric.SHORT_TERM_FUEL_TRIM_BANK_1, "7E8")
         show(options = listOf(key), selected = key,
             series = TripSeriesAnalysis(key, 2, 2, -12.5, 3.1, 1_000, listOf(point(0, -12.5), point(1_000, 3.1))))
-        compose.onNodeWithTag("trip_metric_short_term_fuel_trim_bank_1").assertIsSelected()
+        compose.onNodeWithTag("trip_parameter_select").assertIsDisplayed()
         compose.onNodeWithTag("trip_series_range").assertTextEquals("Observed range: -12.5 to 3.1 %")
         compose.onNodeWithTag("trip_series_axis").assertTextEquals("Scale: -12.5 to 3.1 %")
         compose.onNodeWithTag("trip_sensor_chart").performScrollTo().assertIsDisplayed()

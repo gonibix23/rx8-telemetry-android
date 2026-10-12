@@ -58,7 +58,21 @@ ACKs are returned only after transactions commit with snapshot reads, primary ro
 
 Pages return `{schemaVersion:1,items:[...],nextCursor:string|null}`. Pass the returned exclusive cursor unchanged and keep the same filter. Limits are 1–100, default 50. Pages are bounded keyset queries, not an immutable whole-database snapshot; newly arriving lower UUIDs may require restarting a listing. No remote deletion or diagnostic/control route exists. Responses are `Cache-Control: no-store`.
 
-Errors contain only a bounded machine-readable `{code}`: 400 validation/identity error, 404 missing resource, 409 revision/content/dependency conflict, 413 oversized body, 503 storage unavailable. Batch validation/conflict never partially ACKs or overwrites samples. Client retries 503 and preserves immutable work; 409/400 require review. Application request/body/header/URI logging is disabled, and startup/database errors are generic. Configure reverse proxies and hosting logs similarly; the service does not log raw VINs, connection strings or payloads.
+Errors contain only a bounded machine-readable `{code}`: 400 validation/identity error, 404 missing resource, 409 revision/content/dependency conflict, 413 oversized body, 503 storage unavailable. Batch validation/conflict never partially ACKs or overwrites samples. Client retries 503 and preserves immutable work; 409/400 require review. Errors and request lifecycles are logged as bounded structured records described below; raw database errors are never exposed.
+
+## Request and error logs
+
+The API emits one JSON line when each accepted request arrives and when its response finishes. Failures handled by the API also emit a classified `request_error`. Each request has a new server-generated UUID returned in `X-Request-ID`; incoming correlation headers are ignored. Correlation IDs do not identify a vehicle, trip, sample or user.
+
+Request records contain only `timestamp`, `level`, `event`, `requestId`, allowlisted `method`, registered route template, `statusCode`, monotonic `durationMs`, a fixed `errorClass` and an allowlisted API `errorCode` (null when unknown or inapplicable). For example, a vehicle request logs `/v1/vehicles/:vehicleId`, never its actual path. Unknown routes use `unmatched`, and unknown methods use `OTHER`. Each record is under 512 bytes; duration is capped at one day. Arrival records have no response status yet.
+
+Bodies, sensor values, VINs, aliases, actual resource IDs, query strings, headers, client/network addresses, MongoDB URIs/passwords and raw error messages/stacks are excluded. The framework's automatic request/error serializers stay disabled. Readiness/storage failures, validation errors, conflicts and oversized bodies use fixed classifications. Malformed HTTP/URL requests are recorded without retaining rejected packets or paths. Accepted requests that abort or reach a socket timeout emit `request_terminated` with a null status because no completed response is claimed. Incomplete HTTP headers or bodies that reach Node's request timeout produce a bounded `request_rejected` record with status 408 and `request_timeout`; no partial path or headers are retained.
+
+Startup, listening, shutdown and fatal runtime errors have separate lifecycle events with safe classifications. Uncaught exceptions and unhandled rejections are logged synchronously and terminate the process with a nonzero exit; the service does not continue in a potentially inconsistent state. Graceful shutdown remains responsible for closing MongoDB connections.
+
+Normal records go to stdout; warning/error records go to stderr, making them visible in the API container's Portainer logs. Configure host/container retention and rotation: the per-record bound does not limit total volume. Apply the same exclusions to reverse-proxy logs. A failed log destination must not change a committed ACK or expose a raw error; log collection is best effort, and a killed process can leave an arrival record without a completion.
+
+These tests use only synthetic request/error markers, local HTTP connections and disposable processes. Request hooks follow the [Fastify lifecycle](https://fastify.dev/docs/latest/Reference/Hooks/); fatal error handling follows the [Node.js process guidance](https://nodejs.org/docs/latest-v22.x/api/process.html#event-uncaughtexception).
 
 ## Later deployment
 

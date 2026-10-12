@@ -28,18 +28,15 @@ class DashboardFavoritesStoreTest {
     }
 
     @Test
-    fun unknownIdsAndFixedGaugesAreIgnoredWithoutRewritingExistingPreferences() = runTest {
+    fun unknownIdsAreIgnoredAndAllBasicMetricsCanBeAddedOrRemoved() = runTest {
         val storage = MemoryStorage(setOf("engine_load", "future_metric", "engine_rpm", "SPEED"))
         val store = DashboardFavoritesStore(storage, backgroundScope)
         runCurrent()
-        assertEquals(setOf(ObdMetric.ENGINE_LOAD), store.favorites.value)
-        for (metric in listOf(ObdMetric.ENGINE_RPM, ObdMetric.SPEED, ObdMetric.COOLANT_TEMPERATURE)) {
-            store.toggleFavorite(metric)
-        }
+        assertEquals(setOf(ObdMetric.ENGINE_LOAD, ObdMetric.ENGINE_RPM), store.favorites.value)
+        primaryDashboardMetrics.forEach(store::toggleFavorite)
         runCurrent()
-        assertTrue(storage.writes.isEmpty())
-        assertFalse(store.isSaving.value)
-        assertEquals(setOf(ObdMetric.ENGINE_LOAD), store.favorites.value)
+        assertEquals(setOf(ObdMetric.ENGINE_LOAD, ObdMetric.SPEED, ObdMetric.COOLANT_TEMPERATURE), store.favorites.value)
+        assertEquals(3, storage.writes.size)
     }
 
     @Test
@@ -195,9 +192,9 @@ class DashboardFavoritesStoreTest {
 
     @Test
     fun allNewScalarChannelsHaveUniqueStableFavoriteIds() {
-        val selectable = ObdMetric.entries.filterNot { it in setOf(ObdMetric.ENGINE_RPM, ObdMetric.SPEED, ObdMetric.COOLANT_TEMPERATURE) }.toSet()
+        val selectable = ObdMetric.entries.toSet()
         val encoded = FavoriteMetricIds.encode(selectable)
-        assertEquals(117, encoded.size)
+        assertEquals(120, encoded.size)
         assertEquals(selectable, FavoriteMetricIds.decode(encoded + "unknown_future_metric"))
         assertEquals(emptySet<ObdMetric>(), FavoriteMetricIds.decode(emptySet()))
     }

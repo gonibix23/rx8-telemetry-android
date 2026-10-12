@@ -22,6 +22,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.retryWhen
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -35,6 +41,20 @@ class SyncRuntime private constructor(private val context: Application) {
     private val store = RoomSyncStore(VehicleDatabase.open(context))
     private val mutableStatus = MutableStateFlow(UploadRuntimeStatus())
     val status = mutableStatus.asStateFlow()
+    // Refresh only while displayed, at most once every two seconds, not on every recorded sample.
+    val delivery = flow {
+        while (true) {
+            emit(UploadDeliveryState(counts = VehicleDatabase.open(context).sync().observeDelivery().first()))
+            delay(2_000)
+        }
+    }
+        .retryWhen { cause, _ ->
+            if (cause is CancellationException) throw cause
+            emit(UploadDeliveryState(error = "Delivery could not be checked. Trips remain saved locally; checking again shortly."))
+            delay(5_000)
+            true
+        }
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000), UploadDeliveryState())
     private val scheduler = UploadScheduler(context)
     private val persistentSettings: PersistentUploadSettings = PersistentUploadSettings(SharedPreferencesUploadStorage(context)) {
         schedule()
@@ -117,7 +137,8 @@ class SyncRuntime private constructor(private val context: Application) {
 
     private suspend fun publishIdleStatus() {
         mutableStatus.value = if (store.hasBlocked()) UploadRuntimeStatus(error = "Some uploads need attention. Retry can reset exhausted attempts; permanent rejections stay blocked.")
-        else UploadRuntimeStatus(message = "Upload check finished. Local trips are retained.")
+        else if (store.needsAnotherRun()) UploadRuntimeStatus(message = "Some uploads are waiting for a connection or retry. Local trips are retained.")
+        else UploadRuntimeStatus(message = "Upload queue checked. Delivery confirmation appears above; local trips are retained.")
     }
 
     internal fun reportFailure() {
