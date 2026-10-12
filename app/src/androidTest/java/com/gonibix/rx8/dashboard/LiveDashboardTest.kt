@@ -21,14 +21,18 @@ import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.compose.ui.text.AnnotatedString
 import com.gonibix.rx8.obd.ObdEcuCapabilities
 import com.gonibix.rx8.obd.ObdMetric
 import com.gonibix.rx8.obd.ObdPhase
@@ -96,6 +100,77 @@ class LiveDashboardTest {
         scrollTo("dashboard_favorite_throttle_position").performClick()
         compose.runOnIdle { assertEquals(setOf(ObdMetric.INTAKE_TEMPERATURE), favorites.value) }
         scrollTo("dashboard_value_7E8_intake_temperature").assertTextEquals("27")
+    }
+
+    @Test fun searchingNamesKeepsHiddenSelectionsAndClearRestoresEligibleChoices() {
+        val favorites = mutableStateOf(emptySet<ObdMetric>())
+        val data = snapshot(reading(ObdMetric.INTAKE_TEMPERATURE, 27.0),
+            reading(ObdMetric.THROTTLE_POSITION, 2.4), reading(ObdMetric.ENGINE_LOAD, 18.0))
+        compose.setContent {
+            Rx8Theme { LiveDashboard(data, favorites.value, { metric ->
+                favorites.value = if (metric in favorites.value) favorites.value - metric else favorites.value + metric
+            }, {}) }
+        }
+        scrollTo("dashboard_choose_sensors").performClick()
+        search("d")
+        scrollTo("dashboard_sensor_search_count").assertTextEquals("1 of 3 sensors")
+        scrollTo("dashboard_favorite_engine_load").assertExists()
+        search("  INTAKE   temperature  ")
+        scrollTo("dashboard_sensor_search_count").assertTextEquals("1 of 3 sensors")
+        scrollTo("dashboard_favorite_intake_temperature").assertIsOff().performClick()
+        search("throttle")
+        compose.onNodeWithTag("dashboard_favorite_intake_temperature").assertDoesNotExist()
+        scrollTo("dashboard_favorite_throttle_position").performClick()
+        compose.runOnIdle { assertEquals(setOf(ObdMetric.INTAKE_TEMPERATURE, ObdMetric.THROTTLE_POSITION), favorites.value) }
+        search("no matching sensor")
+        scrollTo("dashboard_sensor_search_empty").assertTextEquals("No sensors match your search.")
+        scrollTo("dashboard_sensor_search_count").assertTextEquals("0 of 3 sensors")
+        scrollTo("dashboard_sensor_search_clear").performClick()
+        scrollTo("dashboard_sensor_search_count").assertTextEquals("3 of 3 sensors")
+        scrollTo("dashboard_favorite_intake_temperature").assertIsOn()
+        scrollTo("dashboard_favorite_throttle_position").assertIsOn()
+        scrollTo("dashboard_favorite_engine_load").assertIsOff()
+        compose.onNodeWithTag("dashboard_favorite_mass_air_flow").assertDoesNotExist()
+    }
+
+    @Test fun searchingPidIncludesCompoundFieldsAndUnavailableFavoritesRemainRemovable() {
+        val favorites = mutableStateOf(setOf(ObdMetric.THROTTLE_POSITION))
+        val data = snapshot(reading(ObdMetric.OXYGEN_SENSOR_1_VOLTAGE, 0.125), reading(ObdMetric.INTAKE_TEMPERATURE, 27.0))
+        compose.setContent {
+            Rx8Theme { LiveDashboard(data, favorites.value, { metric ->
+                favorites.value = if (metric in favorites.value) favorites.value - metric else favorites.value + metric
+            }, {}) }
+        }
+        scrollTo("dashboard_choose_sensors").performClick()
+        search("PID 0X14")
+        scrollTo("dashboard_sensor_search_count").assertTextEquals("2 of 4 sensors")
+        scrollTo("dashboard_favorite_oxygen_sensor_1_voltage").assertExists()
+        scrollTo("dashboard_favorite_oxygen_sensor_1_fuel_trim").assertExists()
+        compose.onNodeWithTag("dashboard_favorite_oxygen_sensor_2_voltage").assertDoesNotExist()
+        search("throttle")
+        scrollTo("dashboard_favorite_throttle_position").assertIsOn().performClick()
+        compose.runOnIdle { assertTrue(favorites.value.isEmpty()) }
+        compose.onNodeWithTag("dashboard_favorite_throttle_position").assertDoesNotExist()
+        scrollTo("dashboard_sensor_search_empty").assertExists()
+        search("   ")
+        scrollTo("dashboard_sensor_search_count").assertTextEquals("3 of 3 sensors")
+    }
+
+    @Test fun sensorQuerySurvivesPickerClosingAndSavedStateRestoration() {
+        val restoration = StateRestorationTester(compose)
+        val data = snapshot(reading(ObdMetric.INTAKE_TEMPERATURE, 27.0), reading(ObdMetric.THROTTLE_POSITION, 2.4))
+        restoration.setContent { Rx8Theme { LiveDashboard(data, setOf(ObdMetric.INTAKE_TEMPERATURE), {}, {}) } }
+        scrollTo("dashboard_choose_sensors").performClick()
+        search("INTAKE")
+        scrollTo("dashboard_choose_sensors").performClick()
+        compose.onNodeWithTag("dashboard_sensor_search").assertDoesNotExist()
+        scrollTo("dashboard_choose_sensors").performClick()
+        assertQuery("INTAKE")
+        restoration.emulateSavedInstanceStateRestore()
+        assertQuery("INTAKE")
+        scrollTo("dashboard_sensor_search_count").assertTextEquals("1 of 2 sensors")
+        scrollTo("dashboard_favorite_intake_temperature").assertIsOn()
+        compose.onNodeWithTag("dashboard_favorite_throttle_position").assertDoesNotExist()
     }
 
     @Test fun multipleEcusRemainSeparateEvenWhenTheyReportTheSameMetric() {
@@ -180,7 +255,7 @@ class LiveDashboardTest {
         compose.onNodeWithTag("dashboard_value_SIMULATOR_speed").assertTextEquals("—")
     }
 
-    @Test fun syntheticFavoritesFixtureCapturesCompactDashboard() {
+    @Test fun syntheticFavoritesFixtureCapturesSearchableSensorPicker() {
         val source = DemoTelemetrySource()
         source.connect()
         show(simulatorDashboardSnapshot(source.advanceBy(2_000L)), setOf(ObdMetric.INTAKE_TEMPERATURE), simulated = true, screenshotFixture = true)
@@ -189,6 +264,11 @@ class LiveDashboardTest {
         compose.onNodeWithTag("dashboard_value_SIMULATOR_speed").assertTextEquals("0").assertIsDisplayed()
         compose.onNodeWithTag("dashboard_value_SIMULATOR_intake_temperature").assertTextEquals("28").assertIsDisplayed()
         compose.onNodeWithText("UI TEST FIXTURE · SYNTHETIC DASHBOARD").assertIsDisplayed()
+        scrollTo("dashboard_choose_sensors").performClick()
+        search("intake")
+        scrollTo("dashboard_sensor_search").assertIsDisplayed()
+        scrollTo("dashboard_sensor_search_count").assertTextEquals("1 of 3 sensors").assertIsDisplayed()
+        scrollTo("dashboard_favorite_intake_temperature").assertIsOn().assertIsDisplayed()
         captureFavoritesScreen()
     }
 
@@ -224,6 +304,15 @@ class LiveDashboardTest {
 
     private fun scrollTo(tag: String) = compose.onNodeWithTag("live_dashboard")
         .performScrollToNode(hasTestTag(tag)).let { compose.onNodeWithTag(tag) }
+
+    private fun search(query: String) {
+        val field = scrollTo("dashboard_sensor_search")
+        field.performTextReplacement(query)
+        field.performImeAction()
+    }
+
+    private fun assertQuery(query: String) = scrollTo("dashboard_sensor_search")
+        .assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString(query)))
 
     private fun reading(metric: ObdMetric, value: Double?, status: ObdReadingStatus = ObdReadingStatus.VALID, ecu: String = "7E8") =
         ObdReading(metric, value, status, ecu, 123_000L, 1_000L)

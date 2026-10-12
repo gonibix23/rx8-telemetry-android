@@ -12,11 +12,15 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -27,11 +31,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gonibix.rx8.obd.ObdMetric
@@ -59,9 +66,16 @@ fun LiveDashboard(
 ) {
     val model = dashboardModel(snapshot, favorites)
     var showPicker by rememberSaveable { mutableStateOf(false) }
+    var sensorQuery by rememberSaveable { mutableStateOf("") }
     var showDetails by rememberSaveable { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    val finishSearch: () -> Unit = {
+        focusManager.clearFocus()
+        keyboard?.hide()
+    }
     LazyColumn(
-        modifier.fillMaxSize().testTag("live_dashboard"),
+        modifier.fillMaxSize().imePadding().testTag("live_dashboard"),
         contentPadding = PaddingValues(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -173,7 +187,10 @@ fun LiveDashboard(
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Favorite sensors", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    TextButton(onClick = { showPicker = !showPicker }, modifier = Modifier.testTag("dashboard_choose_sensors")) {
+                    TextButton(onClick = {
+                        if (showPicker) finishSearch()
+                        showPicker = !showPicker
+                    }, modifier = Modifier.testTag("dashboard_choose_sensors")) {
                         Text(if (showPicker) "Done" else "Choose sensors")
                     }
                 }
@@ -185,7 +202,7 @@ fun LiveDashboard(
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.testTag("dashboard_unavailable_favorites"),
                 )
-                if (showPicker) SensorPicker(model, favorites, onToggleFavorite)
+                if (showPicker) SensorPicker(model, favorites, sensorQuery, { sensorQuery = it }, finishSearch, onToggleFavorite)
                 if (model.hasCapabilities && model.unavailablePrimary.isNotEmpty()) Text(
                     "Not reported as supported: ${model.unavailablePrimary.joinToString { it.label }}.",
                     color = MutedColor,
@@ -205,12 +222,44 @@ fun LiveDashboard(
 }
 
 @Composable
-private fun SensorPicker(model: DashboardModel, favorites: Set<ObdMetric>, onToggle: (ObdMetric) -> Unit) {
+private fun SensorPicker(
+    model: DashboardModel,
+    favorites: Set<ObdMetric>,
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onFinishSearch: () -> Unit,
+    onToggle: (ObdMetric) -> Unit,
+) {
+    val choices = extraDashboardMetrics.filter { it in model.availableExtras || it in model.unavailableFavorites }
+    val terms = query.trim().lowercase(Locale.ROOT).split(Regex("\\s+"))
+        .filter { it.isNotEmpty() }.map { if (it.matches(HEX_PID_QUERY)) it.drop(2) else it }
+    val matches = choices.filter { metric ->
+        val pid = String.format(Locale.ROOT, "%02X", metric.pid)
+        terms.all { it == "pid" || metric.label.contains(it, ignoreCase = true) || pid.equals(it, ignoreCase = true) }
+    }
     Surface(color = CardColor, shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, BorderColor)) {
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("Essentials stay visible when supported. Favorites apply to every supporting ECU.", color = MutedColor, style = MaterialTheme.typography.bodySmall)
-            if (model.availableExtras.isEmpty()) Text("No additional supported sensors are available.", style = MaterialTheme.typography.bodySmall)
-            extraDashboardMetrics.filter { it in model.availableExtras || it in model.unavailableFavorites }.forEach { metric ->
+            OutlinedTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                label = { Text("Search sensors") },
+                placeholder = { Text("Name or PID") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { onFinishSearch() }),
+                trailingIcon = if (query.isNotEmpty()) ({
+                    TextButton(onClick = { onQueryChange("") }, modifier = Modifier.testTag("dashboard_sensor_search_clear")
+                        .semantics { contentDescription = "Clear sensor search" }) { Text("Clear") }
+                }) else null,
+                modifier = Modifier.fillMaxWidth().testTag("dashboard_sensor_search"),
+            )
+            Text("${matches.size} of ${choices.size} sensors", color = MutedColor, style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.testTag("dashboard_sensor_search_count"))
+            if (choices.isEmpty()) Text("No additional supported sensors are available.", style = MaterialTheme.typography.bodySmall)
+            else if (matches.isEmpty()) Text("No sensors match your search.", style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.testTag("dashboard_sensor_search_empty"))
+            matches.forEach { metric ->
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(
                         checked = metric in favorites,
@@ -232,6 +281,8 @@ private fun SensorPicker(model: DashboardModel, favorites: Set<ObdMetric>, onTog
         }
     }
 }
+
+private val HEX_PID_QUERY = Regex("0x[0-9a-f]{2}")
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable

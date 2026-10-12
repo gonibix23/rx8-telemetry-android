@@ -2,7 +2,7 @@
 
 Android app in development for viewing live vehicle data and recording trips without an Internet connection.
 
-**Current implementation (0.12.0-dev): automatic connection, reading and telemetry journeys; a much broader standard OBD sensor catalog; a real RPM dashboard; and paged trip history with vehicle filters. Uploads remain disabled.**
+**Current implementation (0.12.1-dev): automatic connection, reading and telemetry journeys; a much broader standard OBD sensor catalog; a real RPM dashboard; and paged trip history with vehicle filters. Uploads remain disabled.**
 
 The four tabs are **Adapter**, **Live**, **Trips**, and **Vehicles**, with single-line labels. The Simulator tab has been removed; its RPM dial now displays real per-ECU readings in Live. Synthetic data remains confined to development fixtures.
 
@@ -16,7 +16,7 @@ Select the intended vehicle in **Vehicles** once. Its permanent UUID works witho
 
 Acquisition and recording continue across tabs, backgrounding, screen lock and Activity recreation through the foreground service. The visible Adapter and Live screens stay awake during real acquisition. Notification permission denial does not prevent connecting; the app provides recovery guidance. Active acquisition consumes battery, and no battery-optimization exemption is requested.
 
-**Live** keeps each ECU separate, with the real RPM dial, speed, coolant and selectable supported extra sensors. Cards preserve units, age, quality, valid zero and unavailable favorites. Favorite choices persist for the app. **Vehicle capabilities** inside Adapter captures the existing discovery and displayed readings into an explicit JSON report without extra vehicle queries; see [Capability reports](docs/capability-report.md).
+**Live** keeps each ECU separate, with the real RPM dial, speed, coolant and selectable supported extra sensors. Cards preserve units, age, quality, valid zero and unavailable favorites. Favorite choices persist for the app. In Live > Choose sensors, Search sensors filters names or hexadecimal PIDs immediately. Clear restores the choices, and searching keeps hidden selections. **Vehicle capabilities** inside Adapter captures the existing discovery and displayed readings into an explicit JSON report without extra vehicle queries; see [Capability reports](docs/capability-report.md).
 
 **Trips** records every fresh supported reading, independently of visible cards or favorite choices. History shows up to 50 trips per page, with Newer/Older/Newest controls and a vehicle filter independent of recording selection. Refresh, details, tabs and Activity recreation preserve browsing context. Finished trips provide metric/ECU charts, full-stream statistics, estimated distance, JSON/CSV export to a chosen document destination, and confirmed deletion. Distance is an estimate, not an odometer reading.
 
@@ -95,8 +95,9 @@ Each issue has a scope and acceptance criteria. Implementation changes go throug
 [RX8-010](https://github.com/gonibix23/rx8-telemetry-android/issues/21) adds the capabilities view and report to help collect evidence for future sensor work.
 [RX8-012](https://github.com/gonibix23/rx8-telemetry-android/issues/24) adds offline trip charts selectable by recorded metric and ECU.
 [RX8-014](https://github.com/gonibix23/rx8-telemetry-android/issues/28) adds bounded history pages, an independent vehicle filter, and an index-only Room 3-to-4 upgrade in merged [PR #30](https://github.com/gonibix23/rx8-telemetry-android/pull/30). Existing saved trips and pending work remain local.
-[RX8-015](https://github.com/gonibix23/rx8-telemetry-android/issues/29) is the current 0.12.0-dev increment: automatic connection, acquisition and journeys, broader standard readings, the real RPM dial, and four single-line tabs.
+[RX8-015](https://github.com/gonibix23/rx8-telemetry-android/issues/29) is merged in [PR #31](https://github.com/gonibix23/rx8-telemetry-android/pull/31) for 0.12.0-dev: automatic connection, acquisition and journeys, broader standard readings, the real RPM dial, and four single-line tabs.
 [PR #25](https://github.com/gonibix23/rx8-telemetry-android/pull/25) is merged after the user reported that 0.10.0-dev works well. This is broad build confirmation; individual phone scenarios remain tracked in RX8-012. [RX8-011](https://github.com/gonibix23/rx8-telemetry-android/issues/23) maintains the automated build/test environment without changing the app version.
+[RX8-016](https://github.com/gonibix23/rx8-telemetry-android/issues/32) adds sensor search and selection feedback in 0.12.1-dev.
 [RX8-001](https://github.com/gonibix23/rx8-telemetry-android/issues/1) tracks separate validation with the real car and adapter.
 
 ## Documentation checks
