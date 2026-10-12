@@ -14,7 +14,7 @@ The user subsequently confirmed that 0.7.0-dev works perfectly, and [PR #19](htt
 The user confirmed 0.8.0-dev worked correctly, and [PR #20](https://github.com/gonibix23/rx8-telemetry-android/pull/20) is merged at `bba3e61`. RX8-008 API preparation is complete: versioned DTOs, a durable sample-reference queue with migration/backfill, metadata revisions, immutable requests, isolated ACK/retry handling, and a read-only Uploads disabled status. This does not validate a real server or every individual phone scenario.
 PR #22 / 0.9.0-dev implements RX8-010: per-ECU capabilities and explicit JSON snapshot reports from existing discovery and display state. It is merged with phone validation explicitly deferred by the user. Issue #16 is closed at the user's request with all acceptance checkboxes complete; no additional measured logs were provided.
 The user reports that 0.10.0-dev (version code 11) works well, and PR #25 is merged at `b3e71a9`. RX8-012 provides offline saved-trip charts selectable by recorded metric and ECU, with bounded loading, honest gaps, and full-stream statistics. Individual phone scenarios remain unreported. No extra OBD request, database migration, backend, HTTP transport, production upload worker, or enabled upload configuration is added.
-RX8-011 is complete in PR #26: CI action runtimes and the Ubuntu runner baseline are verified on Android 16. RX8-013 tracks remaining documentation dependency advisories separately. RX8-014 / 0.11.0-dev adds bounded history pages and independent vehicle filtering in merged PR #30. The current RX8-015 / issue #29 / 0.12.0-dev increment implements the user-requested automatic connection/read/record flow, expanded standard sensor catalog, real RPM dial and four single-line tabs. Journeys are telemetry only, without GPS.
+RX8-011 is complete in PR #26: CI action runtimes and the Ubuntu runner baseline are verified on Android 16. RX8-013 tracks remaining documentation dependency advisories separately. RX8-014 / 0.11.0-dev adds bounded history pages and independent vehicle filtering in merged PR #30. RX8-015 / issue #29 / 0.12.0-dev is merged in PR #31 and implements the user-requested automatic connection/read/record flow, expanded standard sensor catalog, real RPM dial and four single-line tabs. Journeys are telemetry only, without GPS.
 
 ## Milestones and issues
 
@@ -35,6 +35,7 @@ RX8-011 is complete in PR #26: CI action runtimes and the Ubuntu runner baseline
 | [RX8-013](https://github.com/gonibix23/rx8-telemetry-android/issues/27) | Resolve documentation dependency advisories | Maintenance | Existing documentation checks |
 | [RX8-014](https://github.com/gonibix23/rx8-telemetry-android/issues/28) | Browse older trips and filter by vehicle | M2 - Live data and trips | RX8-012 software |
 | [RX8-015](https://github.com/gonibix23/rx8-telemetry-android/issues/29) | Automatic journeys, broader readings and real dashboard | M2 - Live data and trips | RX8-014 |
+| [RX8-016](https://github.com/gonibix23/rx8-telemetry-android/issues/32) | Search and filter dashboard sensor choices | M2 - Live data and trips | RX8-015 |
 
 [Project issues](https://github.com/gonibix23/rx8-telemetry-android/issues) and [milestones](https://github.com/gonibix23/rx8-telemetry-android/milestones) are the operational tracker.
 RX8-xxx codes remain stable even if an issue number changes. The focused [lifecycle fix, issue #16](https://github.com/gonibix23/rx8-telemetry-android/issues/16), supports acquisition without completing RX8-007 trip recording.
@@ -71,7 +72,7 @@ The reported live-reading and 0.5.1-dev success allow dashboard development to p
 
 ## Next verifiable outcome
 
-Verify 0.12.0-dev automatic sessions, expanded decoder/scheduler coverage, end-to-end metric preservation, the real RPM dial and single-line navigation alongside history/migrations. Run all local checks and Android 16 CI, review all eleven screenshots, and deliver the signed update through the configured APK script.
+Verify 0.12.1-dev sensor name/PID searches, selection preservation, clearing/no-match feedback, keyboard use and saved-state restoration. Run all local checks and Android 16 CI, review all eleven screenshots, and deliver the signed update through the configured APK script.
 
 Phone checks remain deferred. When validation resumes, confirm the last-adapter attempt, direct readings, automatic profile association/start/end, manual Stop suppression, background/lock behavior and real additional sensors. Preserve existing data and review/export older trips. Capture capabilities without interpreting synthetic tests or catalog entries as hardware evidence. No GPS or uploads are included.
 

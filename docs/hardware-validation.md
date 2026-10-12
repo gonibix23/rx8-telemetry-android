@@ -214,6 +214,10 @@ Phone validation is deferred; the following are pending checks, not claimed resu
 - [ ] Compare live values with saved trip charts and JSON/CSV exports. Verify negative/fractional values, failed/null states, and old trip compatibility. Favorites must not limit what is recorded.
 - [ ] Check the real RPM dial, four single-line tabs, enlarged text, and no Simulator destination. Record measured sampling and battery behavior only if actually tested.
 
+## RX8-016 sensor search checks (pending)
+
+Phone validation remains deferred. In 0.12.1-dev, check Live > Choose sensors with a name/PID search, select favorites across different queries, and use Clear to review the complete eligible list. Confirm hidden selections remain saved, unavailable favorites can be removed, the keyboard can be dismissed, and the query survives picker closing/reopening and rotation. Searching affects presentation; journeys still record all available implemented readings.
+
 ## Evidence matrix
 
 | Data | Documented | Reported as supported | Reading validated | Unit | Notes |

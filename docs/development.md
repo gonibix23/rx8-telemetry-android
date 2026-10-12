@@ -2,7 +2,7 @@
 
 ## Current implementation
 
-Version 0.12.0-dev (code 13) adds automatic connection/read/recording, a broad standard scalar OBD catalog and the real RPM dial. The four tabs are Adapter, Live, Trips and Vehicles. History pages and independent vehicle filtering from 0.11.0-dev remain available. Phone validation is deferred at the user's request; record actual software outcomes in each PR.
+Version 0.12.1-dev (code 14) adds search to the sensor picker alongside automatic connection/read/recording, a broad standard scalar OBD catalog and the real RPM dial. The four tabs are Adapter, Live, Trips and Vehicles. History pages and independent vehicle filtering from 0.11.0-dev remain available. Phone validation is deferred at the user's request; record actual software outcomes in each PR.
 
 | Module | Responsibility |
 | --- | --- |
@@ -139,6 +139,8 @@ Discovery is bounded to 15 seconds and stops before connection or when Adapter i
 The engine polls every implemented scalar parameter advertised by the responding ECUs, regardless of favorites. See the catalog in [Architecture](architecture.md#current-read-only-obd-engine). RPM/speed retain priority, and bounded serialized exchanges prevent a backlog. A supported PID is not proof of a valid response; unknown/proprietary fields remain explicitly unimplemented. Real rates require measurement with the car and adapter.
 
 Live presents separate ECU groups, the real RPM dial, speed/coolant and selectable extra favorites. Values retain their unit, quality and age; valid zero and negative values are not missing data. Freshness depends on polling class. Disconnection marks retained values historical. No session average or unmeasured value is inferred from a latest snapshot.
+
+Open Live > Choose sensors and enter a name or hexadecimal PID in Search sensors. Queries are case-insensitive and accept multiple words, 0F or PID 0x0F. Clear restores the eligible list; selected favorites stay selected while filtered out. The query survives closing/reopening the picker and saved Activity state restoration. Use the keyboard Search action or Done to dismiss the keyboard.
 
 Favorites affect display only and persist as stable metric IDs, independently of vehicles/ECUs. Unavailable favorites remain removable. The four menu labels stay on one line; larger text can scroll horizontally. Test fixtures exercise synthetic scenarios without exposing a Simulator tab.
 

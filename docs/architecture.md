@@ -2,7 +2,7 @@
 
 ## Status
 
-Version 0.12.0-dev implements automatic real-car sessions, a broader verified standard scalar catalog and a real RPM dial. It retains paged history, vehicle filtering, offline charts/exports, capability snapshots, explicit vehicle identity and disabled API preparation. Production navigation has four tabs; synthetic telemetry is confined to development fixtures.
+Version 0.12.1-dev adds search to the dashboard sensor picker. It implements automatic real-car sessions, a broader verified standard scalar catalog and a real RPM dial. It retains paged history, vehicle filtering, offline charts/exports, capability snapshots, explicit vehicle identity and disabled API preparation. Production navigation has four tabs; synthetic telemetry is confined to development fixtures.
 
 The visible app attempts a privately saved successful Classic adapter once per process when permission and Bluetooth are available. A connected socket continues directly into ELM initialization and a journey for the selected persisted vehicle. Socket success remains distinct from ECU communication. Connection/acquisition/recording continue across tabs, background and lock through the foreground service.
 
@@ -101,6 +101,8 @@ The Live dashboard consumes service snapshots without owning a socket or another
 Four single-line tabs replace the previous five-tab layout. Larger labels can scroll horizontally. Restored Simulator or unknown routes resolve to Live; production no longer instantiates the Simulator ViewModel. Internal labelled fixtures retain synthetic scenarios for tests only.
 
 Private app-wide `dashboard_preferences` stores stable `favorite_metric_ids_v1`, independent of profile or ECU identity. Existing IDs remain valid. Fixed primary metrics cannot become favorites; unknown IDs are ignored, unavailable saved choices remain removable. Favorites never change acquisition or recording coverage. Serialized commits publish success only after saving, with loading/error states. No readings are stored in these preferences.
+
+The sensor search is presentation state saved with rememberSaveable. It intersects the existing eligible extras and unavailable saved favorites, then matches every case-insensitive query word against the label or exact two-digit hexadecimal PID. An optional PID/0x prefix is accepted. Query changes never call the preference writer or alter acquisition/recording. Clear search restores all eligible choices; Activity state restoration and closing/reopening the picker retain the query.
 
 ## Local model
 
