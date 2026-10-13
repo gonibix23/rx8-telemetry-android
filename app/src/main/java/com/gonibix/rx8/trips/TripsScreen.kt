@@ -47,6 +47,7 @@ import com.gonibix.rx8.vehicle.VehicleProfile
 import com.gonibix.rx8.sync.SyncSettingsPanel
 import com.gonibix.rx8.sync.SyncSettingsUiState
 import com.gonibix.rx8.sync.SyncSettingsViewModel
+import com.gonibix.rx8.sync.UploadDeliveryState
 import java.io.IOException
 import java.time.Instant
 import java.time.ZoneId
@@ -139,6 +140,7 @@ fun TripsScreen(
     automaticMessage: String? = null,
     canStop: Boolean = true,
     syncSettingsViewModel: SyncSettingsViewModel? = null,
+    uploadDelivery: UploadDeliveryState = UploadDeliveryState(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val syncSettings = syncSettingsViewModel?.uiState?.collectAsStateWithLifecycle()?.value
@@ -175,6 +177,7 @@ fun TripsScreen(
         automaticMessage = automaticMessage,
         canStop = canStop,
         syncSettings = syncSettings,
+        uploadDelivery = uploadDelivery,
         onSaveSyncSettings = { url, enabled -> syncSettingsViewModel?.save(url, enabled) },
         onRetryUploads = { syncSettingsViewModel?.retry() },
         onReloadSyncSettings = { syncSettingsViewModel?.load() },
@@ -215,6 +218,7 @@ internal fun TripsContent(
     onSaveSyncSettings: (String?, Boolean) -> Unit = { _, _ -> },
     onRetryUploads: () -> Unit = {},
     onReloadSyncSettings: () -> Unit = {},
+    uploadDelivery: UploadDeliveryState = UploadDeliveryState(),
 ) {
     var deleteId by rememberSaveable(state.historyVehicleId, state.historyRevision, state.selectedTripId) { mutableStateOf<String?>(null) }
     val historyScroll = rememberLazyListState()
@@ -306,7 +310,7 @@ internal fun TripsContent(
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     syncSettings?.let { settings ->
-                        SyncSettingsPanel(settings, onSaveSyncSettings, onRetryUploads, onReloadSyncSettings)
+                        SyncSettingsPanel(settings, onSaveSyncSettings, onRetryUploads, onReloadSyncSettings, delivery = uploadDelivery)
                     }
                     state.syncStatus?.let { status ->
                         TripSyncStatusCard(status, isRecording = recording.session != null)
@@ -369,11 +373,6 @@ internal fun TripsContent(
                             TextButton(onClick = { deleteId = session.id }, enabled = !active && !busy, modifier = Modifier.testTag("trip_delete_${session.id}")) { Text("Delete") }
                         }
                     }
-                }
-            }
-            if (state.trips.isNotEmpty()) {
-                item(key = "history_footer") {
-                    TripHistoryNavigation(state, busy, onNewerTrips, onOlderTrips, onNewestTrips, tagSuffix = "_footer")
                 }
             }
         }

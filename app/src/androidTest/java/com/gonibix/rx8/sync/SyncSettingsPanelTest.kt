@@ -7,16 +7,24 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -39,6 +47,7 @@ class SyncSettingsPanelTest {
         compose.onNodeWithTag("upload_settings_status").assertTextEquals("Server not configured")
         compose.onNodeWithTag("retry_uploads").assertDoesNotExist()
         compose.onNodeWithTag("upload_settings_message").assertDoesNotExist()
+        compose.onNodeWithTag("upload_feedback").assertDoesNotExist()
         compose.onNodeWithTag("toggle_upload_settings").performClick()
         compose.onNodeWithTag("enable_uploads").performScrollTo().assertIsNotEnabled()
     }
@@ -118,17 +127,58 @@ class SyncSettingsPanelTest {
         assertEquals(1, retries)
     }
 
+    @Test fun collapsedUploadsContainsOneStatusThatFollowsDurableDelivery() {
+        var state by mutableStateOf(ready(UploadSettings(URL, true)))
+        var delivery by mutableStateOf(UploadDeliveryState(UploadDeliveryCounts(2, 1, 1, 0)))
+        showContent { SyncSettingsPanel(state, { _, _ -> }, {}, {}, delivery = delivery) }
+        compose.onNodeWithTag("upload_server_url").assertDoesNotExist()
+        compose.onAllNodesWithTag("upload_feedback").assertCountEquals(1)
+        compose.onNodeWithTag("upload_feedback").assert(hasAnyAncestor(hasTestTag("upload_settings")))
+        compose.onNodeWithTag("upload_feedback_title").assertTextEquals("1 trip waiting to upload")
+
+        compose.runOnIdle { state = state.copy(runtime = UploadRuntimeStatus(isRunning = true)) }
+        compose.onNodeWithTag("upload_feedback_title").assertTextEquals("Uploading trips…")
+        compose.onNodeWithTag("upload_feedback_detail").assertTextContains("1 of 2", substring = true)
+        compose.runOnIdle {
+            delivery = UploadDeliveryState(UploadDeliveryCounts(2, 2, 0, 0))
+            state = state.copy(runtime = UploadRuntimeStatus())
+        }
+        compose.onNodeWithTag("upload_feedback_title").assertTextEquals("Trips uploaded successfully")
+        compose.onNodeWithTag("upload_feedback_title").assert(hasAnyAncestor(hasTestTag("upload_settings")))
+        compose.onNodeWithTag("upload_feedback_detail").assertTextEquals("2 of 2 finished trips confirmed by server. Local copies are kept.")
+        compose.onAllNodesWithTag("upload_feedback").assertCountEquals(1)
+        compose.onNodeWithTag("upload_server_url").assertDoesNotExist()
+    }
+
+    @Test fun deliveryFailureInsideUploadsDoesNotInventConfirmedCounts() {
+        var delivery by mutableStateOf(UploadDeliveryState(UploadDeliveryCounts(2, 1, 0, 1)))
+        showContent { SyncSettingsPanel(ready(UploadSettings(URL, true)), { _, _ -> }, {}, {}, delivery = delivery) }
+        compose.onNodeWithTag("upload_feedback_title").assertTextEquals("1 trip needs attention")
+        compose.onNodeWithTag("upload_feedback_detail").assertTextContains("1 of 2", substring = true)
+        compose.runOnIdle { delivery = UploadDeliveryState(error = "Delivery could not be checked.") }
+        compose.onNodeWithTag("upload_feedback_title").assertTextEquals("Upload status unavailable")
+        compose.onNodeWithTag("upload_feedback_detail").assertTextEquals("Delivery could not be checked.")
+        compose.onNodeWithTag("upload_feedback").assert(hasAnyAncestor(hasTestTag("upload_settings")))
+        compose.onAllNodesWithTag("upload_feedback").assertCountEquals(1)
+        compose.onNodeWithText("Trips uploaded successfully").assertDoesNotExist()
+        compose.onNodeWithTag("upload_server_url").assertDoesNotExist()
+    }
+
     private fun show(
         state: SyncSettingsUiState,
         onSave: (String?, Boolean) -> Unit = { _, _ -> },
         onRetry: () -> Unit = {},
         onReload: () -> Unit = {},
     ) {
+        showContent { SyncSettingsPanel(state, onSave, onRetry, onReload) }
+    }
+
+    private fun showContent(content: @Composable () -> Unit) {
         compose.setContent {
             Rx8Theme {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background, contentColor = MaterialTheme.colorScheme.onBackground) {
                     Column(Modifier.safeDrawingPadding().verticalScroll(rememberScrollState())) {
-                        SyncSettingsPanel(state, onSave, onRetry, onReload)
+                        content()
                     }
                 }
             }

@@ -2,15 +2,17 @@
 
 Android app in development for viewing live vehicle data and recording trips without an Internet connection.
 
-**Current implementation (0.15.1-dev): clean Live viewing/editing modes, saved one- or two-column layouts, and a compact floating sensor overlay. Android records offline; the separate anonymous MongoDB API receives finished trips.**
+**Current implementation (0.15.2-dev): clean Live viewing/editing modes, saved one- or two-column layouts, and a compact floating sensor overlay. Android records offline; the separate anonymous MongoDB API receives finished trips.**
 
 Version 0.15.1-dev gives the Favorite adapter card the same rounded border and surface as the surrounding Adapter panels.
+
+Version 0.15.2-dev puts upload feedback inside Trips > Uploads and removes duplicate history navigation, with clear page-boundary messages.
 
 Live opens in normal mode with the configured readings. Choose Edit for sensor search, one/two columns, card appearance/size/order and floating-panel settings; Done returns to the readings. Compact cards share rows in two-column mode, large cards span the width, and narrow windows or larger fonts use one column when needed. In Edit mode, long-press a card or choose its Edit action for digital, dial or bar presentation. All 120 implemented parameters are selectable, including RPM, speed and coolant; unavailable selections are labelled honestly. Up to six metrics can appear over a navigation app after explicit Android overlay permission. The compact overlay shows parameter, value/unit and age; drag it to move, or hold it still to close. In a scrolling overlay, drag a parameter label and scroll from the value area.
 
 Save a favourite in Adapter to retry every 30 seconds while the app is visible. Disconnect/Stop pauses retries until Resume. Without a favourite, the original one-time last-adapter startup attempt remains. Adapter contains Bluetooth controls and adapter identification/protocol details; vehicle actions, VIN review and capability reports are available in Live's Edit mode. Trips uses a Chart parameter dropdown with separate ECU selection.
 
-An upload banner in Adapter, Trips and Vehicles shows waiting, sending, failure and confirmed delivery. Confirmation includes terminal-trip metadata, current vehicle metadata and every sample acknowledgment; empty trips need metadata acknowledgment too. Recording and retained local history remain independent of network access. The API emits structured request/error logs without request bodies, VINs, credentials or raw resource paths.
+The Uploads box in Trips shows waiting, sending, failure and confirmed delivery. Confirmation includes terminal-trip metadata, current vehicle metadata and every sample acknowledgment; empty trips need metadata acknowledgment too. Recording and retained local history remain independent of network access. The API emits structured request/error logs without request bodies, VINs, credentials or raw resource paths.
 
 The four tabs are **Adapter**, **Live**, **Trips**, and **Vehicles**, with single-line labels. The Simulator tab has been removed; its RPM dial now displays real per-ECU readings in Live. Synthetic data remains confined to development fixtures.
 

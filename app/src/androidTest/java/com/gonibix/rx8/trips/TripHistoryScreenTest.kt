@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -25,17 +26,27 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
+import androidx.room.Room
+import androidx.room.withTransaction
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.gonibix.rx8.ui.theme.Rx8Theme
+import com.gonibix.rx8.vehicle.VehicleDatabase
+import com.gonibix.rx8.vehicle.VehicleEntity
 import com.gonibix.rx8.vehicle.VehicleProfile
 import java.io.File
+import java.util.UUID
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -57,6 +68,11 @@ class TripHistoryScreenTest {
         compose.onNodeWithTag("newest_trips").performClick()
         scroll("refresh_trips").performClick()
         assertEquals(listOf("newer", "older", "newest", "refresh"), calls)
+        compose.onAllNodesWithTag("trip_history_navigation").assertCountEquals(1)
+        scroll("trip_details_${trip(1).id}").assertIsDisplayed()
+        compose.onNodeWithTag("newer_trips_footer").assertDoesNotExist()
+        compose.onNodeWithTag("older_trips_footer").assertDoesNotExist()
+        compose.onNodeWithTag("newest_trips_footer").assertDoesNotExist()
     }
 
     @Test fun unavailableDirectionsAreDisabledAndBusyFilterCanCancelLoading() {
@@ -65,6 +81,7 @@ class TripHistoryScreenTest {
         show { Content(state, onFilter = { filters += it }) }
         scroll("newer_trips").assertIsNotEnabled()
         compose.onNodeWithTag("older_trips").assertIsEnabled()
+        compose.onNodeWithTag("newest_trips").assertIsNotEnabled()
         compose.runOnIdle { state = state.copy(isLoading = true) }
         compose.onNodeWithTag("older_trips").assertIsNotEnabled()
         compose.onNodeWithTag("newest_trips").assertIsNotEnabled()
@@ -72,6 +89,138 @@ class TripHistoryScreenTest {
         scroll("history_vehicle_filter").assertIsEnabled().performClick()
         compose.onNodeWithTag("history_vehicle_${second.id}").performClick()
         assertEquals(listOf(second.id), filters)
+    }
+
+    @Test fun onePageHasAnExplanationAndRefreshWithoutInventingNavigation() {
+        var state by mutableStateOf(history().copy(hasNewerTrips = false, hasOlderTrips = false))
+        var refreshes = 0
+        show { Content(state, onRefresh = { refreshes++ }) }
+        scroll("history_page_status").assertTextEquals("All saved trips are shown.")
+        compose.onNodeWithTag("trip_history_navigation").assertDoesNotExist()
+        compose.onNodeWithTag("newer_trips").assertDoesNotExist()
+        compose.onNodeWithTag("older_trips").assertDoesNotExist()
+        compose.onNodeWithTag("newest_trips").assertDoesNotExist()
+        scroll("refresh_trips").assertIsEnabled().performClick()
+        assertEquals(1, refreshes)
+
+        compose.runOnIdle { state = state.copy(trips = (1..50).map(::trip), historyVehicleId = first.id) }
+        scroll("history_page_status").assertTextEquals("All saved trips for this vehicle are shown.")
+        compose.onNodeWithTag("trip_history_navigation").assertDoesNotExist()
+        scroll("history_vehicle_filter").assertIsEnabled()
+        compose.runOnIdle { state = state.copy(trips = emptyList()) }
+        scroll("empty_trips").assertIsDisplayed()
+        compose.onNodeWithTag("history_page_status").assertDoesNotExist()
+        compose.onNodeWithTag("trip_history_navigation").assertDoesNotExist()
+        scroll("refresh_trips").assertIsEnabled()
+    }
+
+    @Test fun pageBoundariesDescribeOnlyTheAvailableDirections() {
+        var state by mutableStateOf(history().copy(hasNewerTrips = false))
+        show { Content(state) }
+        scroll("history_page_status").assertTextEquals("Newest trips · older trips are available.")
+        scroll("newest_trips").assertIsNotEnabled()
+        compose.runOnIdle { state = state.copy(hasNewerTrips = true) }
+        scroll("history_page_status").assertTextEquals("More trips are available in both directions.")
+        scroll("newer_trips").assertIsEnabled()
+        compose.onNodeWithTag("older_trips").assertIsEnabled()
+        compose.onNodeWithTag("newest_trips").assertIsEnabled()
+        compose.runOnIdle { state = state.copy(hasOlderTrips = false) }
+        scroll("history_page_status").assertTextEquals("Oldest trips · no older trips.")
+        scroll("older_trips").assertIsNotEnabled()
+        compose.onNodeWithTag("newer_trips").assertIsEnabled()
+        compose.onNodeWithTag("newest_trips").assertIsEnabled()
+    }
+
+    @Test fun loadingOrFailedHistoryDoesNotClaimThatEveryTripWasLoaded() {
+        var state by mutableStateOf(history().copy(hasNewerTrips = false, hasOlderTrips = false))
+        show { Content(state) }
+        scroll("history_page_status").assertIsDisplayed()
+        compose.runOnIdle { state = state.copy(isLoading = true) }
+        scroll("history_loading").assertIsDisplayed()
+        compose.onNodeWithTag("history_page_status").assertDoesNotExist()
+        compose.runOnIdle { state = state.copy(isLoading = false, historyError = "History unavailable") }
+        scroll("history_previous_results").assertIsDisplayed()
+        compose.onNodeWithTag("history_page_status").assertDoesNotExist()
+        scroll("retry_trip_history").assertIsEnabled()
+    }
+
+    @Test fun deletingOrExportingPreventsNavigationWithoutTriggeringCallbacks() {
+        var state by mutableStateOf(history().copy(isDeleting = true))
+        var navigations = 0
+        show { Content(state, onNewer = { navigations++ }, onOlder = { navigations++ }, onNewest = { navigations++ }) }
+        scroll("newer_trips").assertIsNotEnabled()
+        compose.onNodeWithTag("older_trips").assertIsNotEnabled()
+        compose.onNodeWithTag("newest_trips").assertIsNotEnabled()
+        scroll("history_vehicle_filter").assertIsNotEnabled()
+        compose.runOnIdle { state = state.copy(isDeleting = false, isExporting = true) }
+        scroll("newer_trips").assertIsNotEnabled()
+        compose.onNodeWithTag("older_trips").assertIsNotEnabled()
+        compose.onNodeWithTag("newest_trips").assertIsNotEnabled()
+        scroll("refresh_trips").assertIsNotEnabled()
+        assertEquals(0, navigations)
+    }
+
+    @Test fun realHistoryButtonsTraverseRoomPagesThroughTheViewModel() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val database = Room.inMemoryDatabaseBuilder(context, VehicleDatabase::class.java).build()
+        val models = ViewModelStore()
+        try {
+            // Equal start times straddle page boundaries, so a timestamp-only cursor would lose rows.
+            runBlocking {
+                database.withTransaction {
+                    database.vehicles().insert(VehicleEntity(first.id, first.alias, null, null, null, first.createdAtEpochMillis))
+                    (1..101).forEach { number ->
+                        val started = 10_000L + number / 70 * 1_000L
+                        database.trips().insertSession(TripSessionEntity(
+                            id = UUID(0, number.toLong()).toString(), vehicleId = first.id,
+                            vehicleAlias = "Recorded fixture $number", startedAtEpochMillis = started,
+                            endedAtEpochMillis = started + 100L, durationMillis = 100L,
+                            status = TripStatus.COMPLETED.name, endReason = "Stopped by user",
+                            protocolLabel = null, origin = "REAL_OBD",
+                        ))
+                    }
+                }
+            }
+            val model = ViewModelProvider(models, object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    require(modelClass == TripsViewModel::class.java)
+                    return TripsViewModel(RoomTripRepository(database)) as T
+                }
+            })[TripsViewModel::class.java]
+            show {
+                TripsScreen(model, rememberTripExportActions(model), first, TripRecordingState(), false,
+                    {}, {}, {}, {}, historyVehicles = listOf(first))
+            }
+            fun awaitPage(numbers: IntProgression) {
+                val expected = numbers.map { UUID(0, it.toLong()).toString() }
+                compose.waitUntil(10_000L) {
+                    !model.uiState.value.isLoading && model.uiState.value.trips.map { it.id } == expected
+                }
+                scroll("trip_details_${expected.first()}").assertIsDisplayed()
+                assertEquals(expected, model.uiState.value.trips.map { it.id })
+            }
+            awaitPage(101 downTo 52)
+            scroll("history_page_status").assertTextEquals("Newest trips · older trips are available.")
+            scroll("older_trips").assertIsEnabled().performClick()
+            awaitPage(51 downTo 2)
+            scroll("history_page_status").assertTextEquals("More trips are available in both directions.")
+            scroll("older_trips").performClick()
+            awaitPage(1 downTo 1)
+            scroll("history_page_status").assertTextEquals("Oldest trips · no older trips.")
+            scroll("older_trips").assertIsNotEnabled()
+            compose.onNodeWithTag("newer_trips").performClick()
+            awaitPage(51 downTo 2)
+            scroll("newest_trips").performClick()
+            awaitPage(101 downTo 52)
+            scroll("newest_trips").assertIsNotEnabled()
+            compose.onAllNodesWithTag("trip_history_navigation").assertCountEquals(1)
+            scroll("trip_details_${UUID(0, 52L)}").assertIsDisplayed()
+            compose.onNodeWithTag("older_trips_footer").assertDoesNotExist()
+        } finally {
+            compose.runOnIdle { models.clear() }
+            database.close()
+        }
     }
 
     @Test fun identicalCurrentNamesHaveFullIdsAndFilterDoesNotRelabelRecordedTrips() {
