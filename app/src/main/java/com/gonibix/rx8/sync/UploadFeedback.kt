@@ -31,11 +31,11 @@ internal fun uploadFeedback(settings: UploadSettings?, runtime: UploadRuntimeSta
     val confirmed = "${counts.confirmed} of ${counts.total} finished trips confirmed by server."
     return when {
         runtime.isRunning -> UploadFeedback("Uploading trips…", "$confirmed Local copies are kept.")
-        counts.blocked > 0 -> UploadFeedback("${tripCount(counts.blocked)} ${if (counts.blocked == 1L) "needs" else "need"} attention", "$confirmed Open Trips to review uploads.", true)
+        counts.blocked > 0 -> UploadFeedback("${tripCount(counts.blocked)} ${if (counts.blocked == 1L) "needs" else "need"} attention", "$confirmed Review the upload settings below.", true)
         counts.waiting == 0L && counts.total > 0 -> UploadFeedback("Trips uploaded successfully", "$confirmed Local copies are kept.")
         runtime.error != null -> UploadFeedback("Upload could not finish", "${runtime.error} $confirmed", true)
         settings == null -> UploadFeedback("Checking upload settings", "$confirmed Trips remain saved locally.")
-        settings.baseUrl == null && settings.boundBaseUrl == null -> UploadFeedback("Trips saved on this phone", "Configure a server in Trips to upload ${counts.waiting} waiting trips.")
+        settings.baseUrl == null && settings.boundBaseUrl == null -> UploadFeedback("Trips saved on this phone", "Configure a server below to upload ${counts.waiting} waiting trips.")
         !settings.enabled -> UploadFeedback("Uploads paused", "${counts.waiting} trips waiting locally. $confirmed")
         else -> UploadFeedback("${tripCount(counts.waiting)} waiting to upload", "Waiting for a connection or the next retry. $confirmed")
     }
@@ -43,7 +43,7 @@ internal fun uploadFeedback(settings: UploadSettings?, runtime: UploadRuntimeSta
 
 private fun tripCount(count: Long) = "$count ${if (count == 1L) "trip" else "trips"}"
 
-/** Shown across tabs so the user can see a transfer finish without opening server settings. */
+/** Delivery feedback belongs to Trips > Uploads, above the collapsible server settings. */
 @Composable
 fun UploadFeedbackBanner(settings: UploadSettings?, runtime: UploadRuntimeStatus, delivery: UploadDeliveryState, modifier: Modifier = Modifier) {
     val feedback = uploadFeedback(settings, runtime, delivery) ?: return

@@ -36,6 +36,7 @@ fun SyncSettingsPanel(
     onRetry: () -> Unit,
     onReload: () -> Unit,
     modifier: Modifier = Modifier,
+    delivery: UploadDeliveryState = UploadDeliveryState(),
 ) {
     val settings = state.settings
     val busy = state.isLoading || state.isSaving || state.isRetrying
@@ -46,6 +47,7 @@ fun SyncSettingsPanel(
     Surface(modifier.fillMaxWidth().testTag("upload_settings"), color = CardColor, shape = RoundedCornerShape(16.dp)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Uploads", style = MaterialTheme.typography.titleMedium)
+            UploadFeedbackBanner(settings, state.runtime, delivery)
             val status = when {
                 state.isLoading -> "Loading upload settings…"
                 settings == null -> "Upload settings unavailable"

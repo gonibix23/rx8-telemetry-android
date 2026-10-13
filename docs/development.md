@@ -1,5 +1,9 @@
 # Development
 
+## Testing 0.15.2-dev
+
+Install over existing app data. Confirm upload success, waiting, progress and failure feedback appears inside Trips > Uploads and no success banner appears on other tabs. Acknowledgment rules, saved trips and settings stay intact. In history, inspect a single-page filter, then a synthetic history exceeding 50 trips: navigation appears once, changes to actual older/newer pages and returns to newest. Verify boundary explanations, loading/busy protection, Refresh, details/back, filter changes and restored browsing context. Full Android 16 regression and twelve screenshots are software evidence; phone/car checks remain deferred.
+
 ## Testing 0.15.1-dev
 
 This cosmetic patch matches the Favorite adapter card to the surrounding Adapter panels with the same rounded corners, border and surface. Use the existing connection/favorite controls tests and Adapter screenshots to check appearance and preserve the current actions. The 0.15.0-dev behavior below remains unchanged.

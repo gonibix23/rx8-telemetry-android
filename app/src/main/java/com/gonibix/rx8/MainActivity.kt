@@ -65,7 +65,6 @@ import com.gonibix.rx8.vehicle.VehicleProfileScreen
 import com.gonibix.rx8.vehicle.VehicleProfileViewModel
 import com.gonibix.rx8.sync.SyncRuntime
 import com.gonibix.rx8.sync.SyncSettingsViewModel
-import com.gonibix.rx8.sync.UploadFeedbackBanner
 import com.gonibix.rx8.trips.TripRuntime
 import com.gonibix.rx8.trips.TripsViewModel
 import com.gonibix.rx8.trips.TripsScreen
@@ -194,8 +193,6 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 val recording by tripRuntime.recorder.state.collectAsStateWithLifecycle()
-                val uploadSettings by syncSettingsViewModel.uiState.collectAsStateWithLifecycle()
-                val uploadDelivery by SyncRuntime.get(applicationContext).delivery.collectAsStateWithLifecycle()
                 // Document results must survive navigation to Adapter from the session notification.
                 val tripExportActions = rememberTripExportActions(tripsViewModel)
                 val tripPresentation = rememberSaveableStateHolder()
@@ -243,7 +240,6 @@ class MainActivity : ComponentActivity() {
                             selectedTab = destination
                             if (destination != "dashboard") showCapabilityReport = false
                         })
-                        if (selectedTab != "dashboard") UploadFeedbackBanner(uploadSettings.settings, uploadSettings.runtime, uploadDelivery)
                         if (selectedTab == "dashboard") {
                             if (favoritesError != null) {
                                 Text(requireNotNull(favoritesError), color = MaterialTheme.colorScheme.error)
@@ -346,10 +342,12 @@ class MainActivity : ComponentActivity() {
                                 )
                                 }
                             } else if (selectedTab == "trips") {
+                                val uploadDelivery by SyncRuntime.get(applicationContext).delivery.collectAsStateWithLifecycle()
                                 tripPresentation.SaveableStateProvider("trips") {
                                     TripsScreen(
                                         viewModel = tripsViewModel,
                                         syncSettingsViewModel = syncSettingsViewModel,
+                                        uploadDelivery = uploadDelivery,
                                         exportActions = tripExportActions,
                                         selectedVehicle = vehicles.vehicles.profiles.firstOrNull { it.id == vehicles.vehicles.activeVehicleId },
                                         recording = recording,

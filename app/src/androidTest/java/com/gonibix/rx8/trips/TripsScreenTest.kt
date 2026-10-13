@@ -10,7 +10,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
@@ -19,6 +22,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -30,6 +34,8 @@ import com.gonibix.rx8.obd.ObdMetric
 import com.gonibix.rx8.sync.SyncQueueSummary
 import com.gonibix.rx8.sync.SyncSettingsUiState
 import com.gonibix.rx8.sync.UploadSettings
+import com.gonibix.rx8.sync.UploadDeliveryCounts
+import com.gonibix.rx8.sync.UploadDeliveryState
 import com.gonibix.rx8.ui.theme.Rx8Theme
 import com.gonibix.rx8.vehicle.VehicleProfile
 import java.io.File
@@ -190,6 +196,26 @@ class TripsScreenTest {
         compose.onNodeWithTag("trip_sync_acknowledged").assertDoesNotExist()
     }
 
+    @Test fun tripDeliveryIsForwardedOnceInsideUploadsAndKeepsHistoryUsable() {
+        show(
+            state = history(),
+            syncSettings = SyncSettingsUiState(settings = UploadSettings("https://example.test", true), isLoading = false),
+            uploadDelivery = UploadDeliveryState(UploadDeliveryCounts(1, 1, 0, 0)),
+        )
+        scrollToTag("upload_feedback_title").assertTextEquals("Trips uploaded successfully")
+            .assert(hasAnyAncestor(hasTestTag("upload_settings")))
+        compose.onAllNodesWithTag("upload_feedback").assertCountEquals(1)
+        compose.onNodeWithTag("upload_server_url").assertDoesNotExist()
+        scrollToTag("trip_details_${trip.id}").assertIsEnabled()
+    }
+
+    @Test fun deliveryDoesNotCreateABannerOutsideTheUploadsPanel() {
+        show(state = history(), uploadDelivery = UploadDeliveryState(UploadDeliveryCounts(1, 1, 0, 0)))
+        compose.onNodeWithTag("upload_feedback").assertDoesNotExist()
+        scrollToTag("trip_details_${trip.id}").assertIsEnabled()
+        compose.onNodeWithTag("upload_feedback").assertDoesNotExist()
+    }
+
     @Test fun syntheticQueueScreenshotShowsWaitingAttentionAndUnconfiguredServer() {
         show(
             state = history().copy(syncStatus = TripSyncStatus(summary = SyncQueueSummary(pending = 12, sending = 3, blocked = 2), isLoading = false)),
@@ -197,9 +223,11 @@ class TripsScreenTest {
             fixtureBanner = true,
             fixtureLabel = "UI TEST FIXTURE · SYNTHETIC QUEUE",
             syncSettings = SyncSettingsUiState(settings = UploadSettings(), isLoading = false),
+            uploadDelivery = UploadDeliveryState(UploadDeliveryCounts(3, 0, 2, 1)),
         )
         scrollToTag("upload_settings").assertIsDisplayed()
         compose.onNodeWithTag("upload_settings_status").assertTextEquals("Server not configured").assertIsDisplayed()
+        compose.onNodeWithTag("upload_feedback_title").assertTextEquals("1 trip needs attention").assertIsDisplayed()
         compose.onNodeWithText("Saved sample queue").assertIsDisplayed()
         compose.onNodeWithTag("trip_sync_waiting").assertTextEquals("Waiting locally: 15 samples").assertIsDisplayed()
         compose.onNodeWithTag("trip_sync_blocked").assertTextEquals("Needs attention: 2 samples").assertIsDisplayed()
@@ -258,6 +286,7 @@ class TripsScreenTest {
         automaticMessage: String? = null,
         canStop: Boolean = true,
         syncSettings: SyncSettingsUiState? = null,
+        uploadDelivery: UploadDeliveryState = UploadDeliveryState(),
     ) {
         compose.setContent {
             Rx8Theme {
@@ -265,7 +294,7 @@ class TripsScreenTest {
                     Column(Modifier.safeDrawingPadding()) {
                         if (fixtureBanner) Text(fixtureLabel)
                         TripsContent(state, selected, recording, canStart, onStart, onStop, {}, {}, {}, {}, {}, onDelete, onExport, Modifier.weight(1f),
-                            automaticMessage = automaticMessage, canStop = canStop, syncSettings = syncSettings)
+                            automaticMessage = automaticMessage, canStop = canStop, syncSettings = syncSettings, uploadDelivery = uploadDelivery)
                     }
                 }
             }

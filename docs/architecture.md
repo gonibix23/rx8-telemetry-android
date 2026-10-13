@@ -1,8 +1,12 @@
 # Architecture
 
+## Trips feedback and history correction
+
+Issue #52 routes the Activity-observed durable delivery state through Trips into the existing Uploads panel, rather than composing a banner above other tabs. The panel retains settings/runtime failures, progress and ACK-based confirmation. The bounded Room cursor queries still determine older/newer availability; one history pager uses those results and explains boundaries. No upload transport, acquisition owner, database schema or wire contract changes are required.
+
 ## RX8-021 Live presentation modes
 
-Version 0.15.0-dev separates normal viewing from editing in the modular dashboard. Saveable presentation state retains mode/search across tab navigation and recreation; normal is the initial mode. The Activity keeps preference errors visible and shows upload feedback on the other tabs. Adapter metadata is rendered only in Adapter; Live edit mode retains vehicle actions and reports.
+Version 0.15.0-dev separates normal viewing from editing in the modular dashboard. Saveable presentation state retains mode/search across tab navigation and recreation; normal is the initial mode. The Activity keeps preference errors visible; upload feedback is now inside Trips > Uploads. Adapter metadata is rendered only in Adapter; Live edit mode retains vehicle actions and reports.
 
 The application-owned ordered preference worker persists a one/two-column choice independently of card configurations. It publishes only confirmed writes and preserves the previous layout on failure; no Room or wire migration is involved. Compact cards form stable lazy rows, large cards span the width, and available width/font scale determine a safe one-column fallback. All rendering uses the same source/quality/age models.
 
@@ -18,7 +22,7 @@ An optional TYPE_APPLICATION_OVERLAY window shares the existing foreground sessi
 
 The favourite adapter is private and unrelated to vehicle identity. A bounded retry policy feeds the existing visible-Activity connection promotion path every 30 seconds when eligible. Hidden apps, unavailable permission/radio, active attempts/scanning and explicit pause prevent starts. Disconnect/notification Stop pauses until Resume. The no-favourite path retains one last-successful-adapter attempt per process.
 
-Delivery feedback counts terminal trips using one SQL snapshot over durable metadata/sample acknowledgments. It requires current vehicle and terminal-session revisions and every saved sample; missing references, partial ACKs, blocked work and empty metadata-only trips cannot become success by observing zero pending samples. The visible banner refreshes at most once every two seconds and stops observing when the UI is absent. Query errors remain unknown, never zero. No queue body, migration or ACK contract changes.
+Delivery feedback counts terminal trips using one SQL snapshot over durable metadata/sample acknowledgments. It requires current vehicle and terminal-session revisions and every saved sample; missing references, partial ACKs, blocked work and empty metadata-only trips cannot become success by observing zero pending samples. The delivery state refreshes at most once every two seconds and stops observing when the UI is absent; its visible feedback now lives inside Trips > Uploads. Query errors remain unknown, never zero. No queue body, migration or ACK contract changes.
 
 The API logs bounded allowlisted request lifecycle/error events and generated correlation IDs. It does not log raw errors, bodies, headers, actual paths/query strings, VINs or database configuration. The owner-added Portainer pipeline publishes and redeploys API changes after merge; its MongoDB setting can differ from ignored local Atlas configuration.
 

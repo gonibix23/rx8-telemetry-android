@@ -88,7 +88,23 @@ internal fun TripHistoryControls(
         ) { Text("History: $label") }
         state.historyVehicleId?.let { Text("Vehicle ID: $it", color = MutedColor, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("history_vehicle_id")) }
         Text("Newest first · up to 50 trips per page", color = MutedColor, style = MaterialTheme.typography.bodySmall)
-        TripHistoryNavigation(state, busy, onNewer, onOlder, onNewest)
+        if (!state.isLoading && state.historyError == null && state.trips.isNotEmpty()) {
+            Text(
+                when {
+                    state.hasNewerTrips && state.hasOlderTrips -> "More trips are available in both directions."
+                    state.hasNewerTrips -> "Oldest trips · no older trips."
+                    state.hasOlderTrips -> "Newest trips · older trips are available."
+                    state.historyVehicleId != null -> "All saved trips for this vehicle are shown."
+                    else -> "All saved trips are shown."
+                },
+                color = MutedColor,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.testTag("history_page_status"),
+            )
+        }
+        if (state.hasNewerTrips || state.hasOlderTrips) {
+            TripHistoryNavigation(state, busy, onNewer, onOlder, onNewest)
+        }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TextButton(onClick = onRefresh, enabled = !state.isLoading && !busy, modifier = Modifier.testTag("refresh_trips")) { Text("Refresh") }
             if (state.historyError != null) {
@@ -121,12 +137,11 @@ internal fun TripHistoryNavigation(
     onNewer: () -> Unit,
     onOlder: () -> Unit,
     onNewest: () -> Unit,
-    tagSuffix: String = "",
 ) {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(onClick = onNewer, enabled = state.hasNewerTrips && !state.isLoading && !busy, modifier = Modifier.testTag("newer_trips$tagSuffix")) { Text("Newer") }
-        OutlinedButton(onClick = onOlder, enabled = state.hasOlderTrips && !state.isLoading && !busy, modifier = Modifier.testTag("older_trips$tagSuffix")) { Text("Older") }
-        TextButton(onClick = onNewest, enabled = !state.isLoading && !busy, modifier = Modifier.testTag("newest_trips$tagSuffix")) { Text("Newest") }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("trip_history_navigation")) {
+        OutlinedButton(onClick = onNewer, enabled = state.hasNewerTrips && !state.isLoading && !busy, modifier = Modifier.testTag("newer_trips")) { Text("Newer") }
+        OutlinedButton(onClick = onOlder, enabled = state.hasOlderTrips && !state.isLoading && !busy, modifier = Modifier.testTag("older_trips")) { Text("Older") }
+        TextButton(onClick = onNewest, enabled = state.hasNewerTrips && !state.isLoading && !busy, modifier = Modifier.testTag("newest_trips")) { Text("Newest") }
     }
 }
 

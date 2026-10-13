@@ -1,8 +1,12 @@
 # Product and scope
 
+## Trips feedback and navigation (0.15.2-dev)
+
+Upload feedback appears only inside Trips > Uploads, with the existing durable-confirmation, waiting, progress and failure meanings. History renders one navigation group for available filtered pages. A single page needs no directional navigation; explain the boundary and retain Refresh. Loading and genuine busy operations still prevent conflicting actions. Page filtering, ordering and restored browsing context remain unchanged.
+
 ## Live modes and compact floating readings (0.15.0-dev)
 
-Live opens in normal mode with the configured cards and one Edit action. Edit mode contains sensor search, card customization, column selection, vehicle actions and floating-panel settings. Done hides these controls again; mode/search state survives tab navigation and Activity recreation. Adapter identity and protocol details are in Adapter. Upload feedback remains visible in Adapter, Trips and Vehicles so normal Live stays focused on readings.
+Live opens in normal mode with the configured cards and one Edit action. Edit mode contains sensor search, card customization, column selection, vehicle actions and floating-panel settings. Done hides these controls again; mode/search state survives tab navigation and Activity recreation. Adapter identity and protocol details are in Adapter. Upload feedback is now confined to Trips > Uploads.
 
 One/two columns is a durable presentation preference independent of cards and trips. Compact cards share a row; an odd compact card keeps its half width and large cards span both columns. Narrow windows and larger fonts fall back to one column. Card numeric text fits its available width without converting valid values or hiding quality/age.
 
@@ -18,7 +22,7 @@ Adapter contains Bluetooth discovery, selection, permissions, connection/favouri
 
 The floating overlay is enabled explicitly for a connected session. Android's display-over-other-apps permission is requested only from that action. Up to six selected metrics retain separate ECU sources, quality and age above another app; dragging moves it and a stationary hold disables it. It shares the foreground session's readings and starts no OBD requests. It is hidden inside the app and on the lock screen, and removed on disconnect, permission loss or service cleanup. Enablement is not restored after process death. No GPS is collected from the navigation app.
 
-Trip details use a Chart parameter dropdown rather than one chip per sensor; ECU selection remains separate. An upload banner outside Live refreshes from local durable acknowledgments, showing waiting, sending, failure or confirmed trip counts. Confirmation requires every sample and current vehicle/session metadata, including empty trips. Local copies remain available offline.
+Trip details use a Chart parameter dropdown rather than one chip per sensor; ECU selection remains separate. Uploads feedback in Trips refreshes from local durable acknowledgments, showing waiting, sending, failure or confirmed trip counts. Confirmation requires every sample and current vehicle/session metadata, including empty trips. Local copies remain available offline.
 
 ## Confirmed context
 
