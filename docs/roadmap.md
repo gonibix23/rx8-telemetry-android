@@ -1,5 +1,9 @@
 # Development roadmap
 
+## Current update (0.15.3-dev)
+
+[Issue #54](https://github.com/gonibix23/rx8-telemetry-android/issues/54) removes unused fixed-width space from the floating sensor panel using native content measurement, screen limits and preserved gestures. The owner completed the remaining acceptance criteria in #4, #6, #7 and #24; they were closed on October 13, 2026, superseding their historical pending notes below. #1, #3, #9 and #36 retain independent unchecked criteria. Deployed database inspection remains deferred.
+
 Implementation history: the simulator foundation was merged in [PR #12](https://github.com/gonibix23/rx8-telemetry-android/pull/12) after the user reported a successful app test on October 10, 2026.
 The user confirmed that the Samsung A53 runs Android 16, completing RX8-002. The paired-only Bluetooth build failed to list the adapter.
 Car Scanner reportedly finds OBDII through in-app search with plain Bluetooth selected. After the discovery fix, the user confirmed the app's Bluetooth connection works, and [PR #13](https://github.com/gonibix23/rx8-telemetry-android/pull/13) is merged.

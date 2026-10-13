@@ -1,5 +1,11 @@
 # Product and scope
 
+## Content-sized floating readings (0.15.3-dev)
+
+The overlay fits its widest parameter, value/unit or quality/age line plus padding, rather than reserving a fixed width. It adapts when the readings or available space change. Width stays within the display, long text wraps, and overflowing source rows scroll. Typography, dragging, stationary-hold dismissal and accessible source identity remain unchanged.
+
+The owner completed the remaining validations in issues #4, #6, #7 and #24, which were closed on October 13, 2026. This supersedes their historical pending notes below. Independent compatibility, transport, proprietary-parameter and deployed-upload checks remain open; no additional measurements are inferred.
+
 ## Trips feedback and navigation (0.15.2-dev)
 
 Upload feedback appears only inside Trips > Uploads, with the existing durable-confirmation, waiting, progress and failure meanings. History renders one navigation group for available filtered pages. A single page needs no directional navigation; explain the boundary and retain Refresh. Loading and genuine busy operations still prevent conflicting actions. Page filtering, ordering and restored browsing context remain unchanged.

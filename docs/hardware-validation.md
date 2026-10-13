@@ -2,6 +2,8 @@
 
 ## Goal and current evidence
 
+The owner completed every remaining acceptance checkbox in issues #4, #6, #7 and #24, and they were closed on October 13, 2026. This supersedes their earlier pending statements in the historical record below. The extended checklists remain useful test guides; unchecked guide steps do not reopen completed issues or imply new measured results. Independent criteria in #1 and #3, proprietary queries in #9 and deployed persistence in #36 remain incomplete.
+
 Confirm actual communication and data availability before promising sensors or sampling rates.
 Vehicle: 2004 RX-8, 231 metric horsepower (CV), Europe. Reference phone: Galaxy A53 running Android 16. Adapter: iLC B0BDRHRR22.
 
@@ -10,7 +12,7 @@ The user confirmed Android 16 on the A53, completing RX8-002. The paired-only Bl
 The user reports that Car Scanner searches inside the app with plain Bluetooth selected and displays OBDII with its MAC address.
 The user subsequently confirmed that the Bluetooth connection now works, following delivery of the discovery APK. PR #13 is merged.
 Detailed scan/pairing steps, interruptions, reconnection behavior, and physical adapter revision were not supplied. RX8-001 and remaining RX8-003 checks stay open.
-On October 11, 2026, the user reported that live readings worked; PR #14 is merged. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed that 0.5.0-dev reads data correctly. Individual sensors, ECU identifiers, measured response rates, and sustained lifecycle results remain unverified. RX8-004 stays open for those detailed checks. No VIN or saved-profile result has been reported.
+On October 11, 2026, the user reported that live readings worked; PR #14 is merged. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and later confirmed that 0.5.0-dev reads data correctly. At that point, individual sensors, ECU identifiers, measured response rates and sustained lifecycle results were unreported; the subsequent completed issue #4 checklist supersedes that pending status. No VIN result has been reported.
 The user also reported screen sleep while idle and loss of connection/readings after backgrounding in 0.5.0-dev, describing this as unpairing. The old policy deliberately disconnected outside Adapter; actual removal of the Android bond is unconfirmed, and the code has no removeBond call.
 The user subsequently confirmed 0.5.1-dev worked, providing success evidence for the background/screen fix in merged PR #17. On October 11, 2026, the user explicitly requested closure of issue #16 with all acceptance checkboxes complete, and it was closed. No measured duration or detailed test log accompanied that confirmation; the extended lifecycle checklist below remains a separate record of those observations. The user then confirmed that the 0.6.0-dev dashboard build works perfectly; PR #18 is merged. This broad result does not establish the individual favorite/ECU scenarios below. The user subsequently confirmed that 0.7.0-dev works perfectly, and PR #19 is merged. Detailed trip duration, export-provider, interruption/storage, and battery results remain unreported. The user also confirmed 0.8.0-dev worked correctly and PR #20 is merged; individual migration and queue-display scenarios remain unreported.
 A simulator test and a Bluetooth socket connection are separate from ECU validation.

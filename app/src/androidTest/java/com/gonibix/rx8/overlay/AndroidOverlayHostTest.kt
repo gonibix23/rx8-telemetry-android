@@ -1,14 +1,20 @@
 package com.gonibix.rx8.overlay
 
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.res.Configuration
+import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.os.Handler
+import android.os.Build
 import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.provider.Settings
+import android.text.Layout
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
@@ -23,6 +29,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
 import com.gonibix.rx8.dashboard.DashboardCardConfig
+import com.gonibix.rx8.dashboard.DashboardCardSize
 import com.gonibix.rx8.dashboard.DashboardReading
 import com.gonibix.rx8.obd.ObdMetric
 import com.gonibix.rx8.obd.ObdReadingStatus
@@ -60,15 +67,152 @@ class AndroidOverlayHostTest {
             val sources = descendants(panel).mapNotNull { it.contentDescription?.toString() }
             assertTrue(sources.any { "ECU 7E8, 0 km/h, Current" in it })
             assertTrue(sources.any { "ECU 7E9, 12 km/h, Stale" in it })
-            assertTrue(params.width <= (200 * context.resources.displayMetrics.density).toInt())
+            assertWindowWithinBounds(panel)
             assertTrue(panel.createAccessibilityNodeInfo().actionList.any { it.id == AccessibilityNodeInfo.ACTION_DISMISS })
         }
-        captureOverlayFixture()
         main {
             assertTrue(panel().performAccessibilityAction(AccessibilityNodeInfo.ACTION_DISMISS, null))
             assertFalse(isShown())
             assertEquals(1, fixture.dismissals)
             fixture.host.hide()
+        }
+    }
+
+    @Test fun singleCoolantWindowFitsItsRenderedLabelAndPadding() = withHost(listOf(
+        row(ObdMetric.COOLANT_TEMPERATURE, "7E8", 83.0, ObdReadingStatus.VALID, 500),
+    )) {
+        main {
+            val root = panel()
+            assertTightUnwrappedWidth(root)
+            assertTrue("A single coolant reading must not reserve the old 200dp width",
+                root.width < (200 * root.resources.displayMetrics.density).toInt())
+            val texts = descendants(root).filterIsInstance<TextView>().map { it.text.toString() }
+            assertEquals(listOf(ObdMetric.COOLANT_TEMPERATURE.label, "83 °C", "0.5 s ago"), texts)
+            assertTrue(descendants(root).any { it.contentDescription?.contains("ECU 7E8, 83 °C, Current") == true })
+        }
+        captureOverlayFixture()
+    }
+
+    @Test fun shortSpeedAndRpmWindowsGrowAndShrinkWithTheReadingWithoutChangingTypography() = withHost(listOf(speed)) { fixture ->
+        var speedWidth = 0
+        var rpmWidth = 0
+        var valueTextSize = 0f
+        main {
+            val root = panel()
+            assertTightUnwrappedWidth(root)
+            speedWidth = root.width
+            valueTextSize = descendants(root).filterIsInstance<TextView>().single { it.text.toString() == "0 km/h" }.textSize
+        }
+        update(fixture, listOf(row(ObdMetric.ENGINE_RPM, "7E8", 750.0, ObdReadingStatus.VALID, 500)))
+        main { assertTightUnwrappedWidth(panel()); rpmWidth = panel().width }
+        update(fixture, listOf(row(ObdMetric.ENGINE_RPM, "7E8", 9_500.0, ObdReadingStatus.VALID, 500)))
+        main {
+            val root = panel()
+            assertTightUnwrappedWidth(root)
+            assertTrue("A wider value must expand the window", root.width > rpmWidth)
+            assertEquals(valueTextSize, descendants(root).filterIsInstance<TextView>().single { it.text.toString() == "9500 rpm" }.textSize, 0.01f)
+        }
+        update(fixture, listOf(speed))
+        main {
+            assertTightUnwrappedWidth(panel())
+            assertEquals("Returning to short content releases unused width", speedWidth, panel().width)
+        }
+        update(fixture, listOf(speed.copy(card = speed.card.copy(size = DashboardCardSize.LARGE))))
+        main {
+            assertTightUnwrappedWidth(panel())
+            assertTrue("Larger card typography must be measured, not assigned a fixed width", panel().width > speedWidth)
+        }
+    }
+
+    @Test fun expandingAtTheScreenEdgeReclampsTheWindowAndShrinkingReleasesSpace() = withHost(listOf(speed)) { fixture ->
+        var smallWidth = 0
+        main {
+            val root = panel()
+            val bounds = displayBounds(root.context)
+            smallWidth = root.width
+            touch(root, MotionEvent.ACTION_DOWN, 20f, 20f)
+            touch(root, MotionEvent.ACTION_MOVE, bounds.first * 2f, bounds.second * 2f)
+            touch(root, MotionEvent.ACTION_UP, 20f, 20f)
+            val params = root.layoutParams as WindowManager.LayoutParams
+            assertTrue("The fixture starts at the right edge before resizing", params.x >= bounds.first - root.width - 1)
+            assertWindowWithinBounds(root)
+        }
+        update(fixture, listOf(row(ObdMetric.FUEL_RAIL_PRESSURE_RELATIVE, "7E8", null, ObdReadingStatus.TIMEOUT, null)))
+        main {
+            val root = panel()
+            assertTrue("Longer parameter and quality text must expand the window", root.width > smallWidth)
+            assertWindowWithinBounds(root)
+            assertAllTextIsReadable(root)
+            assertTrue(descendants(root).filterIsInstance<TextView>().any { it.text.toString() == "Timed out · Age unknown" })
+        }
+        update(fixture, listOf(speed))
+        main {
+            assertEquals(smallWidth, panel().width)
+            assertWindowWithinBounds(panel())
+            assertEquals(0, fixture.dismissals)
+        }
+    }
+
+    @Test fun unchangedReadingsAreRemeasuredWhenTheFontConfigurationChanges() {
+        // Override only this host's resources; never change the emulator's global font preference.
+        val changingContext = ChangingFontContext(context)
+        withHost(listOf(speed), changingContext) { fixture ->
+            var originalWidth = 0
+            var originalTextSize = 0f
+            main {
+                originalWidth = panel().width
+                originalTextSize = descendants(panel()).filterIsInstance<TextView>().single { it.text.toString() == "0 km/h" }.textSize
+                changingContext.setFontScale(2f)
+            }
+            update(fixture, listOf(speed))
+            main {
+                assertTightUnwrappedWidth(panel())
+                assertTrue("Equal readings still resize after a font configuration change", panel().width > originalWidth)
+                assertTrue(descendants(panel()).filterIsInstance<TextView>().single { it.text.toString() == "0 km/h" }.textSize > originalTextSize)
+                changingContext.setFontScale(1f)
+            }
+            update(fixture, listOf(speed))
+            main {
+                assertTightUnwrappedWidth(panel())
+                assertEquals(originalWidth, panel().width)
+                assertEquals(originalTextSize, descendants(panel()).filterIsInstance<TextView>().single { it.text.toString() == "0 km/h" }.textSize, 0.01f)
+            }
+        }
+    }
+
+    @Test fun largeFontsAndMultipleSourcesWrapWithinBoundsAndPreserveScrollOnReadingUpdates() {
+        val largeContext = context.createConfigurationContext(Configuration(context.resources.configuration).apply { fontScale = 2f })
+        val rows = (0 until 16).map { index ->
+            row(ObdMetric.FUEL_RAIL_PRESSURE_RELATIVE, (0x7E0 + index).toString(16).uppercase(),
+                index.toDouble(), ObdReadingStatus.STALE, 6_000)
+        }
+        withHost(rows, largeContext) { fixture ->
+            var savedScroll = 0
+            main {
+                val root = panel()
+                assertWindowWithinBounds(root)
+                assertAllTextIsReadable(root)
+                val texts = descendants(root).filterIsInstance<TextView>()
+                assertTrue("Large-font long labels must wrap instead of clipping", texts.any { it.layout.lineCount > 1 })
+                val scroll = descendants(root).filterIsInstance<ScrollView>().single()
+                assertTrue("Additional ECU rows remain reachable by scrolling", scroll.canScrollVertically(1))
+                assertEquals(16, descendants(root).count { it.contentDescription?.contains("ECU 7E") == true })
+                scroll.scrollTo(0, scroll.height)
+                savedScroll = scroll.scrollY
+                assertTrue(savedScroll > 0)
+            }
+            update(fixture, rows.map { it.copy(reading = it.reading.copy(ageMillis = 7_000)) })
+            main {
+                val root = panel()
+                val scroll = descendants(root).filterIsInstance<ScrollView>().single()
+                assertEquals("Fresh text for the same sources must not jump to the first row", savedScroll, scroll.scrollY)
+                assertWindowWithinBounds(root)
+                assertAllTextIsReadable(root)
+                scroll.scrollTo(0, scroll.getChildAt(0).height)
+                assertTrue("The last ECU row must remain reachable", scroll.scrollY > savedScroll)
+                assertFalse(scroll.canScrollVertically(1))
+                assertEquals(0, fixture.dismissals)
+            }
         }
     }
 
@@ -149,7 +293,15 @@ class AndroidOverlayHostTest {
         var dismissals = 0
         fun close() { if (::host.isInitialized) host.hide() }
     }
-    private fun withHost(rows: List<OverlayRow>, block: (Fixture) -> Unit) {
+    private class ChangingFontContext(base: Context) : ContextWrapper(base) {
+        private var configured = base.createConfigurationContext(Configuration(base.resources.configuration).apply { fontScale = 1f })
+        override fun getResources(): Resources = configured.resources
+        override fun getTheme(): Resources.Theme = configured.theme
+        fun setFontScale(scale: Float) {
+            configured = baseContext.createConfigurationContext(Configuration(baseContext.resources.configuration).apply { fontScale = scale })
+        }
+    }
+    private fun withHost(rows: List<OverlayRow>, hostContext: Context = context, block: (Fixture) -> Unit) {
         val packageName = context.packageName
         fun shell(command: String): String = ParcelFileDescriptor.AutoCloseInputStream(
             instrumentation.uiAutomation.executeShellCommand(command)).use { it.bufferedReader().readText() }
@@ -160,7 +312,7 @@ class AndroidOverlayHostTest {
             shell("appops set $packageName SYSTEM_ALERT_WINDOW allow")
             assertTrue(Settings.canDrawOverlays(context))
             main {
-                fixture.host = AndroidOverlayHost(context) { fixture.dismissals++; fixture.host.hide() }
+                fixture.host = AndroidOverlayHost(hostContext) { fixture.dismissals++; fixture.host.hide() }
                 fixture.host.show(rows)
             }
             awaitPanelLayout()
@@ -174,6 +326,47 @@ class AndroidOverlayHostTest {
     private fun row(metric: ObdMetric, ecu: String, value: Double?, status: ObdReadingStatus, age: Long?) =
         OverlayRow(DashboardCardConfig(metric, showInOverlay = true), DashboardReading(metric, ecu, value, status, age, true))
     private fun main(block: () -> Unit) = instrumentation.runOnMainSync(block)
+    private fun update(fixture: Fixture, rows: List<OverlayRow>) {
+        main { fixture.host.show(rows) }
+        awaitPanelLayout()
+        instrumentation.waitForIdleSync()
+    }
+    private fun displayBounds(hostContext: Context): Pair<Int, Int> =
+        if (Build.VERSION.SDK_INT >= 30) hostContext.getSystemService(WindowManager::class.java).currentWindowMetrics.bounds.let { it.width() to it.height() }
+        else hostContext.resources.displayMetrics.let { it.widthPixels to it.heightPixels }
+    private fun assertWindowWithinBounds(root: View) {
+        val params = root.layoutParams as WindowManager.LayoutParams
+        val bounds = displayBounds(root.context)
+        assertEquals(params.width, root.width)
+        assertTrue("Width stays below the screen-relative limit", root.width <= (bounds.first * 0.8f).toInt())
+        assertTrue("Height cap includes the outer vertical padding",
+            root.height <= minOf((320 * root.resources.displayMetrics.density).toInt(), (bounds.second * 0.5f).toInt()))
+        assertTrue(params.x >= 0 && params.y >= 0)
+        assertTrue("Resized window stays inside the right edge", params.x + root.width <= bounds.first)
+        assertTrue("Resized window stays inside the bottom edge", params.y + root.height <= bounds.second)
+    }
+    private fun assertTightUnwrappedWidth(root: View) {
+        val texts = descendants(root).filterIsInstance<TextView>()
+        assertTrue(texts.isNotEmpty())
+        texts.forEach { assertEquals("Short content should fit on one line: ${it.text}", 1, it.layout.lineCount) }
+        val widestText = texts.maxOf { ceil(Layout.getDesiredWidth(it.text, it.paint).toDouble()).toInt() + it.compoundPaddingLeft + it.compoundPaddingRight }
+        val expected = widestText + root.paddingLeft + root.paddingRight
+        assertTrue("Window width ${root.width} should fit rendered text and existing padding $expected",
+            kotlin.math.abs(root.width - expected) <= 2)
+        assertWindowWithinBounds(root)
+        assertAllTextIsReadable(root)
+    }
+    private fun assertAllTextIsReadable(root: View) {
+        descendants(root).filterIsInstance<TextView>().forEach { text ->
+            val layout = requireNotNull(text.layout)
+            assertEquals("The whole label/value/status remains available", text.text.length, layout.getLineEnd(layout.lineCount - 1))
+            assertTrue(layout.height <= text.height - text.compoundPaddingTop - text.compoundPaddingBottom)
+            for (line in 0 until layout.lineCount) {
+                assertEquals(0, layout.getEllipsisCount(line))
+                assertTrue("Line must fit within its text view: ${text.text}", layout.getLineMax(line) <= text.width - text.compoundPaddingLeft - text.compoundPaddingRight + 1f)
+            }
+        }
+    }
     private fun panel() = WindowInspector.getGlobalWindowViews().single { it.contentDescription == "Floating live readings" }
     private fun isShown() = WindowInspector.getGlobalWindowViews().any { it.contentDescription == "Floating live readings" }
     private fun positionInPanel(view: View, panel: View): Pair<Float, Float> {
