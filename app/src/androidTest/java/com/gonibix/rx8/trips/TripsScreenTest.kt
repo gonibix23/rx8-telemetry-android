@@ -230,9 +230,9 @@ class TripsScreenTest {
         compose.onNodeWithTag("upload_feedback_title").assertTextEquals("1 trip needs attention").assertIsDisplayed()
         compose.onNodeWithText("Saved sample queue").assertIsDisplayed()
         compose.onNodeWithTag("trip_sync_waiting").assertTextEquals("Waiting locally: 15 samples").assertIsDisplayed()
-        compose.onNodeWithTag("trip_sync_blocked").assertTextEquals("Needs attention: 2 samples").assertIsDisplayed()
+        scrollToTag("trip_sync_blocked").assertTextEquals("Needs attention: 2 samples").assertIsDisplayed()
         compose.onNodeWithTag("trip_sync_acknowledged").assertDoesNotExist()
-        compose.onNodeWithTag("trip_sync_snapshot").assertIsDisplayed()
+        scrollToTag("trip_sync_snapshot").assertIsDisplayed()
         compose.onNodeWithText("UI TEST FIXTURE · SYNTHETIC QUEUE").assertIsDisplayed()
         captureFixture("sync")
     }
