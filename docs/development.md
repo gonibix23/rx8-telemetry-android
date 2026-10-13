@@ -1,5 +1,11 @@
 # Development
 
+## Testing 0.15.3-dev
+
+Install over existing app data. Show one floating sensor over another app: the panel should fit its text and values without a fixed-width blank area. Change sensors and values, try larger fonts and rotate the phone; the panel must resize within the screen. Check multiple sources and overflow scrolling, drag movement, stationary-hold dismissal, accessible dismissal and quality/age. The full Android 16 suite and twelve screenshots provide software evidence; this new phone check remains separate.
+
+On October 13, 2026, issues #4, #6, #7 and #24 were closed after the owner completed every acceptance checkbox. Their former pending notes below are historical. This does not imply completion of the independent remaining criteria in #1, #3, #9 or #36, or provide unreported rates/durations.
+
 ## Testing 0.15.2-dev
 
 Install over existing app data. Confirm upload success, waiting, progress and failure feedback appears inside Trips > Uploads and no success banner appears on other tabs. Acknowledgment rules, saved trips and settings stay intact. In history, inspect a single-page filter, then a synthetic history exceeding 50 trips: navigation appears once, changes to actual older/newer pages and returns to newest. Verify boundary explanations, loading/busy protection, Refresh, details/back, filter changes and restored browsing context. Full Android 16 regression and twelve screenshots are software evidence; phone/car checks remain deferred.
@@ -270,18 +276,12 @@ The reviewed [markdownlint API](https://github.com/DavidAnson/markdownlint/blob/
 
 ## Validation still required
 
-The user has confirmed the simulator, Bluetooth connection, and general live readings on the A53. The user reported `ISO 15765-CAN (11 bit, 500 kbaud)` and correct readings in 0.5.0-dev. Individual sensor results, ECU identifiers, measured rates, and sustained lifecycle behavior still need detailed evidence. Profile persistence and VIN retrieval still need device checks.
+The current open checklists were reviewed against the owner edits on October 13, 2026. Completed issues #4, #6, #7 and #24 do not establish the independent unchecked items below. Historical build reports and extended test guides must not be used to reopen those completed issues.
 
 - [RX8-001](https://github.com/gonibix23/rx8-telemetry-android/issues/1): test the real adapter and RX-8, including ECU communication, supported PIDs, VIN availability, stability, and reconnection.
 - [RX8-003](https://github.com/gonibix23/rx8-telemetry-android/issues/3): validate scan and connection permissions, nearby discovery, pairing, connection, cancellation, disconnection, and manual reconnection with the actual adapter.
-- [RX8-004](https://github.com/gonibix23/rx8-telemetry-android/issues/4): validate ELM initialization, detected protocol, capabilities, actual values, observed rate, and failure recovery.
-- [RX8-005](https://github.com/gonibix23/rx8-telemetry-android/issues/5): validate profile persistence, selected UUID, optional VIN retrieval, provenance, and explicit conflict decisions.
-- [Issue #16](https://github.com/gonibix23/rx8-telemetry-android/issues/16) is closed at the user's request with all issue checks complete. The broader hardware checklist still has no measured duration or battery log; this does not reopen the completed fix.
-- [RX8-006](https://github.com/gonibix23/rx8-telemetry-android/issues/6): validate the dashboard layout, favorite persistence/unavailability, ECU separation, simulator preview, and navigation on the A53.
-- [RX8-007](https://github.com/gonibix23/rx8-telemetry-android/issues/7): validate explicit recording, screen lock/background, committed-data recovery, gaps, summaries, document exports, deletion, and storage errors on the A53.
-- [RX8-008](https://github.com/gonibix23/rx8-telemetry-android/issues/8): verify the 0.8.0-dev upgrade, preserved history, local queue counts, exports/deletion, and uploads-disabled behavior on the A53. RX8-017 adds real integration; actual deployment/phone uploads remain unverified.
-- [RX8-010](https://github.com/gonibix23/rx8-telemetry-android/issues/21): validate capability preview, frozen JSON export, retained stopped state, and continued live/trip operation on the A53.
-- [RX8-012](https://github.com/gonibix23/rx8-telemetry-android/issues/24): the user broadly confirmed 0.10.0-dev works well. Detailed recorded metric/ECU, selection retention, gaps, and overview/export scenarios remain unreported while verified software development continues.
+- [RX8-009](https://github.com/gonibix23/rx8-telemetry-android/issues/9): accept only documented and car-verified read-only Mazda parameters, with module/query/response/formula/unit evidence. No proprietary query is currently accepted.
+- [RX8-018](https://github.com/gonibix23/rx8-telemetry-android/issues/36): runtime HTTPS, configured MongoDB connectivity/persistence and real offline/recovery uploads still need validation. The owner has deferred database inspection.
 
-Keep issues open while required evidence is missing. PR #14 is merged, but RX8-004 remains open for detailed hardware checks. RX8-005 software does not close RX8-001 or prove VIN compatibility.
+Keep issues open while their required evidence is missing. The owner completed RX8-004, RX8-006, RX8-007 and RX8-012; their closure does not complete RX8-001 or prove VIN compatibility.
 There are no published APK releases.

@@ -2,6 +2,7 @@ package com.gonibix.rx8.overlay
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Rect
@@ -20,6 +21,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.view.ViewCompat
+import androidx.core.view.doOnNextLayout
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat
 import com.gonibix.rx8.dashboard.DashboardCardSize
 import com.gonibix.rx8.dashboard.metricDisplayValue
@@ -36,6 +38,9 @@ internal class AndroidOverlayHost(private val context: Context, private val onCl
     private var params: WindowManager.LayoutParams? = null
     private val dragLabels = mutableListOf<View>()
     private var rendered = emptyList<OverlayRow>()
+    private var renderedBounds: Pair<Int, Int>? = null
+    private var renderedConfiguration: Configuration? = null
+    private var renderGeneration = 0L
     private var panelHeight = 0
     private var x = 16
     private var y = 100
@@ -44,10 +49,18 @@ internal class AndroidOverlayHost(private val context: Context, private val onCl
     override fun show(rows: List<OverlayRow>) {
         check(permissionGranted())
         if (panel == null) create()
-        if (rows == rendered) return
-        rendered = rows
+        val bounds = displayBounds()
+        val configuration = context.resources.configuration
+        if (rows == rendered && bounds == renderedBounds && configuration == renderedConfiguration) return
+        rendered = rows.toList()
+        renderedBounds = bounds
+        renderedConfiguration = Configuration(configuration)
+        val generation = ++renderGeneration
         val root = requireNotNull(panel)
         val body = requireNotNull(content)
+        val scroll = requireNotNull(scroller)
+        val previousScrollY = scroll.scrollY
+        root.setPadding(dp(10), dp(3), dp(10), dp(3))
         body.removeAllViews()
         dragLabels.clear()
         rows.forEach { row ->
@@ -70,15 +83,27 @@ internal class AndroidOverlayHost(private val context: Context, private val onCl
             item.addView(label(if (current) age else "$status · $age", 10f, if (current) MINT else AMBER))
             body.addView(item)
         }
-        val bounds = displayBounds()
-        val width = minOf(dp(if (rows.any { it.card.size == DashboardCardSize.LARGE }) 240 else 200), (bounds.first * 0.8f).toInt())
+        val horizontalPadding = root.paddingLeft + root.paddingRight
+        val verticalPadding = root.paddingTop + root.paddingBottom
+        val maxWidth = (bounds.first * 0.8f).toInt().coerceAtLeast(1)
+        val unspecifiedHeight = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        // Native TextViews include the actual typeface, SP scale, unit and quality/age line.
+        // AT_MOST lets short content shrink instead of filling an arbitrary minimum width.
+        body.measure(View.MeasureSpec.makeMeasureSpec((maxWidth - horizontalPadding).coerceAtLeast(1), View.MeasureSpec.AT_MOST),
+            unspecifiedHeight)
+        val width = (body.measuredWidth + horizontalPadding).coerceIn(1, maxWidth)
         params?.width = width
-        // Measure wrapped labels/values at the actual font scale instead of assigning a fixed row height.
-        body.measure(View.MeasureSpec.makeMeasureSpec((width - root.paddingLeft - root.paddingRight).coerceAtLeast(1), View.MeasureSpec.EXACTLY),
-            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
-        val height = minOf(body.measuredHeight, dp(320), (bounds.second * 0.5f).toInt())
-        scroller?.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, height)
-        panelHeight = height + root.paddingTop + root.paddingBottom
+        // Wrapping determines height only after the final bounded width is known.
+        body.measure(View.MeasureSpec.makeMeasureSpec((width - horizontalPadding).coerceAtLeast(1), View.MeasureSpec.EXACTLY),
+            unspecifiedHeight)
+        val maxHeight = minOf(dp(320), (bounds.second * 0.5f).toInt()).coerceAtLeast(1)
+        val height = minOf(body.measuredHeight, (maxHeight - verticalPadding).coerceAtLeast(1))
+        scroll.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, height)
+        panelHeight = height + verticalPadding
+        scroll.doOnNextLayout {
+            // The next layout supplies the new child/viewport heights; ScrollView clamps if rows shrank.
+            if (scroller === scroll && generation == renderGeneration) scroll.scrollTo(0, previousScrollY)
+        }
         moveTo(x, y)
     }
 
@@ -109,7 +134,7 @@ internal class AndroidOverlayHost(private val context: Context, private val onCl
         val body = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         val scroll = ScrollView(context).apply { addView(body); isFillViewport = false }
         root.addView(scroll)
-        val layout = WindowManager.LayoutParams(dp(200), WindowManager.LayoutParams.WRAP_CONTENT,
+        val layout = WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT).apply { gravity = Gravity.TOP or Gravity.START; x = this@AndroidOverlayHost.x; y = this@AndroidOverlayHost.y }
@@ -148,6 +173,7 @@ internal class AndroidOverlayHost(private val context: Context, private val onCl
     override fun hide() {
         panel?.let { root -> root.cancelGesture(); runCatching { manager.removeViewImmediate(root) } }
         panel = null; content = null; scroller = null; params = null; rendered = emptyList(); dragLabels.clear()
+        renderedBounds = null; renderedConfiguration = null; renderGeneration++
     }
 
     private companion object {
